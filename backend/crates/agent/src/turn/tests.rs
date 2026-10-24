@@ -73,6 +73,8 @@ struct Seen {
     usage_added: Mutex<Vec<Usage>>,
     /// Every task the classifier was asked.
     classified: Mutex<Vec<ClassifierTask>>,
+    /// The exchange the router gave each route call as context.
+    route_context: Mutex<Vec<domain::ports::PriorExchange>>,
     /// Every card stored: its message, and whether that message was stored already.
     cards: Mutex<Vec<(MessageId, bool)>>,
 }
@@ -95,6 +97,9 @@ struct Setup {
     knowledge: MockKnowledgeStore,
     /// The conversation's earlier messages, oldest first: none unless a test says otherwise.
     history: Vec<domain::ports::ContextMessage>,
+    /// The conversation's newest messages, newest first, as its detail page returns them:
+    /// none unless a test says otherwise.
+    newest: Vec<Message<Stored>>,
 }
 
 /// The garden as every turn reads it; its context fails, so it has no weather.
@@ -172,6 +177,7 @@ impl Setup {
             maps: no_map(),
             knowledge: MockKnowledgeStore::new(),
             history: Vec::new(),
+            newest: Vec::new(),
         }
     }
 }
@@ -197,22 +203,26 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
     let model = Arc::new(ScriptedModel::streaming(setup.script));
 
     let mut chats = MockChatRepo::new();
-    chats.expect_conversation_detail().returning(|_, _| {
-        Ok(ConversationDetail {
-            conversation: Conversation {
-                id: CONVERSATION.parse().unwrap(),
-                garden_id: GARDEN.parse().unwrap(),
-                anchor: Anchor::Garden(GARDEN.parse().unwrap()),
-                title: None,
-                created_at: now(),
-                last_message_at: None,
-            },
-            messages: Page {
-                items: Vec::new(),
-                next_cursor: None,
-            },
-        })
-    });
+    let newest = setup.newest;
+    chats
+        .expect_conversation_detail()
+        .returning(move |_, page| {
+            let limit = page.limit.unwrap_or(u32::MAX) as usize;
+            Ok(ConversationDetail {
+                conversation: Conversation {
+                    id: CONVERSATION.parse().unwrap(),
+                    garden_id: GARDEN.parse().unwrap(),
+                    anchor: Anchor::Garden(GARDEN.parse().unwrap()),
+                    title: None,
+                    created_at: now(),
+                    last_message_at: None,
+                },
+                messages: Page {
+                    items: newest.iter().take(limit).cloned().collect(),
+                    next_cursor: None,
+                },
+            })
+        });
     let s = seen.clone();
     chats.expect_store_message().returning(move |_, m| {
         let out = stored_message(&m);
@@ -253,22 +263,35 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
         })
     });
     let mut classifier = MockTextClassifier::new();
-    let recorder = Arc::clone(&seen);
     let route_scores = setup.route_scores;
-    classifier.expect_classify().returning(move |task, _| {
-        recorder.classified.lock().unwrap().push(task);
+    let answer = Arc::new(move |task: ClassifierTask| {
         let scores = match task {
             ClassifierTask::Route { .. } => route_scores.clone(),
             _ => vec![("skip", 0.9), ("remember", 0.05)],
         };
-        Ok(scores
-            .into_iter()
-            .map(|(label, score)| LabelScore {
-                label: label.to_owned(),
-                score,
-            })
-            .collect())
+        Ok::<_, domain::ports::ModelError>(
+            scores
+                .into_iter()
+                .map(|(label, score)| LabelScore {
+                    label: label.to_owned(),
+                    score,
+                })
+                .collect::<Vec<_>>(),
+        )
     });
+    let (a, recorder) = (Arc::clone(&answer), Arc::clone(&seen));
+    classifier.expect_classify().returning(move |task, _| {
+        recorder.classified.lock().unwrap().push(task);
+        a(task)
+    });
+    let recorder = Arc::clone(&seen);
+    classifier
+        .expect_classify_with_context()
+        .returning(move |task, _, prior| {
+            recorder.classified.lock().unwrap().push(task);
+            recorder.route_context.lock().unwrap().push(prior.clone());
+            answer(task)
+        });
     let mut embedder = MockTextEmbedder::new();
     if setup.embed_fails_after_memory {
         embedder
@@ -1454,3 +1477,115 @@ async fn farm_records_leave_an_off_topic_message_off_topic() {
 }
 
 mod blocks;
+
+/// A stored message of the conversation, for its detail page.
+fn said(id: &str, role: MessageRole, text: &str) -> Message<Stored> {
+    stored_message(&NewMessage {
+        id: id.parse().unwrap(),
+        role,
+        text: text.to_owned(),
+        attachments: Vec::new(),
+        citations: Vec::new(),
+        farm_citations: Vec::new(),
+        blocks: Vec::new(),
+        tool_calls: Vec::new(),
+        route: None,
+        interrupted: false,
+        model: None,
+        prompt_version: None,
+        tokens_in: 0,
+        tokens_out: 0,
+        created_at: now(),
+    })
+}
+
+/// A follow-up is routed with the exchange it continues: the last reply and the user message
+/// before it, each cut to its limit. The conversation's first message has no context.
+#[tokio::test]
+async fn the_router_reads_the_exchange_before_a_follow_up() {
+    let (agent, _, seen) = harness(Setup::new(vec![vec![ChatChunk::Done(StopReason::EndTurn)]]));
+    let stream = agent
+        .start_turn(request(owner(Role::Editor).await, "When should I water?"))
+        .await
+        .unwrap();
+    let _ = collect(stream).await;
+    assert_eq!(
+        seen.route_context.lock().unwrap().as_slice(),
+        [domain::ports::PriorExchange::default()]
+    );
+
+    let reply = format!("Frost is likely on Thursday night. {}", "x".repeat(2_000));
+    let mut setup = Setup::new(vec![vec![ChatChunk::Done(StopReason::EndTurn)]]);
+    setup.newest = vec![
+        said("01JAX3K9T6R2B8V0QZ4M7D1E61", MessageRole::Assistant, &reply),
+        said(
+            "01JAX3K9T6R2B8V0QZ4M7D1E60",
+            MessageRole::User,
+            "Will the forecast hurt my tomatoes?",
+        ),
+        said(
+            "01JAX3K9T6R2B8V0QZ4M7D1E59",
+            MessageRole::Assistant,
+            "older",
+        ),
+    ];
+    let (agent, _, seen) = harness(setup);
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Editor).await,
+            "Thanks. What did you just tell me about the forecast?",
+        ))
+        .await
+        .unwrap();
+    let _ = collect(stream).await;
+    let context = seen.route_context.lock().unwrap();
+    assert_eq!(context.len(), 1);
+    assert_eq!(
+        context[0].user.as_deref(),
+        Some("Will the forecast hurt my tomatoes?")
+    );
+    let assistant = context[0].assistant.as_deref().unwrap();
+    assert!(assistant.starts_with("Frost is likely on Thursday night."));
+    assert!(assistant.ends_with('…'));
+    assert_eq!(assistant.chars().count(), ROUTE_CONTEXT_ASSISTANT_CHARS + 1);
+}
+
+#[test]
+fn the_prior_exchange_takes_the_last_reply_and_the_message_before_it() {
+    let reply = said(
+        "01JAX3K9T6R2B8V0QZ4M7D1E61",
+        MessageRole::Assistant,
+        "It's frost.",
+    );
+    let asked = said("01JAX3K9T6R2B8V0QZ4M7D1E60", MessageRole::User, "Forecast?");
+    assert_eq!(prior_exchange::<Stored>(&[]), None);
+    assert_eq!(
+        prior_exchange(&[reply.clone(), asked.clone()]),
+        Some(domain::ports::PriorExchange {
+            user: Some("Forecast?".to_owned()),
+            assistant: Some("It's frost.".to_owned()),
+        })
+    );
+    // An unanswered message (an interrupted turn) is the user half alone.
+    assert_eq!(
+        prior_exchange(&[asked.clone(), reply.clone()]),
+        Some(domain::ports::PriorExchange {
+            user: Some("Forecast?".to_owned()),
+            assistant: None,
+        })
+    );
+    // A reply after a reply carries no user half; an empty reply none at all.
+    assert_eq!(
+        prior_exchange(&[reply.clone(), reply.clone()]).and_then(|p| p.user),
+        None
+    );
+    let empty = said("01JAX3K9T6R2B8V0QZ4M7D1E62", MessageRole::Assistant, "  ");
+    assert_eq!(prior_exchange(&[empty, asked]), None);
+    let long = "é".repeat(400);
+    let long_question = said("01JAX3K9T6R2B8V0QZ4M7D1E63", MessageRole::User, &long);
+    let p = prior_exchange(&[reply, long_question]).unwrap();
+    assert_eq!(
+        p.user.unwrap().chars().count(),
+        ROUTE_CONTEXT_USER_CHARS + 1
+    );
+}

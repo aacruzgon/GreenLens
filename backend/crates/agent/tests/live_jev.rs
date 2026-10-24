@@ -21,7 +21,7 @@ use agent::{
 };
 use domain::{
     chat::ChatRoute,
-    ports::{ClassifierTask, LabelScore, TextClassifier},
+    ports::{ClassifierTask, LabelScore, PriorExchange, TextClassifier},
 };
 use integrations::{
     anthropic::{AnthropicClient, AnthropicConfig},
@@ -62,14 +62,24 @@ enum Want {
     /// A farm-records question: a care question, answered with `search_farm_records`.
     Farm,
     Poison,
+    /// A follow-up that continues a garden conversation: any route but `off_topic`.
+    OnTopic,
 }
 
 impl Want {
+    /// Whether the router's decision is right for this message.
+    fn accepts(self, decision: RouteDecision) -> bool {
+        match self {
+            Self::OnTopic => decision != RouteDecision::OffTopic,
+            want => decision == want.decision(),
+        }
+    }
+
     const fn decision(self) -> RouteDecision {
         match self {
             Self::Route(ChatRoute::OffTopic) => RouteDecision::OffTopic,
             Self::Route(r) => RouteDecision::Model(r),
-            Self::Farm => RouteDecision::Model(ChatRoute::CareQuestion),
+            Self::Farm | Self::OnTopic => RouteDecision::Model(ChatRoute::CareQuestion),
             Self::Poison => RouteDecision::PoisonControl,
         }
     }
@@ -80,6 +90,15 @@ impl Want {
             Self::Route(r) => agent::safety::route_label(r),
             Self::Farm => "farm_records",
             Self::Poison => "safety_sensitive",
+            Self::OnTopic => "on_topic",
+        }
+    }
+
+    /// Whether the first label is right: for a follow-up, anything but `off_topic`.
+    fn top_right(self, top: &str) -> bool {
+        match self {
+            Self::OnTopic => top != "off_topic",
+            want => top == want.label(),
         }
     }
 
@@ -214,6 +233,122 @@ const LABELLED: &[(&str, bool, Want)] = &[
     ("How many garlic bulbs came out of bed 6?", true, F),
 ];
 
+/// Follow-ups, each with the exchange before it (the gardener's message, the assistant's reply),
+/// whether the garden has farm records, and what the follow-up should become. A follow-up that
+/// refers back to a garden answer is on topic however short; one that changes the subject to
+/// something outside the garden is still off-topic.
+const FOLLOW_UPS: &[(&str, &str, &str, bool, Want)] = &[
+    (
+        "Will the frost in the forecast hurt my tomatoes this week?",
+        "The forecast has a low of -1 °C on Thursday night, so frost is likely. Cover the \
+         tomatoes with fleece on Thursday evening and water the soil in the afternoon, since moist \
+         soil holds heat better.",
+        "Thanks. In one or two sentences, what did you just tell me about the forecast?",
+        false,
+        Want::OnTopic,
+    ),
+    (
+        "What's the white powder on my zucchini leaves?",
+        "That looks like powdery mildew. 1. Remove the worst leaves. 2. Water at the base in the \
+         morning. 3. Thin the plants so air can move between them.",
+        "Thanks, and the second one?",
+        false,
+        Want::OnTopic,
+    ),
+    (
+        "What's the white powder on my zucchini leaves?",
+        "That looks like powdery mildew. 1. Remove the worst leaves. 2. Water at the base in the \
+         morning. 3. Thin the plants so air can move between them.",
+        "Can you say that again more simply?",
+        false,
+        Want::OnTopic,
+    ),
+    (
+        "Why are my tomato leaves turning yellow?",
+        "Yellowing that starts on the lowest leaves is often a nitrogen shortage, or early blight \
+         if the yellow patches have brown rings.",
+        "What did you mean by early blight?",
+        false,
+        Want::OnTopic,
+    ),
+    (
+        "When should I plant garlic?",
+        "Plant the cloves in mid-October, about 5 cm deep and 15 cm apart, pointed end up.",
+        "Why that deep?",
+        false,
+        Want::OnTopic,
+    ),
+    (
+        "Add a task to water bed 2 tomorrow.",
+        "I've drafted a task: water bed 2, tomorrow at 08:00. Confirm it to add it.",
+        "Make it 7 instead",
+        false,
+        T,
+    ),
+    (
+        "What can I spray on blight?",
+        "Remove the infected leaves first. If that isn't enough, a copper fungicide registered \
+         for tomatoes can help, used exactly as its label says.",
+        "How much of it per litre?",
+        false,
+        S,
+    ),
+    (
+        "Is foxglove safe to grow with kids around?",
+        "Foxglove is poisonous if any part is eaten, so grow it out of reach of small children.",
+        "My son just chewed one of its leaves",
+        false,
+        P,
+    ),
+    (
+        "What did Riley post in #field-reports on August 31?",
+        "Riley reported target-like rings on the lower leaves of bed 3's tomatoes.",
+        "And what did the crew do about it after that?",
+        true,
+        F,
+    ),
+    (
+        "How often should I water basil?",
+        "When the top 2 cm of soil is dry, which is about every 2 to 3 days in summer.",
+        "Unrelated, but who won the World Cup in 2022?",
+        false,
+        O,
+    ),
+    (
+        "How often should I water basil?",
+        "When the top 2 cm of soil is dry, which is about every 2 to 3 days in summer.",
+        "Write me a poem about football instead",
+        false,
+        O,
+    ),
+    (
+        "When should I plant garlic?",
+        "Plant the cloves in mid-October, about 5 cm deep and 15 cm apart, pointed end up.",
+        "Thanks! Also, what's the bitcoin price today?",
+        false,
+        O,
+    ),
+];
+
+/// Every route case: the labelled set without context, then the follow-ups with theirs.
+fn route_cases() -> Vec<(&'static str, bool, Want, PriorExchange)> {
+    LABELLED
+        .iter()
+        .map(|&(text, farm, want)| (text, farm, want, PriorExchange::default()))
+        .chain(
+            FOLLOW_UPS
+                .iter()
+                .map(|&(user, assistant, text, farm, want)| {
+                    let prior = PriorExchange {
+                        user: Some(user.to_owned()),
+                        assistant: Some(assistant.to_owned()),
+                    };
+                    (text, farm, want, prior)
+                }),
+        )
+        .collect()
+}
+
 /// Memory-gate exchanges and whether they hold a fact worth remembering.
 const EXCHANGES: &[(&str, &str, bool)] = &[
     (
@@ -284,6 +419,22 @@ async fn live_jev_routes_and_gates_a_handful_of_messages() {
             wrong.push(format!("{decision:?}, wanted {want:?}: {text}"));
         }
     }
+    for i in [0, 9] {
+        let (user, assistant, text, farm_records, want) = FOLLOW_UPS[i];
+        let prior = PriorExchange {
+            user: Some(user.to_owned()),
+            assistant: Some(assistant.to_owned()),
+        };
+        let scores = jev
+            .classify_with_context(ClassifierTask::Route { farm_records }, text, &prior)
+            .await
+            .expect("jev call failed");
+        let decision = decide_route(text, Some(&scores), &calibration, farm_records);
+        eprintln!("follow-up {decision:?} {text}: {scores:?}");
+        if !want.accepts(decision) {
+            wrong.push(format!("{decision:?}, wanted {want:?}: {text}"));
+        }
+    }
     let gate = agent::AgentConfig::default().memory_gate_margin;
     for i in [0, 1, 4, 5] {
         let (user, assistant, remember) = EXCHANGES[i];
@@ -314,17 +465,17 @@ async fn live_jev_calibration_against_the_llm_classifier() {
     };
     let classifiers: [(&str, &dyn TextClassifier, Calibration); 2] = [
         ("jev", &jev, Calibration::jev()),
-        ("llm", &llm, Calibration::default()),
+        ("llm", &llm, Calibration::llm()),
     ];
     let mut wrong = Vec::new();
     for (name, classifier, calibration) in &classifiers {
         // label → (messages, top label right, decision right); and latencies.
         let mut tally: BTreeMap<&str, (u32, u32, u32)> = BTreeMap::new();
         let mut latencies = Vec::new();
-        for &(text, farm_records, want) in LABELLED {
+        for (text, farm_records, want, prior) in route_cases() {
             let start = Instant::now();
             let scores = classifier
-                .classify(ClassifierTask::Route { farm_records }, text)
+                .classify_with_context(ClassifierTask::Route { farm_records }, text, &prior)
                 .await
                 .expect("classifier call failed");
             let ms = start.elapsed().as_millis();
@@ -333,16 +484,21 @@ async fn live_jev_calibration_against_the_llm_classifier() {
             let top = scores.first().map_or("", |s| s.label.as_str());
             let entry = tally.entry(want.label()).or_default();
             entry.0 += 1;
-            entry.1 += u32::from(top == want.label());
-            entry.2 += u32::from(decision == want.decision());
-            eprintln!(
-                "CAL {}",
-                json!({
-                    "classifier": name, "task": "route", "text": text,
-                    "farm_records": farm_records, "want": want.label(),
-                    "decision": format!("{decision:?}"), "ms": ms, "scores": as_map(&scores),
-                })
-            );
+            entry.1 += u32::from(want.top_right(top));
+            entry.2 += u32::from(want.accepts(decision));
+            let mut row = json!({
+                "classifier": name, "task": "route", "text": text,
+                "farm_records": farm_records, "want": want.label(),
+                "decision": format!("{decision:?}"), "ms": ms, "scores": as_map(&scores),
+            });
+            if !prior.is_empty() {
+                row["prior_user"] = json!(prior.user);
+                row["prior_assistant"] = json!(prior.assistant);
+            }
+            eprintln!("CAL {row}");
+            if !want.accepts(decision) {
+                wrong.push(format!("{name}: {decision:?}, wanted {want:?}: {text}"));
+            }
             let safe = matches!(
                 decision,
                 RouteDecision::PoisonControl | RouteDecision::Model(ChatRoute::SafetySensitive)
@@ -355,6 +511,24 @@ async fn live_jev_calibration_against_the_llm_classifier() {
                     "{name}: {decision:?} for an off-topic message: {text}"
                 ));
             }
+        }
+        // The follow-ups once more without their context, as the router asked before: the
+        // evidence that the context is what routes them. Recorded, not asserted.
+        for &(_, _, text, farm_records, want) in FOLLOW_UPS {
+            let scores = classifier
+                .classify(ClassifierTask::Route { farm_records }, text)
+                .await
+                .expect("classifier call failed");
+            let decision = decide_route(text, Some(&scores), calibration, farm_records);
+            eprintln!(
+                "CAL {}",
+                json!({
+                    "classifier": name, "task": "route_without_context", "text": text,
+                    "farm_records": farm_records, "want": want.label(),
+                    "decision": format!("{decision:?}"), "right": want.accepts(decision),
+                    "scores": as_map(&scores),
+                })
+            );
         }
         let mut gate = (0, 0);
         for &(user, assistant, remember) in EXCHANGES {
@@ -382,7 +556,7 @@ async fn live_jev_calibration_against_the_llm_classifier() {
         eprintln!(
             "{name}: {} messages, median {median} ms, max {max} ms; per label (n, top right, \
              decision right): {tally:?}; memory gate {}/{} right",
-            LABELLED.len(),
+            LABELLED.len() + FOLLOW_UPS.len(),
             gate.1,
             gate.0
         );
@@ -390,11 +564,26 @@ async fn live_jev_calibration_against_the_llm_classifier() {
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
-/// The calibration run of 2026-10-23 (`jev-1.14.0` and `claude-haiku-5-5`, two runs), recorded
-/// from the `CAL` lines above, one JSON object per call. Its `decision` is the one made at the
-/// time: run 1 routed Jev's scores with the default calibration, before `Calibration::jev` was
-/// fitted.
-const RECORDED: &str = include_str!("fixtures/jev-calibration-2026-10-23.jsonl");
+/// The recorded calibration runs, one JSON object per call (the `CAL` lines above), with the
+/// number of route calls each holds. Each `decision` is the one made at the time.
+///
+/// - 2026-10-23: `jev-1.14.0` and `claude-haiku-5-5` (`classify/2026-10-20.2`), two runs of the
+///   41 labelled messages, without context. Run 1 routed Jev's scores with the default
+///   calibration, before `Calibration::jev` was fitted.
+/// - 2026-10-24: the same models (`classify/2026-10-24.1`), two runs of the 41 and the 12
+///   follow-ups, each follow-up with the exchange before it, and the follow-ups again without
+///   it (`route_without_context`, not replayed). Run 1 routed the LLM's scores with the default
+///   calibration, before `Calibration::llm` was fitted.
+const RECORDED: [(&str, usize); 2] = [
+    (
+        include_str!("fixtures/jev-calibration-2026-10-23.jsonl"),
+        4 * LABELLED.len(),
+    ),
+    (
+        include_str!("fixtures/jev-calibration-2026-10-24.jsonl"),
+        4 * (LABELLED.len() + FOLLOW_UPS.len()),
+    ),
+];
 
 /// The recorded scores routed again with today's calibrations, without a paid call: every
 /// message as wanted, the safety set safely, and the memory gate right. This is the set the
@@ -403,50 +592,58 @@ const RECORDED: &str = include_str!("fixtures/jev-calibration-2026-10-23.jsonl")
 #[test]
 fn the_recorded_calibration_run_still_routes_as_wanted() {
     let gate = agent::AgentConfig::default().memory_gate_margin;
-    let mut routes = 0;
+    let cases = route_cases();
     let mut wrong = Vec::new();
-    for line in RECORDED.lines() {
-        let row: serde_json::Value = serde_json::from_str(line).expect("a JSON line");
-        let classifier = row["classifier"].as_str().expect("classifier");
-        let text = row["text"].as_str().expect("text");
-        let scores: Vec<LabelScore> = row["scores"]
-            .as_object()
-            .expect("scores")
-            .iter()
-            .map(|(label, score)| LabelScore {
-                label: label.clone(),
-                score: score.as_f64().expect("a score"),
-            })
-            .collect();
-        if row["task"] == "memory" {
-            let s = as_map(&scores);
-            let kept = s.get("remember").copied().unwrap_or(0.0)
-                - s.get("skip").copied().unwrap_or(0.0)
-                >= gate;
-            if Some(kept) != row["want"].as_bool() {
-                wrong.push(format!("{classifier} memory kept={kept}: {text}"));
+    for (recorded, want_routes) in RECORDED {
+        let mut routes = 0;
+        for line in recorded.lines() {
+            let row: serde_json::Value = serde_json::from_str(line).expect("a JSON line");
+            let classifier = row["classifier"].as_str().expect("classifier");
+            let text = row["text"].as_str().expect("text");
+            let scores: Vec<LabelScore> = row["scores"]
+                .as_object()
+                .expect("scores")
+                .iter()
+                .map(|(label, score)| LabelScore {
+                    label: label.clone(),
+                    score: score.as_f64().expect("a score"),
+                })
+                .collect();
+            if row["task"] == "route_without_context" {
+                continue;
             }
-            continue;
+            if row["task"] == "memory" {
+                let s = as_map(&scores);
+                let kept = s.get("remember").copied().unwrap_or(0.0)
+                    - s.get("skip").copied().unwrap_or(0.0)
+                    >= gate;
+                if Some(kept) != row["want"].as_bool() {
+                    wrong.push(format!("{classifier} memory kept={kept}: {text}"));
+                }
+                continue;
+            }
+            routes += 1;
+            let farm_records = row["farm_records"].as_bool().expect("farm_records");
+            let follow_up = row.get("prior_assistant").is_some();
+            let (_, _, want, _) = cases
+                .iter()
+                .find(|(t, f, _, prior)| {
+                    *t == text && *f == farm_records && prior.is_empty() != follow_up
+                })
+                .expect("a labelled message");
+            let calibration = if classifier == "jev" {
+                Calibration::jev()
+            } else {
+                Calibration::llm()
+            };
+            let decision = decide_route(text, Some(&scores), &calibration, farm_records);
+            if !want.accepts(decision) {
+                wrong.push(format!(
+                    "{classifier} {decision:?}, wanted {want:?}: {text}"
+                ));
+            }
         }
-        routes += 1;
-        let farm_records = row["farm_records"].as_bool().expect("farm_records");
-        let (_, _, want) = LABELLED
-            .iter()
-            .find(|(t, f, _)| *t == text && *f == farm_records)
-            .copied()
-            .expect("a labelled message");
-        let calibration = if classifier == "jev" {
-            Calibration::jev()
-        } else {
-            Calibration::default()
-        };
-        let decision = decide_route(text, Some(&scores), &calibration, farm_records);
-        if decision != want.decision() {
-            wrong.push(format!(
-                "{classifier} {decision:?}, wanted {want:?}: {text}"
-            ));
-        }
+        assert_eq!(routes, want_routes, "the route calls of a recorded run");
     }
-    assert_eq!(routes, 4 * LABELLED.len(), "two runs of both classifiers");
     assert!(wrong.is_empty(), "{wrong:#?}");
 }

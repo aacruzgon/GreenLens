@@ -42,7 +42,7 @@ use domain::{
     id::{ChatImageId, MessageId},
     ports::{
         ChatChunk, ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask, ContentPart,
-        IdGenExt as _, ModelError, NewMessage, ObjectKey, StopReason,
+        IdGenExt as _, ModelError, NewMessage, ObjectKey, PriorExchange, StopReason,
     },
     records::diagnosis::Citation,
     rules::limits::{MESSAGE_MAX_CHARS, MESSAGE_MAX_IMAGES},
@@ -214,17 +214,14 @@ impl ChatAgent {
             .into());
         }
 
-        let first = PageRequest {
+        // The two newest messages: the anchor, and the exchange the router reads as context.
+        let newest = PageRequest {
             cursor: None,
-            limit: Some(1),
+            limit: Some(2),
         };
-        let anchor = deps
-            .stores
-            .chats
-            .conversation_detail(owner, first)
-            .await?
-            .conversation
-            .anchor;
+        let detail = deps.stores.chats.conversation_detail(owner, newest).await?;
+        let anchor = detail.conversation.anchor;
+        let prior = prior_exchange(&detail.messages.items).unwrap_or_default();
 
         let mut image_keys = Vec::with_capacity(image_ids.len());
         for id in &image_ids {
@@ -237,7 +234,7 @@ impl ChatAgent {
             image_keys.push(object.key);
         }
 
-        let (decision, farm_records) = route(deps, member, &text).await;
+        let (decision, farm_records) = route(deps, member, &text, &prior).await;
 
         let user_message = deps.ids.id();
         deps.stores
@@ -290,16 +287,64 @@ impl ChatAgent {
     }
 }
 
+/// The longest previous user message the router reads, in characters.
+pub const ROUTE_CONTEXT_USER_CHARS: usize = 300;
+
+/// The longest previous assistant reply the router reads, in characters.
+pub const ROUTE_CONTEXT_ASSISTANT_CHARS: usize = 1_000;
+
+/// At most `max` characters of `text`, cut at a character and marked with `…` when cut.
+fn cut(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((end, _)) => format!("{}…", text[..end].trim_end()),
+        None => text.to_owned(),
+    }
+}
+
+/// The exchange before this message, from the conversation's newest messages (newest first):
+/// the last assistant reply and the user message before it, each cut to its limit, so a
+/// follow-up is routed with what it refers to. `None` in a conversation's first message.
+pub fn prior_exchange<U: domain::url::UrlState>(newest: &[Message<U>]) -> Option<PriorExchange> {
+    let text = |m: &Message<U>, role, max| {
+        (m.role == role && !m.text.trim().is_empty()).then(|| cut(m.text.trim(), max))
+    };
+    let mut messages = newest.iter();
+    let first = messages.next()?;
+    let (assistant, user) = match text(first, MessageRole::Assistant, ROUTE_CONTEXT_ASSISTANT_CHARS)
+    {
+        Some(reply) => (
+            Some(reply),
+            messages
+                .next()
+                .and_then(|m| text(m, MessageRole::User, ROUTE_CONTEXT_USER_CHARS)),
+        ),
+        // An unanswered message (an interrupted turn) is the exchange's user half.
+        None => (
+            None,
+            text(first, MessageRole::User, ROUTE_CONTEXT_USER_CHARS),
+        ),
+    };
+    let prior = PriorExchange { user, assistant };
+    (!prior.is_empty()).then_some(prior)
+}
+
 /// Routes the message. Whether the garden has farm records is read first, once per turn: the
 /// classifier is asked for the `farm_records` label only then, so a question about the garden's
 /// own records is on topic only then (gap G10), and the same fact offers `search_farm_records`
-/// (gap G6). A classifier that fails or is slower than `classifier_timeout` leaves no scores.
-async fn route(deps: &AgentDeps, member: Membership<Viewer>, text: &str) -> (RouteDecision, bool) {
+/// (gap G6). The exchange before the message goes with it, so a follow-up such as "what did you
+/// just tell me?" is routed as the conversation it continues. A classifier that fails or is
+/// slower than `classifier_timeout` leaves no scores.
+async fn route(
+    deps: &AgentDeps,
+    member: Membership<Viewer>,
+    text: &str,
+    prior: &PriorExchange,
+) -> (RouteDecision, bool) {
     let farm_records = context::has_farm_records(deps, member).await;
     let scores = tokio::time::timeout(
         deps.config.classifier_timeout,
         deps.classifier
-            .classify(ClassifierTask::Route { farm_records }, text),
+            .classify_with_context(ClassifierTask::Route { farm_records }, text, prior),
     )
     .await
     .ok()

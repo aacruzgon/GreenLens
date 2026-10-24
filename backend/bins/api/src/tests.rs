@@ -1080,7 +1080,7 @@ fn the_router_calibration_follows_the_classifier_and_keeps_the_poison_text() {
     let products =
         agent::safety::ProductCatalogue::new(&domain::knowledge::ProductsSeed::default());
     let llm = crate::wiring::agent_config(&config(), &products).unwrap();
-    assert_eq!(llm.calibration, Calibration::default());
+    assert_eq!(llm.calibration, Calibration::llm());
 
     let local = "Ontario Poison Centre: 1 800 000 0000.";
     let jev = crate::wiring::agent_config(
