@@ -229,19 +229,43 @@ pub struct Erased<T: Tool> {
 impl<T: Tool> Erased<T> {
     /// Wraps a tool, generating its spec from `T::Args` once.
     pub fn new(tool: T) -> Self {
-        let parameters =
+        let mut parameters =
             serde_json::to_value(schemars::schema_for!(T::Args)).unwrap_or(Value::Null);
+        // A change proposed with wrong arguments would reach a card; reads are parsed and
+        // refused with a reason anyway.
+        let strict = T::KIND == ToolKind::Write;
+        if strict {
+            require_every_property(&mut parameters);
+        }
         Self {
             tool,
             spec: ToolSpec {
                 name: tool_name(T::NAME).to_owned(),
                 description: T::DESCRIPTION.to_owned(),
                 parameters,
-                // A change proposed with wrong arguments would reach a card; reads are parsed
-                // and refused with a reason anyway.
-                strict: T::KIND == ToolKind::Write,
+                strict,
             },
         }
+    }
+}
+
+/// Puts every property of every object in a strict tool's schema in its `required`. Under
+/// strict tool use the hosted model never fills an optional property: `revise_plan` came with
+/// only its summary and no steps, and `create_task` never with a plant, a date or a repeat
+/// (live S5 checks, 2026-10-23). An optional argument is an `Option` (nullable in the schema)
+/// or a list (sent empty), so the model can always give "none"; the arguments still parse when
+/// one is missing.
+fn require_every_property(schema: &mut Value) {
+    match schema {
+        Value::Object(o) => {
+            if let Some(Value::Object(props)) = o.get("properties") {
+                let all = props.keys().cloned().map(Value::String).collect();
+                o.insert("required".to_owned(), Value::Array(all));
+            }
+            o.values_mut().for_each(require_every_property);
+        }
+        Value::Array(a) => a.iter_mut().for_each(require_every_property),
+        _ => {}
     }
 }
 
