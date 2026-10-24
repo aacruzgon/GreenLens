@@ -107,6 +107,7 @@ Day 8 of 10 (Oct 23). **The models are trained, calibrated and frozen (M17), and
 | [#194](https://github.com/aacruzgon/GreenLens/pull/194) (Sara) | `feat/p8-pipeline-real-results` | `main` | Merged (54aaeb2) | P8: the `api` test `scan_harness`, findings keeping their ids from partial to `complete` and named from the knowledge base, the laptop runs and Sam's run on Qwen3.5 |
 | [#206](https://github.com/aacruzgon/GreenLens/pull/206) | `docs/m18-follow-ups` | `main` | Merged (efe87e4) | Alan's follow-ups on #192: T11–T16 stay unmeasured on the test split for good, the T7 rule's baseline, the scorer's notes beside `measured` and a split with no leaf photos, the report rebuilt from its JSON |
 | [#209](https://github.com/aacruzgon/GreenLens/pull/209) | `fix/test-split-rebuild-check` | `main` | Merged (db9a250) | The test split's report records a hash of its own cases, so it rebuilds after M10 adds dev cases to the manifest |
+| [#211](https://github.com/aacruzgon/GreenLens/pull/211) | `docs/m19-devpost-pasting` | `main` | Open | M19: devpost.md's pasting checks (absolute links, numbers against their sources, Devpost's format, the AI tools disclosed); `checklinks.py` checks absolute links into the repository |
 | [#31](https://github.com/aacruzgon/GreenLens/pull/31) | `docs/roadmap-day1-wrap` | `main` | Merged (691bb40) | This file at the end of day 1 |
 
 ## 3. Tracker by build-plan period
