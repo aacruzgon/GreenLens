@@ -124,11 +124,20 @@ def training_files(raw: Path = RAW) -> list[Path]:
     return sorted(out)
 
 
+def skipped_folders(sources: Path = SOURCES) -> set[str]:
+    """Datasets in sources.yaml marked `leakage: false`: neither training data nor evaluation
+    cases (PlantSeg only fits the spot segmenter's thresholds), so the check neither needs their
+    folders nor compares the evaluation photos with them."""
+    return {d["name"] for d in yaml.safe_load(sources.read_text())["datasets"] if d.get("leakage") is False}
+
+
 def required_folders(sources: Path = SOURCES) -> list[str]:
     """The folders under `raw` that must hold images: every dataset in sources.yaml that has
-    images, and the COCO photos the detector trains on and the plant check is tuned on."""
+    images, less those marked `leakage: false`, and the COCO photos the detector trains on and
+    the plant check is tuned on."""
     names = [d["name"] for d in yaml.safe_load(sources.read_text())["datasets"]]
-    return [n for n in names if n not in NO_IMAGES] + list(COCO_FOLDERS)
+    skipped = skipped_folders(sources)
+    return [n for n in names if n not in NO_IMAGES and n not in skipped] + list(COCO_FOLDERS)
 
 
 def per_folder(files: list[Path], raw: Path) -> dict[str, int]:
@@ -327,7 +336,8 @@ def calibration_lines(cal: dict, hamming_max: int, cosine_min: float | None) -> 
 def run(args) -> int:
     manifest = args.manifest.read_bytes()  # hashed as read: an edit during the run can't change the recorded SHA
     photos = eval_photos(manifest, args.photos)
-    files = training_files(args.raw)
+    skipped = skipped_folders(args.sources)
+    files = [f for f in training_files(args.raw) if f.relative_to(args.raw).parts[0] not in skipped]
     folders = per_folder(files, args.raw)
     missing = [n for n in required_folders(args.sources) if not folders.get(n)]
     if missing:
