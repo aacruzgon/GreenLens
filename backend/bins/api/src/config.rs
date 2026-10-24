@@ -448,30 +448,57 @@ fn http_base<F: Fn(&str) -> Option<String>>(
         .transpose()
 }
 
-/// All three Agent Memory variables, or none; a partial set names the first missing one.
-/// Jev's variables: the key turns it on and needs the URL; `JEV_MODEL` must be a versioned id.
+/// Jev's variables, which turn it on only with `JEV_API_KEY`: `JEV_URL` and `JEV_API_KEY` are
+/// set together or not at all, and `JEV_MODEL` alone is refused too, so a half-configured Jev
+/// never silently becomes the LLM classifier. `JEV_MODEL` must be a versioned id.
 fn jev<F: Fn(&str) -> Option<String>>(env: &Env<F>) -> Result<Option<JevSettings>, ConfigError> {
-    let Some(key) = env.get("JEV_API_KEY") else {
-        return Ok(None);
+    let (url, key, model) = (
+        env.get("JEV_URL"),
+        env.get("JEV_API_KEY"),
+        env.get("JEV_MODEL"),
+    );
+    let (url, key) = match (url, key) {
+        (None, None) if model.is_none() => return Ok(None),
+        (Some(url), Some(key)) => (url, key),
+        (url, _) => {
+            return Err(ConfigError::Invalid {
+                name: if url.is_none() {
+                    "JEV_URL"
+                } else {
+                    "JEV_API_KEY"
+                },
+                problem: "JEV_URL and JEV_API_KEY are set together or not at all, and JEV_MODEL \
+                          only with them"
+                    .to_owned(),
+            });
+        }
     };
-    let model = env.or("JEV_MODEL", integrations::jev::DEFAULT_MODEL);
-    if model.ends_with("-latest") || model.ends_with("-preview") {
+    let model = model.unwrap_or_else(|| integrations::jev::DEFAULT_MODEL.to_owned());
+    if !versioned_jev_model(&model) {
         return Err(ConfigError::Invalid {
             name: "JEV_MODEL",
             problem: "a versioned model id such as jev-1.14.0, not an alias".to_owned(),
         });
     }
     Ok(Some(JevSettings {
-        url: env
-            .required("JEV_URL")?
-            .trim()
-            .trim_end_matches('/')
-            .to_owned(),
+        url: url.trim().trim_end_matches('/').to_owned(),
         api_key: SecretString::from(key),
         model,
     }))
 }
 
+/// `jev-<major>.<minor>.<patch>`, digits only: never an alias such as `jev-latest`.
+fn versioned_jev_model(model: &str) -> bool {
+    model.strip_prefix("jev-").is_some_and(|v| {
+        let parts: Vec<&str> = v.split('.').collect();
+        parts.len() == 3
+            && parts
+                .iter()
+                .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
+/// All three Agent Memory variables, or none; a partial set names the first missing one.
 fn agent_memory<F: Fn(&str) -> Option<String>>(
     env: &Env<F>,
 ) -> Result<Option<AgentMemorySettings>, ConfigError> {
@@ -561,15 +588,39 @@ mod tests {
         let mut vars = base();
         let config = Config::from_lookup(|k| vars.get(k).cloned()).unwrap();
         assert!(config.providers.jev.is_none());
+        let refused = |vars: &BTreeMap<&'static str, String>, want: &str| {
+            let error = Config::from_lookup(|k| vars.get(k).cloned()).unwrap_err();
+            assert!(
+                matches!(&error, ConfigError::Invalid { name, .. } if *name == want),
+                "{error:?}"
+            );
+        };
+        // A partial set is refused, naming what is missing, never silently ignored.
         vars.insert("JEV_API_KEY", "jk".to_owned());
-        assert!(Config::from_lookup(|k| vars.get(k).cloned()).is_err());
+        refused(&vars, "JEV_URL");
+        vars.remove("JEV_API_KEY");
+        vars.insert("JEV_URL", "https://api.typesafe.ai/".to_owned());
+        refused(&vars, "JEV_API_KEY");
+        vars.remove("JEV_URL");
+        vars.insert("JEV_MODEL", "jev-1.14.0".to_owned());
+        refused(&vars, "JEV_URL");
+        vars.remove("JEV_MODEL");
+        vars.insert("JEV_API_KEY", "jk".to_owned());
         vars.insert("JEV_URL", "https://api.typesafe.ai/".to_owned());
         let config = Config::from_lookup(|k| vars.get(k).cloned()).unwrap();
         let jev = config.providers.jev.unwrap();
         assert_eq!(jev.url, "https://api.typesafe.ai");
         assert_eq!(jev.model, "jev-1.14.0");
-        vars.insert("JEV_MODEL", "jev-latest".to_owned());
-        assert!(Config::from_lookup(|k| vars.get(k).cloned()).is_err());
+        for alias in [
+            "jev-latest",
+            "jev-preview",
+            "jev-1.14",
+            "jev-1.14.0-rc1",
+            "other-1.0.0",
+        ] {
+            vars.insert("JEV_MODEL", alias.to_owned());
+            refused(&vars, "JEV_MODEL");
+        }
         vars.insert("JEV_MODEL", "jev-1.13.0".to_owned());
         let config = Config::from_lookup(|k| vars.get(k).cloned()).unwrap();
         assert_eq!(config.providers.jev.unwrap().model, "jev-1.13.0");

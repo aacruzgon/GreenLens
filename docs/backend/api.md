@@ -536,6 +536,7 @@ pub struct ConnectorSettings {
 ```
 
 ```rust
+/// All three Agent Memory variables, or none; a partial set names the first missing one.
 fn agent_memory<F: Fn(&str) -> Option<String>>(
     env: &Env<F>,
 ) -> Result<Option<AgentMemorySettings>, ConfigError> {
@@ -657,8 +658,8 @@ fn oauth_client<F: Fn(&str) -> Option<String>>(
 | `LLM_CHAT_MODEL` | the client's default | Chat and plan writing ([architecture 10](../architecture/README.md#10-models-and-gpu-placement)) |
 | `LLM_CHEAP_MODEL` | the client's default | Memory extraction, off-topic replies, the classifier fallback |
 | `POISON_CONTROL_TEXT` | unset | The poison-control answer with the local numbers, read into `AgentConfig::poison_control_text` and shown as written on the poison-control route; every sentence must pass the dose check, or `api` refuses to start (a "24/7: 1-800-..." reads as a ratio). Unset or empty keeps the generic text, which has no numbers |
-| `JEV_API_KEY`, `JEV_URL` | unset | Jev, the optional classifier ([integrations 13](integrations.md#13-jev)): the key turns it on and needs the URL (`https://api.typesafe.ai`); the LLM classifier otherwise. The chat agent gets the router calibration of the classifier wired ([agent 7](agent.md#7-router-and-safety-gate)) |
-| `JEV_MODEL` | `jev-1.14.0` | Jev's versioned model id, the one its calibration was fitted on. `jev-latest` and `jev-preview` stop start-up with `ConfigError::Invalid`: an alias moves with each release |
+| `JEV_API_KEY`, `JEV_URL` | unset | Jev, the optional classifier ([integrations 13](integrations.md#13-jev)): both or neither (`https://api.typesafe.ai` and the key); a partial set, or `JEV_MODEL` without them, stops start-up with `ConfigError::Invalid` naming the missing variable. The LLM classifier otherwise. The chat agent gets the router calibration of the classifier wired ([agent 7](agent.md#7-router-and-safety-gate)) |
+| `JEV_MODEL` | `jev-1.14.0` | Jev's versioned model id, the one its calibration was fitted on. Anything but `jev-<major>.<minor>.<patch>` (an alias such as `jev-latest`, which moves with each release) stops start-up with `ConfigError::Invalid` |
 | `EXPO_ACCESS_TOKEN` | unset | Only with enhanced push security |
 | `OPEN_METEO_API_KEY` | unset | Only for Open-Meteo's commercial endpoint |
 | `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID`, `AGENT_MEMORY_API_KEY` | unset | `SurrealDB` Agent Memory, where shared memories are mirrored ([architecture 7, memory](../architecture/README.md#memory)). All three or none: a partial set stops start-up with `ConfigError::Invalid` naming the first missing variable. The key is a `SecretString`; unset turns the mirror off (`NoBeliefs`) |
