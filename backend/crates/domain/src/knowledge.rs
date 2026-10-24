@@ -672,7 +672,12 @@ mod tests {
         let without: SpeciesSeed = serde_json::from_value(base.clone()).unwrap();
         assert_eq!(without.frost, None);
         assert_eq!(serde_json::to_value(&without).unwrap(), base);
-        assert!(serde_json::to_value(&without).unwrap().get("frost").is_none());
+        assert!(
+            serde_json::to_value(&without)
+                .unwrap()
+                .get("frost")
+                .is_none()
+        );
 
         for (word, frost) in [("tender", Frost::Tender), ("hardy", Frost::Hardy)] {
             let mut with = base.clone();
