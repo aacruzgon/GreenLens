@@ -12,7 +12,8 @@ export type AcceptState =
   | { kind: "joined"; garden: Garden }
   | { kind: "failed"; message: string; canRetry: boolean };
 
-// invite/[code] signed in (flows 3): accept once, make the garden active, and say why when it can't.
+// invite/[code] signed in (flows 3): accept once, make the garden active, and say why when it can't. Any answer
+// drops the kept code, so a failure is retried only from this screen, by this account, never at the next sign-in.
 export function useAcceptInviteScreen(code: string): { state: AcceptState; retry: () => void } {
   const accept = useAcceptInvite();
   const setGardenId = useActiveGardenStore((s) => s.setGardenId);
@@ -30,8 +31,7 @@ export function useAcceptInviteScreen(code: string): { state: AcceptState; retry
       },
       (e: unknown) => {
         const status = isApiError(e) ? e.status : undefined;
-        // A dead code stays dead; drop it so it isn't opened again at the next sign-in.
-        if (status === 404) clearPending(null);
+        clearPending(null);
         setState({ kind: "failed", message: acceptProblem(status), canRetry: status !== 404 });
       },
     );

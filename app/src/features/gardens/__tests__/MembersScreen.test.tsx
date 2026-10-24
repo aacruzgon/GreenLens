@@ -1,5 +1,6 @@
 // Members and invites over the mock's demo garden (screens 3.9; flows 3): owner controls against a viewer's view,
-// an invite made and shared through the system share sheet, and the last owner kept from leaving.
+// an invite made and shared through the system share sheet, roles chosen from a menu (not an alert), and the last
+// owner kept from leaving.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Alert, Share } from "react-native";
@@ -70,12 +71,24 @@ describe("the members screen", () => {
     const alert = jest.spyOn(Alert, "alert");
     await renderScreen();
     await fireEvent.press(screen.getByTestId("invite-add"));
-    press(alert, "Viewer");
+    await fireEvent.press(screen.getByTestId("invite-add-viewer"));
+    expect(alert).not.toHaveBeenCalled();
     await waitFor(() => expect(share).toHaveBeenCalled());
     const made = mockStore.people.invites.at(-1)!.invite;
     expect(made.role).toBe("viewer");
     expect(share.mock.calls[0]![0]).toEqual({ message: `Join "Back garden" on PDM as a viewer: pdm://invite/${made.code}` });
     expect(await screen.findAllByText(/viewer · expires/)).toHaveLength(1);
+  });
+
+  it("changes a member's role from the Role menu, with the current role checked", async () => {
+    const alert = jest.spyOn(Alert, "alert");
+    await renderScreen();
+    expect(screen.getAllByText("Role ▾")).toHaveLength(2);
+    await fireEvent.press(screen.getByTestId("role-user_sam"));
+    expect(screen.getByText("✓ Editor")).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("role-user_sam-viewer"));
+    expect(alert).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockStore.people.members.get(IDS.garden)!.find((m) => m.user_id === "user_sam")!.role).toBe("viewer"));
   });
 
   it("asks before removing a member, with screens 3.9's warning", async () => {

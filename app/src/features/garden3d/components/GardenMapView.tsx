@@ -10,7 +10,7 @@ import Svg, { Circle, G, Line, Path, Polygon, Text as SvgText } from "react-nati
 import { polygonArea } from "@/domain/map";
 import { StatusShape, Text, hiddenSvg, radii, statusRoles, useTheme } from "@/ui";
 
-import { fitWholeMap, labelsAbove } from "../model/garden";
+import { fitWholeMap, labelsAbove, labelWidth } from "../model/garden";
 import { plantSpoken, type GardenMode, type SceneBed, type ScenePlant } from "../model/gardenScene";
 
 export interface GardenMapViewProps {
@@ -28,6 +28,7 @@ export interface GardenMapViewProps {
 
 const PIN = 24;
 const LABEL_H = 18;
+const GAP = 4;
 
 
 function centroid(points: number[][]): [number, number] {
@@ -55,7 +56,10 @@ export function GardenMapView({ beds, plants, mode, selectedId, onSelect, northD
   const py = (y: number) => (y - frame.oy) * frame.scale + insets.top;
   const drawn = size.width > 0;
   const scaleBar = frame.scale;
-  const above = labelsAbove(plants.map((p) => ({ id: p.id, x: px(p.x_m), y: py(p.y_m) })), PIN + LABEL_H);
+  const above = labelsAbove(
+    plants.map((p) => ({ id: p.id, x: px(p.x_m), y: py(p.y_m), width: labelWidth(p.label ?? p.name) })),
+    { pin: PIN, label: LABEL_H, gap: GAP },
+  );
 
   return (
     <View
@@ -129,15 +133,50 @@ export function GardenMapView({ beds, plants, mode, selectedId, onSelect, northD
           N
         </Text>
       ) : null}
+      {/* The labels, then the pins over them: each is its own target, so a label never covers a neighbour's pin
+          (review of #205: Tomato 2's wide box took Tomato 1's taps). The label repeats its pin for VoiceOver, so it
+          is hidden from it. */}
+      {drawn
+        ? plants.map((p) => {
+            const on = p.id === selectedId;
+            const up = above.has(p.id);
+            const label = p.label ?? p.name;
+            const width = labelWidth(label);
+            const top = py(p.y_m);
+            return (
+              <Pressable
+                key={`label-${p.id}`}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                onPress={() => onSelect(p.id)}
+                testID={`map-label-${p.id}`}
+                style={{
+                  position: "absolute",
+                  left: px(p.x_m) - width / 2,
+                  top: up ? top - PIN / 2 - GAP - LABEL_H : top + PIN / 2 + GAP,
+                  width,
+                  height: LABEL_H,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: radii.pill,
+                  backgroundColor: colors.surface,
+                  // The selected label is outlined (design 3.1).
+                  borderWidth: on ? 1.5 : 0,
+                  borderColor: colors.text,
+                }}
+              >
+                <Text variant="caption2" emphasis numberOfLines={1}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })
+        : null}
       {drawn
         ? // The selected pin last, so it draws over a neighbour it touches.
           [...plants].sort((a, b) => Number(a.id === selectedId) - Number(b.id === selectedId)).map((p) => {
             const on = p.id === selectedId;
-            const up = above.has(p.id);
             const status = p.status === "unknown" ? undefined : p.status;
-            const label = p.label ?? p.name;
-            const left = px(p.x_m);
-            const top = py(p.y_m);
             return (
               <Pressable
                 key={p.id}
@@ -145,49 +184,23 @@ export function GardenMapView({ beds, plants, mode, selectedId, onSelect, northD
                 accessibilityState={{ selected: on }}
                 accessibilityLabel={plantSpoken(p) + (mode === "frost" && p.tender ? ", needs a frost cover" : "")}
                 onPress={() => onSelect(p.id)}
-                hitSlop={6}
+                hitSlop={8}
                 testID={`map-pin-${p.id}`}
                 style={{
                   position: "absolute",
-                  left: left - 50,
-                  top: up ? top - PIN / 2 - LABEL_H - 4 : top - PIN / 2,
-                  width: 100,
+                  left: px(p.x_m) - PIN / 2,
+                  top: py(p.y_m) - PIN / 2,
+                  width: PIN,
+                  height: PIN,
+                  borderRadius: PIN / 2,
                   alignItems: "center",
-                  flexDirection: up ? "column-reverse" : "column",
-                  gap: 4,
+                  justifyContent: "center",
+                  backgroundColor: colors.surface,
+                  borderWidth: on ? 2.5 : 1,
+                  borderColor: on ? colors.text : status ? colors[statusRoles[status].fg] : colors.border,
                 }}
               >
-                <View
-                  style={{
-                    width: PIN,
-                    height: PIN,
-                    borderRadius: PIN / 2,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.surface,
-                    borderWidth: on ? 2.5 : 1,
-                    borderColor: on ? colors.text : status ? colors[statusRoles[status].fg] : colors.border,
-                  }}
-                >
-                  {status ? <StatusShape status={status} size={11} /> : <Text variant="caption2" color="textMuted">?</Text>}
-                </View>
-                {/* The label is a chip, the selected one outlined (design 3.1). */}
-                <View
-                  style={{
-                    height: LABEL_H,
-                    justifyContent: "center",
-                    paddingHorizontal: 8,
-                    paddingVertical: 2,
-                    borderRadius: radii.pill,
-                    backgroundColor: colors.surface,
-                    borderWidth: on ? 1.5 : 0,
-                    borderColor: colors.text,
-                  }}
-                >
-                  <Text variant="caption2" emphasis numberOfLines={1}>
-                    {label}
-                  </Text>
-                </View>
+                {status ? <StatusShape status={status} size={11} /> : <Text variant="caption2" color="textMuted">?</Text>}
               </Pressable>
             );
           })

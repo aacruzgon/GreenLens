@@ -153,13 +153,36 @@ describe("words and distances", () => {
 });
 
 describe("labelsAbove", () => {
+  const size = { pin: 24, label: 18, gap: 4 };
+
   it("lifts the label of a pin crowded by its left neighbour, and only that one", () => {
     const above = labelsAbove([
-      { id: "t2", x: 116, y: 50 },
-      { id: "t1", x: 100, y: 50 },
-      { id: "basil", x: 110, y: 120 },
-      { id: "kale", x: 300, y: 50 },
-    ], 42);
+      { id: "t2", x: 116, y: 50, width: 70 },
+      { id: "t1", x: 100, y: 50, width: 70 },
+      { id: "basil", x: 110, y: 160, width: 50 },
+      { id: "kale", x: 300, y: 50, width: 50 },
+    ], size);
     expect([...above]).toEqual(["t2"]);
+  });
+
+  it("keeps three close pins in a row from stacking two labels above", () => {
+    // Before: the 2nd and 3rd both went above, on top of each other (review of #205).
+    const above = labelsAbove([
+      { id: "a", x: 100, y: 100, width: 70 },
+      { id: "b", x: 115, y: 100, width: 70 },
+      { id: "c", x: 130, y: 100, width: 70 },
+    ], size);
+    expect([...above]).toEqual(["b"]);
+  });
+});
+
+describe("gardenDates with a frost tonight", () => {
+  it("keeps tonight as its own step after today's scan, labelled Tonight", () => {
+    const records = [{ id: "p", name: "P", tender: true, problems: {}, history: [{ date: "2026-10-24", status: "healthy" as const }] }];
+    const tonight = [{ date: "2026-10-24", t_min_c: -1, t_max_c: 6, frost_risk: true, mean_rh_pct: 70, precip_mm: 0, hours_rh_over_90: 0 }];
+    expect(gardenDates(records, tonight, "2026-10-24")).toEqual([
+      { date: "2026-10-24", label: "Oct 24" },
+      { date: "2026-10-24", label: "Tonight", forecast: true },
+    ]);
   });
 });

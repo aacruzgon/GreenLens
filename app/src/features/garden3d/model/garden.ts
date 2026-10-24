@@ -68,7 +68,8 @@ export function gardenDates(records: GardenPlantRecord[], forecast: readonly For
   for (const r of records) for (const m of r.history) days.add(m.date);
   const dates: SceneDate[] = [...days].sort().map((date) => ({ date, label: formatLocalDate(date) }));
   const frost = forecast.find((d) => d.frost_risk && d.date >= today);
-  if (frost) dates.push({ date: frost.date, label: weekdayShort(frost.date), forecast: true });
+  // A frost tonight shares today's date with today's scan; it is still its own step, after the scan.
+  if (frost) dates.push({ date: frost.date, label: frost.date === today ? "Tonight" : weekdayShort(frost.date), forecast: true });
   return dates;
 }
 
@@ -91,6 +92,8 @@ export interface GardenState {
   selectedId: string | null;
   /** The selected plant's pill grown into its card. */
   expanded: boolean;
+  /** The dates, timelines and forecast are all in, and the date is chosen (`init`). */
+  initialised: boolean;
 }
 
 export type GardenAction =
@@ -109,7 +112,7 @@ export function latestScanIndex(dates: SceneDate[]): number {
 }
 
 export function initialGardenState(dates: SceneDate[], opts: { view: GardenViewKind; selectedId?: string | null; mode?: GardenMode }): GardenState {
-  const state: GardenState = { view: opts.view, mode: "health", dateIndex: latestScanIndex(dates), selectedId: opts.selectedId ?? null, expanded: false };
+  const state: GardenState = { view: opts.view, mode: "health", dateIndex: latestScanIndex(dates), selectedId: opts.selectedId ?? null, expanded: false, initialised: false };
   return opts.mode ? gardenReducer(dates, state, { type: "mode", mode: opts.mode }) : state;
 }
 
@@ -138,7 +141,7 @@ export function gardenReducer(dates: SceneDate[], state: GardenState, action: Ga
     case "expand":
       return { ...state, expanded: action.on && state.selectedId !== null };
     case "init":
-      return gardenReducer(dates, { ...state, mode: "health", dateIndex: latestScanIndex(dates) }, { type: "mode", mode: action.mode ?? "health" });
+      return { ...gardenReducer(dates, { ...state, mode: "health", dateIndex: latestScanIndex(dates) }, { type: "mode", mode: action.mode ?? "health" }), initialised: true };
   }
 }
 
@@ -303,16 +306,45 @@ export function plantNote(record: GardenPlantRecord | undefined, date: SceneDate
   return m.status === "healthy" ? "No problems found" : undefined;
 }
 
+/** A label's box on the map, in points. */
+export interface LabelBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const overlaps = (a: LabelBox, b: LabelBox) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
 /**
- * Which pins put their label above instead of below: a pin whose neighbour to its left is too close for two labels
- * side by side (Tomato 1 and 2 are 40 cm apart). Positions in points; `rowHeight` is a pin and its label.
+ * Where each pin's label goes: below the pin, or above it when the box below would cover a label already placed or
+ * another pin (Tomato 1 and 2 are 40 cm apart). Pins are placed left to right; one that fits neither way keeps
+ * below. `width` is the label's width; `pin` the pin's diameter and `gap` the space between pin and label.
  */
-export function labelsAbove(pins: { id: string; x: number; y: number }[], rowHeight: number): Set<string> {
+export function labelsAbove(
+  pins: { id: string; x: number; y: number; width: number }[],
+  size: { pin: number; label: number; gap: number },
+): Set<string> {
   const sorted = [...pins].sort((a, b) => a.x - b.x);
+  const placed: LabelBox[] = [];
+  const pinBoxes = sorted.map((p) => ({ id: p.id, box: { x: p.x - size.pin / 2, y: p.y - size.pin / 2, width: size.pin, height: size.pin } }));
   const above = new Set<string>();
-  sorted.forEach((p, i) => {
-    const crowded = sorted.slice(0, i).some((q) => !above.has(q.id) && p.x - q.x < 84 && Math.abs(p.y - q.y) < rowHeight);
-    if (crowded) above.add(p.id);
-  });
+  for (const p of sorted) {
+    const box = (up: boolean): LabelBox => ({
+      x: p.x - p.width / 2,
+      y: up ? p.y - size.pin / 2 - size.gap - size.label : p.y + size.pin / 2 + size.gap,
+      width: p.width,
+      height: size.label,
+    });
+    const clear = (b: LabelBox) => !placed.some((q) => overlaps(b, q)) && !pinBoxes.some((q) => q.id !== p.id && overlaps(b, q.box));
+    const up = !clear(box(false)) && clear(box(true));
+    if (up) above.add(p.id);
+    placed.push(box(up));
+  }
   return above;
+}
+
+/** A label chip's width in points: about 6.4 pt a character at caption 2 semibold, plus its padding. */
+export function labelWidth(text: string): number {
+  return Math.ceil(text.length * 6.4) + 16;
 }

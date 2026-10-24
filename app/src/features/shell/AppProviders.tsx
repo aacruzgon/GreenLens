@@ -9,7 +9,7 @@ import { mockAuthSession, mockTransport } from "@/api/mock";
 import type { Env } from "@/config/env";
 import { SessionProvider } from "@/features/auth";
 import { useDraftStore } from "@/features/capture";
-import { useActiveGardenStore } from "@/features/gardens";
+import { clearPendingInvite, useActiveGardenStore } from "@/features/gardens";
 import { authSession, mapping } from "@/platform";
 import { ThemeProvider } from "@/ui";
 
@@ -26,9 +26,11 @@ export function configureApi(env: Env) {
 }
 
 // Sign-out (README 8): nothing of the last account stays for the next one on this phone.
-function clearSignedOutState() {
+export function clearSignedOutState() {
   queryClient.clear();
   useActiveGardenStore.getState().setGardenId(null);
+  // An invite kept while signed out is for the account that signs in next, not one after a sign-out (flows 3).
+  clearPendingInvite();
   // Capture drafts and their photos (README 12).
   useDraftStore.getState().clear();
   // Garden world maps from mapping sessions (architecture 6.8).

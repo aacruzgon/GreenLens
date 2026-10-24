@@ -29,6 +29,17 @@ export const STATUS_WORD: Record<Connector["status"], string> = {
   deleting: "Disconnecting",
 };
 
+/** Connectors per garden, `deleting` ones left out and `era` ones counted, as the store counts them (contracts 9). */
+export const MAX_CONNECTORS_PER_GARDEN = 2;
+
+/** The garden can't take another connector: the create would be `409 invalid_state`. */
+export function atConnectorCap(connectors: readonly Pick<Connector, "status">[]): boolean {
+  return connectors.filter((c) => c.status !== "deleting").length >= MAX_CONNECTORS_PER_GARDEN;
+}
+
+/** Said instead of the Connect buttons; the demo garden's `era` connectors can't be disconnected, so no advice. */
+export const CAP_NOTE = `A garden holds at most ${MAX_CONNECTORS_PER_GARDEN} farm connectors, and this one has ${MAX_CONNECTORS_PER_GARDEN}.`;
+
 export type ConnectorAction = "choose" | "sync" | "reconnect" | "disconnect" | "cancel";
 
 export interface ConnectorView {

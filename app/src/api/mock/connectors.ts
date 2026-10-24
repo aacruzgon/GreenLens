@@ -53,6 +53,8 @@ export const mockConnectors = {
 };
 
 const SYNC_LIMIT_MS = 5 * 60_000;
+/** Per garden, `deleting` ones left out and `era` ones counted (domain rules/limits.rs; store farm.rs, CREATE_CONNECTOR). */
+const MAX_CONNECTORS_PER_GARDEN = 2;
 const DEVICE = /^[A-Za-z0-9_-]{43}$/;
 
 const AVAILABLE: Record<S["ConnectorKind"], S["ConnectorSource"][]> = {
@@ -162,6 +164,9 @@ export function registerConnectorRoutes(route: Register, h: ConnectorRouteHelper
       const body = await h.jsonObject(c);
       if (body.kind !== "slack" && body.kind !== "google_drive") return invalid("kind", "slack or google_drive");
       if (typeof body.device_hash !== "string" || !DEVICE.test(body.device_hash)) return invalid("device_hash", "43 base64url characters");
+      // The store throws `connector_limit`, which the API answers as `409 invalid_state` with empty details (contracts 9).
+      const held = list(c.store).filter((x) => x.garden_id === c.params.id && x.status !== "deleting").length;
+      if (held >= MAX_CONNECTORS_PER_GARDEN) return errorResponse("invalid_state", {});
       st.counter += 1;
       const id = `conn_mock_${st.counter}`;
       const state = `${id}.nonce${st.counter}.${Math.floor(Date.now() / 1000) + 600}.mac`;

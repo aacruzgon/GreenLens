@@ -1,8 +1,9 @@
 // The Farm connectors screen over the mock backend (EON T-E10.1): each state (none, pending, active,
 // reauth_needed, deleting, era, connectors off), read-only below owner, and the connect flow (E10.2) end to end with
-// the fake consent page: the verifier's hash checked for real, cancel, a declined consent and a used state.
+// the fake consent page: the verifier's hash checked for real, cancel, a declined consent and a used state; the
+// garden's cap of 2 connectors, a Reconnect in a full garden, a double tap and a failed cancel.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react-native";
 import { Alert } from "react-native";
 
 import { setTransport } from "@/api";
@@ -11,6 +12,7 @@ import type { Connector } from "@/domain/types";
 import { authSession } from "@/platform";
 import { ThemeProvider } from "@/ui";
 
+import { useConnectFlow } from "../hooks/useConnectFlow";
 import { ConnectorsScreen } from "../screens/ConnectorsScreen";
 
 // expo-crypto's digest is a stub under Jest; the real SHA-256 makes the mock's device check mean something.
@@ -80,8 +82,17 @@ describe("the Farm connectors screen", () => {
     expect(screen.getByText(/91 messages/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sync now" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
-    // The owner can still connect the farm's own.
-    expect(screen.getByRole("button", { name: "Connect Slack" })).toBeTruthy();
+    // The two era connectors fill the garden's 2, as the store counts them.
+    expect(screen.getByText("A garden holds at most 2 farm connectors, and this one has 2.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Connect Slack" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Connect Google Drive" })).toBeNull();
+  });
+
+  it("offers Connect again when one of two connectors is being deleted", async () => {
+    only(vendor({ status: "deleting" }), vendor({ id: "conn_drive", kind: "google_drive", account: undefined }));
+    await renderScreen();
+    expect(await button("Connect Slack")).toBeTruthy();
+    expect(screen.queryByText(/holds at most 2/)).toBeNull();
   });
 
   it("says when connectors are off on the server", async () => {
@@ -106,6 +117,15 @@ describe("the Farm connectors screen", () => {
     expect(await screen.findByText("Waiting for consent")).toBeTruthy();
     await fireEvent.press(await button("Cancel connect"));
     await waitFor(() => expect(mockStore.chat.connectors).toHaveLength(0));
+  });
+
+  it("says so when a cancel fails", async () => {
+    only(vendor({ status: "pending", account: undefined, sources: [], record_count: 0, synced_at: undefined }));
+    await renderScreen();
+    scenario.set({ role: "editor" });
+    await fireEvent.press(await button("Cancel connect"));
+    expect(await screen.findByText("Not cancelled")).toBeTruthy();
+    expect(screen.getByText("Only the garden's owners can do that.")).toBeTruthy();
   });
 
   it("shows an active connector, syncs it, and words the 5-minute limit", async () => {
@@ -147,6 +167,17 @@ describe("the Farm connectors screen", () => {
     expect(await screen.findByTestId("source-picker")).toBeTruthy();
     await waitFor(() => expect(mockStore.chat.connectors.map((c) => c.status)).toEqual(["active"]));
     expect(mockStore.chat.connectors[0]!.id).not.toBe("conn_vendor");
+  });
+
+  it("reconnects in a garden that already has 2 connectors, deleting the old one first", async () => {
+    only(vendor({ status: "reauth_needed" }), vendor({ id: "conn_drive", kind: "google_drive", account: undefined }));
+    await renderScreen();
+    expect(await screen.findByText(/holds at most 2/)).toBeTruthy();
+    await fireEvent.press(await button("Reconnect"));
+    expect(await screen.findByTestId("source-picker")).toBeTruthy();
+    expect(screen.queryByText("Not connected")).toBeNull();
+    await waitFor(() => expect(mockStore.chat.connectors.map((c) => `${c.kind}:${c.status}`).sort()).toEqual(["google_drive:active", "slack:active"]));
+    expect(mockStore.chat.connectors.map((c) => c.id)).not.toContain("conn_vendor");
   });
 });
 
@@ -192,6 +223,28 @@ describe("the connect flow (EON E10.2)", () => {
     await renderScreen();
     await fireEvent.press(await button("Connect Slack"));
     expect(await screen.findByText(/expired or was already used/)).toBeTruthy();
+    await waitFor(() => expect(mockStore.chat.connectors).toHaveLength(0));
+  });
+
+  it("sends one create for a quick double tap", async () => {
+    only();
+    let release: (r: { type: "cancel" }) => void = () => undefined;
+    authSession.setFake(() => new Promise((resolve) => (release = resolve)));
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = await renderHook(() => useConnectFlow(IDS.garden, () => undefined), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    // Both taps run in the same render, so both see the idle phase.
+    const { start } = result.current;
+    let flows: Promise<void>[] = [];
+    await act(async () => {
+      flows = [start("slack"), start("slack")];
+    });
+    await waitFor(() => expect(mockStore.chat.connectors).toHaveLength(1));
+    await act(async () => {
+      release({ type: "cancel" });
+      await Promise.all(flows);
+    });
     await waitFor(() => expect(mockStore.chat.connectors).toHaveLength(0));
   });
 

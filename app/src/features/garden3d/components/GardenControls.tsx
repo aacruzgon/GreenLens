@@ -17,7 +17,9 @@ import type { SceneDate, ScenePlant } from "../model/gardenScene";
 const LEGEND: PlantStatus[] = ["healthy", "watch", "sick"];
 const sheetEase = Easing.bezier(...motion.sheet.bezier);
 
-export function Legend() {
+/** The status shapes' words, and in Frost the cover's ring, so every mark on the scene has its word on screen. */
+export function Legend({ frost = false }: { frost?: boolean }) {
+  const { colors } = useTheme();
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[3] }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {LEGEND.map((s) => (
@@ -28,12 +30,20 @@ export function Legend() {
           </Text>
         </View>
       ))}
+      {frost ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }} testID="legend-cover">
+          <View style={{ width: 11, height: 11, borderRadius: 6, borderWidth: 2, borderColor: colors.info, backgroundColor: colors.infoSoft }} />
+          <Text variant="caption1" color="textMuted">
+            Needs a cover
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 /** The card from the top (.g3d-card). A polite live region, so a new mode's words are read. */
-export function GardenTopCard({ card }: { card: TopCard }) {
+export function GardenTopCard({ card, frost = false }: { card: TopCard; frost?: boolean }) {
   return (
     <Card accessibilityLiveRegion="polite" testID="garden-top-card" style={{ gap: space[1] }}>
       <Text variant="headline">{card.title}</Text>
@@ -41,7 +51,7 @@ export function GardenTopCard({ card }: { card: TopCard }) {
         {card.text}
       </Text>
       <View style={{ marginTop: space[2] }}>
-        <Legend />
+        <Legend frost={frost} />
       </View>
     </Card>
   );
@@ -184,7 +194,7 @@ export function DateScrubber({ steps, index, onChange }: { steps: { date: SceneD
           const on = i === index;
           return (
             <Pressable
-              key={s.date.date}
+              key={`${s.date.date}${s.date.forecast ? "-forecast" : ""}`}
               accessibilityRole="tab"
               accessibilityState={{ selected: on }}
               accessibilityLabel={`${s.date.label}${s.date.forecast ? ", forecast" : ""}${s.status ? `, ${statusWords[s.status]}` : ""}`}

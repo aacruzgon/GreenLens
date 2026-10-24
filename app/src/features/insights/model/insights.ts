@@ -48,9 +48,11 @@ export interface Cell {
  */
 export function stripCells(entries: readonly InsightTimelineEntry[], current: PlantStatus, tz: string): Cell[] {
   const list = checks(entries);
+  // The plant's current status is the latest scan that finished: a failed scan after it set nothing (review of #205).
+  const latest = list.findLastIndex((e) => e.status !== "failed");
   return list.map((e, i) => {
     const failed = e.status === "failed";
-    const status: StripStatus = failed || (e.diagnosis_status === "uncertain" && e.low_evidence) ? "unknown" : statusOfEntry(e, current, i === list.length - 1);
+    const status: StripStatus = failed || (e.diagnosis_status === "uncertain" && e.low_evidence) ? "unknown" : statusOfEntry(e, current, i === latest);
     const word = failed ? "Failed" : STATUS_WORD[status];
     const problem = e.diagnosis_status === "confirmed" && e.primary ? `, ${lower(e.primary.name)}` : "";
     return { key: e.scan_id, t: ts(e.created_at), status, label: `${formatMonthDay(e.created_at, tz)}: ${word}${problem}` };
@@ -109,7 +111,7 @@ function andList(items: readonly string[]): string {
 
 export interface SpotsReading {
   points: RangePoint[];
-  /** "14% → 5%", with at least 2 points. */
+  /** "About 14% → 5%", with at least 2 points: measured values are approximate (analytics 7). */
   kpi?: string;
   /** The checks in the series. */
   checks: number;
@@ -153,7 +155,7 @@ export function spotsReading(points: readonly RangePoint[], tz: string): SpotsRe
     (ranged.length ? `, with ranges ${andList(ranged.map((p) => `${Math.round(lo(p))} to ${Math.round(hi(p))}`))}` : "");
   return {
     points: pts,
-    kpi: pts.length >= 2 ? `${pct(first.value)} → ${pct(last.value)}` : undefined,
+    kpi: pts.length >= 2 ? `About ${pct(first.value)} → ${pct(last.value)}` : undefined,
     checks: pts.length,
     headline,
     direction,

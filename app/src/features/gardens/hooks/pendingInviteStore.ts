@@ -1,23 +1,29 @@
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 
 import { storage } from "@/platform";
 
-// An invite opened while signed out (flows 3): kept across sign-in and sign-up, which can leave the app for an
-// email code, and accepted once the user is signed in. Persisted, so it survives the app being closed meanwhile.
+// An invite opened while signed out (flows 3: "sign-in, then back here"): kept across sign-in and sign-up, which can
+// leave the app for an email code, and accepted by the account that signs in next. In memory only, so a code is never
+// accepted at a later launch, perhaps by another account; sign-out (shell, clearSignedOutState) and any final answer
+// of the accept (useAcceptInviteScreen) clear it.
 interface PendingInviteState {
   code: string | null;
   setCode: (code: string | null) => void;
 }
 
-export const usePendingInviteStore = create<PendingInviteState>()(
-  persist((set) => ({ code: null, setCode: (code) => set({ code }) }), {
-    name: "pdm.pending-invite",
-    storage: createJSONStorage(() => ({ getItem: storage.get, setItem: storage.set, removeItem: storage.remove })),
-  }),
-);
+export const usePendingInviteStore = create<PendingInviteState>()((set) => ({ code: null, setCode: (code) => set({ code }) }));
+
+// Builds before this one persisted the code under this key; drop what they left.
+void Promise.resolve()
+  .then(() => storage.remove("pdm.pending-invite"))
+  .catch(() => undefined);
+
+/** For sign-out: no code stays for the next account. */
+export function clearPendingInvite(): void {
+  usePendingInviteStore.getState().setCode(null);
+}
 
 /** In the signed-in layout: opens a kept invite once the user is signed in, before the session gate decides. */
 export function usePendingInvite(signedIn: boolean): void {

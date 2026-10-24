@@ -1,7 +1,9 @@
 // The connect flow (EON E10.2; docs/connectors/README.md 5): a device_verifier made here, its hash sent with the
 // create, the vendor's consent page in an auth session, then `complete` with the redirect's code and state and the
-// verifier, which is kept in this module's memory only, by connector, and dropped when the flow ends.
-import { useState } from "react";
+// verifier, which is kept in this module's memory only, by connector, and dropped when the flow ends. A Reconnect
+// deletes the `reauth_needed` connector first: a garden holds at most 2 connectors (contracts 9), so a create beside
+// it would be refused in a full garden, and its synced records go with a reconnect anyway.
+import { useRef, useState } from "react";
 
 import { isApiError, useCompleteConnector, useCreateConnector, useDeleteConnector } from "@/api";
 import type { Connector, ConnectorKind } from "@/domain/types";
@@ -20,13 +22,15 @@ export type ConnectPhase =
 export interface ConnectFlow {
   phase: ConnectPhase;
   busy: boolean;
-  /** Connect a vendor; `replaces` is the `reauth_needed` connector a Reconnect stands in for. */
+  /** Connect a vendor; `replaces` is the `reauth_needed` connector a Reconnect deletes before it connects. */
   start(kind: ConnectorKind, replaces?: Connector): Promise<void>;
   clearError(): void;
 }
 
 export function useConnectFlow(gardenId: string, onConnected: (c: Connector) => void): ConnectFlow {
   const [phase, setPhase] = useState<ConnectPhase>({ step: "idle" });
+  // `phase` is the last render's: a second tap before it re-renders would start a second create.
+  const running = useRef(false);
   const create = useCreateConnector(gardenId);
   const complete = useCompleteConnector();
   const remove = useDeleteConnector();
@@ -38,11 +42,24 @@ export function useConnectFlow(gardenId: string, onConnected: (c: Connector) => 
   };
 
   async function start(kind: ConnectorKind, replaces?: Connector) {
-    if (phase.step !== "idle") return;
+    if (running.current) return;
+    running.current = true;
+    try {
+      await run(kind, replaces);
+    } finally {
+      running.current = false;
+    }
+  }
+
+  async function run(kind: ConnectorKind, replaces?: Connector) {
     setPhase({ step: "starting", kind });
     let pending: Connector;
     let authorizeUrl: string;
     try {
+      if (replaces) {
+        verifiers.delete(replaces.id);
+        await remove.mutateAsync(replaces);
+      }
       const proof = await deviceProof(deviceCrypto.randomBytes(32), (d) => deviceCrypto.sha256(d));
       const res = await create.mutateAsync({ kind, device_hash: proof.hash });
       pending = res.connector;
@@ -76,7 +93,6 @@ export function useConnectFlow(gardenId: string, onConnected: (c: Connector) => 
         body: { code: redirect.code, state: redirect.state, device_verifier: verifier },
       });
       verifiers.delete(pending.id);
-      if (replaces) remove.mutate(replaces, { onError: () => undefined });
       setPhase({ step: "idle" });
       onConnected(connected);
     } catch (e) {

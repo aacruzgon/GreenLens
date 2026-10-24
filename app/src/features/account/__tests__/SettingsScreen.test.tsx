@@ -1,5 +1,6 @@
 // Settings over the mock (screens 3.9; flows 13): the gardens with Manage or Members by role, switching the active
-// garden, the location toggle asking first, and deleting the account with the typed word, then signing out.
+// garden, the location toggle asking first, and deleting the account with the typed word, then signing out; a
+// sign-out that throws after the deletion still says it is deleted and clears this phone.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
@@ -87,5 +88,16 @@ describe("deleting the account", () => {
     await fireEvent.press(screen.getByTestId("account-delete-confirm"));
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
     expect(alert).toHaveBeenCalledWith("Your account is deleted", "Back garden is now owned by Sam Lee. The rest finishes in the background.");
+  });
+
+  it("says the account is deleted and clears this phone when sign-out throws after DELETE /me", async () => {
+    mockSignOut.mockRejectedValueOnce(new Error("Clerk is offline"));
+    const alert = jest.spyOn(Alert, "alert");
+    await render(wrap(<DeleteAccountSheet />));
+    await fireEvent.changeText(screen.getByTestId("account-delete-word"), "delete");
+    await fireEvent.press(screen.getByTestId("account-delete-confirm"));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith("Your account is deleted", expect.stringMatching(/finishes in the background/)));
+    expect(screen.queryByText(/wasn't deleted/)).toBeNull();
+    expect(useActiveGardenStore.getState().gardenId).toBeNull();
   });
 });

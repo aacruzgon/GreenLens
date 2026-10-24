@@ -1,14 +1,15 @@
 // Google and Apple sign-in (roadmap F7 item 4; README 8, sign-in; closes README open decision 4): `useSSO` opens
 // the provider in a browser session and returns to the `pdm` scheme, and Clerk's Core 3 hook activates the session
 // itself. Both go and "Open in Safari or Chrome" shows instead in an embedded web view, where Google refuses OAuth
-// (README 13) — that is the web build's (F9). Apple's button follows its guidelines: black, or white in dark mode,
-// with the Apple logo and "Continue with Apple" (HIG Sign in with Apple).
+// (README 13) — that is the web build's (F9). Apple's button is iOS's own (`AppleButton`, HIG Sign in with Apple:
+// a custom one must use Apple's logo artwork, never a drawn logo), first and as large as Google's. Where iOS doesn't
+// draw it there is no Apple button; the web build's comes with Apple's artwork in F9.
 import { useSSO } from "@clerk/expo/experimental";
-import { SymbolView } from "expo-symbols";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
+import { AppleButton, useAppleButtonAvailable } from "@/platform";
 import { Banner, Text, hiddenSvg, minTouch, radii, space, useTheme } from "@/ui";
 
 import { clerkErrorMessage, isStrategyOff } from "../model/clerkErrors";
@@ -34,25 +35,17 @@ export function SsoButtons() {
     }
   }
 
-  const apple = scheme === "dark" ? { bg: "#FFFFFF", ink: "#000000" } : { bg: "#000000", ink: "#FFFFFF" };
+  const appleButton = useAppleButtonAvailable();
   const pill = { minHeight: 52, borderRadius: radii.pill, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space[2] } as const;
 
   return (
     <View style={{ gap: space[3] }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Continue with Apple"
-        accessibilityState={{ busy: busy === "oauth_apple", disabled: busy !== null }}
-        disabled={busy !== null}
-        onPress={() => void start("oauth_apple")}
-        testID="sso-apple"
-        style={({ pressed }) => [pill, { backgroundColor: apple.bg, opacity: pressed || busy === "oauth_apple" ? 0.7 : 1 }]}
-      >
-        <SymbolView name="apple.logo" tintColor={apple.ink} size={19} />
-        <Text variant="headline" style={{ color: apple.ink }}>
-          Continue with Apple
-        </Text>
-      </Pressable>
+      {appleButton ? (
+        // The system button has no busy look of its own: dimmed and not touchable while a sign-in runs.
+        <View testID="sso-apple" pointerEvents={busy ? "none" : "auto"} style={{ opacity: busy === "oauth_apple" ? 0.7 : 1 }}>
+          <AppleButton onPress={() => void start("oauth_apple")} scheme={scheme} cornerRadius={26} style={{ height: 52 }} />
+        </View>
+      ) : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Continue with Google"

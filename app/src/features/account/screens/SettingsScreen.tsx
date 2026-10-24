@@ -100,7 +100,7 @@ export function SettingsScreen() {
         <DeviceTools />
         <View style={{ gap: space[3] }}>
           <Button label="Sign out" variant="secondary" onPress={actions.signOut} busy={vm.signingOut} />
-          <Button label="Delete account" variant="plain" onPress={actions.deleteAccount} testID="account-delete" />
+          <Button label="Delete account" variant="destructive" onPress={actions.deleteAccount} testID="account-delete" />
         </View>
         {mock ? (
           <Text variant="footnote" color="textMuted" align="center">

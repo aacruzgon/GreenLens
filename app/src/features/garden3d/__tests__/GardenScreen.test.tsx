@@ -12,7 +12,7 @@ import { ThemeProvider } from "@/ui";
 import { GardenScreen } from "../screens/GardenScreen";
 
 const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: () => true };
-jest.mock("expo-router", () => ({ useRouter: () => mockRouter, useLocalSearchParams: () => ({}) }));
+jest.mock("expo-router", () => ({ useRouter: () => mockRouter, useLocalSearchParams: () => ({}), useFocusEffect: () => undefined }));
 const mockStart = jest.fn(async () => undefined);
 jest.mock("@/features/capture", () => ({
   ...jest.requireActual<object>("@/features/capture"),
@@ -88,10 +88,21 @@ describe("the garden screen", () => {
     // Tomatoes, the pepper and the basil are tender in the mock; kale is hardy and lettuce isn't known.
     expect(screen.getByTestId("garden-top-card")).toHaveTextContent(/Cover the 4 tender plants/);
     expect(screen.getByRole("button", { name: /Tomato 1.*needs a frost cover/ })).toBeTruthy();
+    // The cover's ring has its word in the legend, in Frost only.
+    expect(screen.getByTestId("legend-cover", { includeHiddenElements: true })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Kale.*needs a frost cover/ })).toBeNull();
     // A step back leaves Frost.
     await fireEvent.press(ticks.at(-2)!);
     await waitFor(() => expect(screen.getByTestId("garden-top-card")).toHaveTextContent(/Back garden/));
+  });
+
+  it("makes each pin its own target, the size of the pin, with its label a separate one", async () => {
+    // Before: a 100 pt box per pin, so Tomato 2's covered Tomato 1's pin, 13 pt away (review of #205).
+    await renderGarden();
+    const pin = screen.getByTestId(`map-pin-${IDS.tomato1}`);
+    expect(pin.props.style).toMatchObject({ width: 24, height: 24 });
+    await fireEvent.press(screen.getByTestId(`map-label-${IDS.kale}`, { includeHiddenElements: true }));
+    expect(within(screen.getByTestId("plant-pill")).getByText("Kale")).toBeTruthy();
   });
 
   it("selects another plant from its pin, and the shutter row acts on it", async () => {
@@ -104,6 +115,22 @@ describe("the garden screen", () => {
     expect(mockAsk).toHaveBeenCalledWith({ type: "plant", id: IDS.kale });
     await fireEvent.press(screen.getByRole("button", { name: "Insights for Kale" }));
     expect(mockRouter.push).toHaveBeenCalledWith({ pathname: "/plants/[plantId]/insights", params: { plantId: IDS.kale } });
+  });
+
+  it("selects the plant that needs attention even when its pin isn't first and the timelines come late", async () => {
+    // Before the timelines, every pin is "unknown", and the first pin won (review of #205: Kale moved first).
+    const map = mockStore.maps.get(IDS.garden)!;
+    const kale = map.pins.find((p) => p.plant_id === IDS.kale)!;
+    mockStore.maps.set(IDS.garden, { ...map, pins: [kale, ...map.pins.filter((p) => p !== kale)] });
+    setTransport({
+      fetch: async (input, init) => {
+        const url = typeof input === "string" ? input : input.url;
+        if (url.includes("/timeline")) await new Promise((r) => setTimeout(r, 30));
+        return mockTransport.fetch(input, init);
+      },
+    });
+    await renderGarden();
+    await waitFor(() => expect(within(screen.getByTestId("plant-pill")).getByText("Tomato 1")).toBeTruthy());
   });
 
   it("hides the shutter from viewers", async () => {

@@ -63,7 +63,7 @@ describe("Insights (design 8)", () => {
     expect(screen.getAllByLabelText(/^\w+ \d+: Healthy$/)).toHaveLength(3);
     expect(screen.getAllByLabelText(/^\w+ \d+: Sick, early blight$/)).toHaveLength(3);
 
-    expect(await screen.findByText("14% → 5%")).toBeTruthy();
+    expect(await screen.findByText("About 14% → 5%")).toBeTruthy();
     expect(screen.getByText(/^Lower at each check since /)).toBeTruthy();
     expect(screen.getByLabelText(/^Spot cover: 14 percent on .+, 9 percent on .+ and 5 percent on .+, with ranges 9 to 21, 6 to 12 and 3 to 7$/)).toBeTruthy();
     expect(await screen.findByText("Remove the infected leaves")).toBeTruthy();

@@ -1,14 +1,15 @@
 // invite/[code] (flows 3): signed out the code is kept for after sign-in; signed in it is accepted and the garden
 // becomes active, the exit check's "an invite accepted on a second account lands on the garden"; a dead code says so.
+// Every final answer drops the kept code, so nothing re-opens the invite at the next sign-in.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react-native";
+import { render, renderHook, screen, waitFor } from "@testing-library/react-native";
 
 import { setTransport } from "@/api";
-import { chooseAccount, DEMO_INVITE_CODE, IDS, mockStore, mockTransport, resetMock } from "@/api/mock";
+import { chooseAccount, DEMO_INVITE_CODE, IDS, mockStore, mockTransport, resetMock, scenario } from "@/api/mock";
 import { ThemeProvider } from "@/ui";
 
 import { useActiveGardenStore } from "../hooks/activeGardenStore";
-import { usePendingInviteStore } from "../hooks/pendingInviteStore";
+import { usePendingInvite, usePendingInviteStore } from "../hooks/pendingInviteStore";
 import { InviteScreen } from "../screens/InviteScreen";
 
 const mockRouter = { push: jest.fn(), back: jest.fn(), dismissTo: jest.fn() };
@@ -68,6 +69,35 @@ describe("the invite screen", () => {
     expect(await screen.findByText("This invite isn't valid any more. Ask for a new one.")).toBeTruthy();
     expect(screen.queryByText("Try again")).toBeNull();
     expect(useActiveGardenStore.getState().gardenId).toBeNull();
+  });
+
+  it("drops the kept code after a 5xx, offers a retry here, and doesn't open the invite again", async () => {
+    chooseAccount("guest");
+    usePendingInviteStore.setState({ code: DEMO_INVITE_CODE });
+    setTransport({
+      fetch: async (input, init) =>
+        String(input instanceof Request ? input.url : input).includes("/accept")
+          ? new Response(JSON.stringify({ error: { code: "internal", message: "x", retryable: true, request_id: "r" } }), {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            })
+          : mockTransport.fetch(input, init),
+    });
+    await renderScreen(DEMO_INVITE_CODE);
+    expect(await screen.findByText("The invite didn't go through. Check your connection and try again.")).toBeTruthy();
+    expect(screen.getByText("Try again")).toBeTruthy();
+    expect(usePendingInviteStore.getState().code).toBeNull();
+    await renderHook(() => usePendingInvite(true));
+    expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+
+  it("drops the kept code after a 429", async () => {
+    chooseAccount("guest");
+    usePendingInviteStore.setState({ code: DEMO_INVITE_CODE });
+    scenario.set({ callFault: "rate_limited" });
+    await renderScreen(DEMO_INVITE_CODE);
+    expect(await screen.findByText("Too many attempts. Try again in a minute.")).toBeTruthy();
+    expect(usePendingInviteStore.getState().code).toBeNull();
   });
 
   it("says when a link has no code", async () => {

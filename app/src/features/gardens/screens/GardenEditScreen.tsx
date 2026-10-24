@@ -63,7 +63,7 @@ export function GardenEditScreen({ gardenId }: { gardenId: string }) {
           </Text>
         ) : null}
 
-        <Button label="Delete garden" variant="secondary" onPress={actions.deleteGarden} busy={vm.deleting} testID="garden-delete" />
+        <Button label="Delete garden" variant="destructive" onPress={actions.deleteGarden} busy={vm.deleting} testID="garden-delete" />
       </>
     );
   }

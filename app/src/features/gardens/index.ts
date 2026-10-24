@@ -9,5 +9,5 @@ export { MembersScreen } from "./screens/MembersScreen";
 export { GardenEditScreen } from "./screens/GardenEditScreen";
 export { NewGardenSheet } from "./screens/NewGardenSheet";
 export { InviteScreen } from "./screens/InviteScreen";
-export { usePendingInvite } from "./hooks/pendingInviteStore";
+export { clearPendingInvite, usePendingInvite, usePendingInviteStore } from "./hooks/pendingInviteStore";
 export { locationLine } from "./model/members";

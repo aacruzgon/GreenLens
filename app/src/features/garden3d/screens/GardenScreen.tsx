@@ -2,7 +2,8 @@
 // and following the light or dark scheme: the GardenView scene edge to edge on the iPhone, the 2D map in Expo Go,
 // when the scene can't draw, and on **Map**; the card from the top; the selected plant's pill and card; the
 // shutter row; and the mode bar HEALTH · GROWTH · FROST. 3D / Map sits at the top right.
-import { useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useRef, useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -34,6 +35,19 @@ export function GardenScreen(params: GardenScreenParams) {
   // The map keeps its own band between the cards and the controls (design 3.1).
   const [top, setTop] = useState(0);
   const [bottom, setBottom] = useState(0);
+  // A new GardenView each time the screen comes back into view: when a second garden screen above it closed, the
+  // first one's scene stayed blank (labels, no beds or plants) until it was remounted (review of #205, on the
+  // iPhone 13 Pro Max). The fault looks native, in what both views share; this keeps it out of reach.
+  const [sceneKey, setSceneKey] = useState(0);
+  const blurred = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (blurred.current) setSceneKey((k) => k + 1);
+      return () => {
+        blurred.current = true;
+      };
+    }, []),
+  );
 
   const back = (
     <IconButton
@@ -95,6 +109,7 @@ export function GardenScreen(params: GardenScreenParams) {
         />
       ) : GardenView ? (
         <GardenView
+          key={sceneKey}
           style={{ position: "absolute", inset: 0, backgroundColor: colors.background }}
           beds={g.beds}
           plants={g.plants}
@@ -138,7 +153,7 @@ export function GardenScreen(params: GardenScreenParams) {
             <View style={{ width: 44 }} />
           )}
         </View>
-        {g.card ? <GardenTopCard card={g.card} /> : null}
+        {g.card ? <GardenTopCard card={g.card} frost={g.state.mode === "frost"} /> : null}
         {showMap && g.can.edit ? (
           <Button label="Edit" variant="secondary" size="small" onPress={g.actions.editMap} style={{ alignSelf: "flex-end" }} accessibilityLabel="Edit the map" />
         ) : null}

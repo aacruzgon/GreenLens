@@ -15,7 +15,7 @@ import { Banner, Button, EmptyState, ErrorState, IconButton, LineIcon, Screen, S
 import { ConnectorCard } from "../components/ConnectorCard";
 import { SourcePicker } from "../components/SourcePicker";
 import { useConnectFlow } from "../hooks/useConnectFlow";
-import { connectorView, errorText, VENDOR, type ConnectorAction } from "../model/view";
+import { atConnectorCap, CAP_NOTE, connectorView, errorText, VENDOR, type ConnectorAction } from "../model/view";
 
 const KINDS: ConnectorKind[] = ["slack", "google_drive"];
 
@@ -79,7 +79,10 @@ export function ConnectorsScreen({ gardenId }: { gardenId: string }) {
         return;
       case "cancel":
         setRunning({ id: c.id, action });
-        remove.mutate(c, { onSettled: () => setRunning(undefined) });
+        remove.mutate(c, {
+          onError: (e) => setNotice({ tone: "danger", title: "Not cancelled", message: errorText(isApiError(e) ? e : undefined, c.kind) }),
+          onSettled: () => setRunning(undefined),
+        });
         return;
     }
   };
@@ -113,6 +116,8 @@ export function ConnectorsScreen({ gardenId }: { gardenId: string }) {
   } else {
     const connectors = list.data.connectors;
     const connecting = flow.phase.step !== "idle" ? flow.phase.kind : undefined;
+    // A Reconnect in progress has deleted its old connector, so the list can dip below the cap while it runs.
+    const full = atConnectorCap(connectors) && connecting === undefined;
     body = (
       <>
         <Text variant="body" color="textMuted">
@@ -142,25 +147,33 @@ export function ConnectorsScreen({ gardenId }: { gardenId: string }) {
         )}
         {owner ? (
           <Section title="Connect">
-            <Text variant="footnote" color="textMuted">
-              {VENDOR.slack} or {VENDOR.google_drive} opens to ask for read-only access, then you choose the channels or the folder PDM reads.
-              Every member of this garden can then ask about them in chat.
-            </Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-              {KINDS.map((kind) => (
-                <Button
-                  key={kind}
-                  label={`Connect ${VENDOR[kind]}`}
-                  variant="secondary"
-                  busy={connecting === kind}
-                  disabled={flow.busy && connecting !== kind}
-                  onPress={() => {
-                    setNotice(undefined);
-                    void flow.start(kind);
-                  }}
-                />
-              ))}
-            </View>
+            {full ? (
+              <Text variant="footnote" color="textMuted">
+                {CAP_NOTE}
+              </Text>
+            ) : (
+              <>
+                <Text variant="footnote" color="textMuted">
+                  {VENDOR.slack} or {VENDOR.google_drive} opens to ask for read-only access, then you choose the channels or the folder PDM
+                  reads. Every member of this garden can then ask about them in chat.
+                </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+                  {KINDS.map((kind) => (
+                    <Button
+                      key={kind}
+                      label={`Connect ${VENDOR[kind]}`}
+                      variant="secondary"
+                      busy={connecting === kind}
+                      disabled={flow.busy && connecting !== kind}
+                      onPress={() => {
+                        setNotice(undefined);
+                        void flow.start(kind);
+                      }}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
           </Section>
         ) : (
           <Text variant="footnote" color="textMuted">

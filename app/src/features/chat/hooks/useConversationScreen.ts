@@ -17,6 +17,11 @@ import { startTurn, turnReducer, type RescanRequest, type Turn, type TurnAction,
 export const MAX_TEXT = 2000;
 export const MAX_PHOTOS = 3;
 
+/** How many stored questions have this text. */
+function sameQuestions(all: readonly { role: string; text?: string | null }[], text: string): number {
+  return all.filter((m) => m.role === "user" && m.text === text).length;
+}
+
 /** A network error before any response is retried with the same key this many times (flows 9). */
 const NETWORK_RETRIES = 2;
 /**
@@ -110,6 +115,14 @@ export function useConversationScreen(conversationId: string) {
    * could start a second turn while the first is still running (flows 9).
    */
   const keptKeys = useRef(new Map<string, IdempotencyKey>());
+  /**
+   * How many stored questions had a turn's text when it was sent. A failed turn gives way to the stored copy of
+   * its question only when there is one more than this: an earlier question with the same text isn't it (review of
+   * #205: asking the same question twice lost Try again).
+   */
+  const [askedBefore, setAskedBefore] = useState<Readonly<Record<string, number>>>({});
+  /** Failed turns whose question may have reached the server: their key was kept. */
+  const [maybeSent, setMaybeSent] = useState<ReadonlySet<string>>(() => new Set());
 
   // Leaving the screen closes its streams: the server stops the turn and stores it as interrupted (contracts 8).
   useEffect(() => {
@@ -175,7 +188,10 @@ export function useConversationScreen(conversationId: string) {
               await wait((e.retryAfterS ?? 2) * 1_000, abort.signal);
               continue;
             }
-            if (!isApiError(e) || e.code === "request_in_progress") keptKeys.current.set(localId, key);
+            if (!isApiError(e) || e.code === "request_in_progress") {
+              keptKeys.current.set(localId, key);
+              setMaybeSent((all) => new Set(all).add(localId));
+            }
             dispatch(localId, { type: "failed", error: turnError(e) });
             announce(errorWords(turnError(e)));
             return;
@@ -235,6 +251,7 @@ export function useConversationScreen(conversationId: string) {
       if (!body || body.length > MAX_TEXT || busy) return;
       const attachments: Attachment[] = override ? [] : ready.map((p) => ({ image_id: p.imageId!, url: p.url! }));
       const localId = uuid();
+      setAskedBefore((all) => ({ ...all, [localId]: sameQuestions(stored, body) }));
       // A failed turn's Try again only makes sense as the last thing in the conversation, so a new question
       // replaces it; a question that did reach the server comes back with the stored conversation.
       setTurns((all) => [...all.filter((t) => t.status !== "failed"), startTurn(localId, { text: body, attachments })]);
@@ -244,7 +261,7 @@ export function useConversationScreen(conversationId: string) {
       }
       void run(localId, { text: body, ...(attachments.length ? { image_ids: attachments.map((a) => a.image_id) } : {}) });
     },
-    [text, busy, ready, run],
+    [text, busy, ready, run, stored],
   );
 
   /**
@@ -260,10 +277,11 @@ export function useConversationScreen(conversationId: string) {
         setTurns((all) => all.filter((t) => t.localId !== failedLocalId));
       }
       const localId = uuid();
+      setAskedBefore((all) => ({ ...all, [localId]: sameQuestions(stored, request.text) }));
       setTurns((all) => [...all.filter((t) => t.status !== "failed"), startTurn(localId, request)]);
       void run(localId, { text: request.text, ...(request.attachments.length ? { image_ids: request.attachments.map((a) => a.image_id) } : {}) }, kept);
     },
-    [busy, run],
+    [busy, run, stored],
   );
 
   const upload = useCallback(
@@ -317,9 +335,15 @@ export function useConversationScreen(conversationId: string) {
     const storedIds = new Set(stored.map((m) => m.id));
     const lastQuestion = stored.findLast((m) => m.role === "user");
     const answered = lastQuestion !== undefined && stored.at(-1)?.role === "assistant";
-    const liveTurns = turns.filter(
-      (t) => !(t.messageId && storedIds.has(t.messageId)) && !(t.status === "failed" && answered && lastQuestion.text === t.request.text),
-    );
+    // A failed turn the server may have got (its key was kept) gives way once a newer stored copy of its question
+    // is answered; one that never reached the server, or a repeat of an older question, keeps its Try again.
+    const superseded = (t: (typeof turns)[number]) =>
+      t.status === "failed" &&
+      answered &&
+      lastQuestion.text === t.request.text &&
+      maybeSent.has(t.localId) &&
+      sameQuestions(stored, t.request.text) > (askedBefore[t.localId] ?? 0);
+    const liveTurns = turns.filter((t) => !(t.messageId && storedIds.has(t.messageId)) && !superseded(t));
     const asked = liveTurns.map((t) => t.request.text);
     const hidden = new Set<string>();
     for (let i = stored.length - 1; i >= 0 && stored[i]!.role === "user"; i--) {
@@ -344,7 +368,7 @@ export function useConversationScreen(conversationId: string) {
     });
     for (const t of liveTurns) out.push({ kind: "turn", key: t.localId, turn: t });
     return out;
-  }, [stored, turns]);
+  }, [stored, turns, maybeSent, askedBefore]);
 
   /** The user message an interrupted assistant message answered, for Resend. */
   const requestBefore = useCallback(

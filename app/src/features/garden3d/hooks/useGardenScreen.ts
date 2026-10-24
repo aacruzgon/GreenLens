@@ -67,8 +67,9 @@ export function useGardenScreen(params: GardenScreenParams) {
   );
 
   // The dates arrive after the first render: open on the latest scan (or the forecast in Frost) once they all do.
-  // Only once every plant's timeline is in: the forecast night alone would open on it.
-  const ready = plants.isSuccess && !timelines.isPending && dates.length > 0;
+  // Only once every plant's timeline is in, since the forecast night alone would open on it, and once the forecast
+  // has answered, since Frost asked for before it would stay on a scan date.
+  const ready = plants.isSuccess && !timelines.isPending && !weather.isPending && dates.length > 0;
   useEffect(() => {
     if (ready) dispatch({ type: "init", mode: params.mode });
     // Only once the dates are first known.
@@ -81,8 +82,9 @@ export function useGardenScreen(params: GardenScreenParams) {
     [map.data, records, date],
   );
 
-  // Select a plant once the scene is known: the one asked for, else the first that needs attention.
-  const sceneReady = scene.plants.length > 0;
+  // Select a plant once the scene is on its date: the one asked for, else the first that needs attention. Before
+  // `init`, every pin is still "unknown" (no timeline yet), and the first pin would win (review of #205).
+  const sceneReady = state.initialised && scene.plants.length > 0;
   useEffect(() => {
     if (!sceneReady) return;
     if (state.selectedId && scene.plants.some((p) => p.id === state.selectedId)) return;

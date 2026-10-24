@@ -23,3 +23,4 @@ export { ModePickerView, type ModePickerItem, type ModePickerViewProps } from ".
 export { GardenView, type GardenSelectEvent, type GardenViewBed, type GardenViewMode, type GardenViewPlant, type GardenViewProps, type GardenViewStatus } from "./garden3d";
 export { deviceCrypto } from "./crypto";
 export { authSession, type AuthSessionFake, type AuthSessionResult } from "./authSession";
+export { AppleButton, useAppleButtonAvailable, type AppleButtonProps } from "./appleButton";

@@ -12,7 +12,7 @@ export function DeleteAccountSheet() {
   return (
     <Sheet
       title="Delete your account"
-      footer={<Button label="Delete account" variant="secondary" onPress={() => void vm.run()} disabled={!vm.ready} busy={vm.busy} testID="account-delete-confirm" />}
+      footer={<Button label="Delete account" variant="destructive" onPress={() => void vm.run()} disabled={!vm.ready} busy={vm.busy} testID="account-delete-confirm" />}
     >
       <View style={{ gap: space[2] }}>
         {DELETION_POINTS.map((point) => (
@@ -22,7 +22,7 @@ export function DeleteAccountSheet() {
         ))}
       </View>
       <Text variant="footnote" color="textMuted">
-        Deletion starts at once and finishes in the background. It can&apos;t be undone.
+        Your account stops working at once, and the rest of the deletion finishes in the background. It can&apos;t be undone.
       </Text>
       <TextField
         label={`Type "${CONFIRM_WORD}" to confirm`}

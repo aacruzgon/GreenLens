@@ -48,7 +48,7 @@ describe("the demo's records (analytics 6)", () => {
 
   it("reads spot cover 14% → 9% → 5% as lower, with its ranges", () => {
     const s = spotsReading(rangePoints(mockStore, IDS.tomato1, "affected_area_pct"), TZ)!;
-    expect(s.kpi).toBe("14% → 5%");
+    expect(s.kpi).toBe("About 14% → 5%");
     expect(s.direction).toBe("lower");
     expect(s.line).toBe(true);
     expect(s.headline).toBe("Lower at each check since Oct 11");
@@ -116,6 +116,14 @@ describe("the rules (analytics 2)", () => {
     const cells = stripCells([entry(6, { status: "failed", diagnosis_status: undefined }), entry(3, { diagnosis_status: "uncertain", low_evidence: true }), entry(0)], "healthy", TZ);
     expect(cells.map((c) => c.status)).toEqual(["unknown", "unknown", "healthy"]);
     expect(cells[0]!.label).toBe("Oct 11: Failed");
+  });
+
+  it("gives the plant's status to the latest scan that finished, not to the one before a failed scan", () => {
+    // Before: the check before a failed latest scan got a guessed "watch", and the headline said "then watch"
+    // (review of #205). The plant is healthy now: its Oct 14 scan, the latest that finished, set that.
+    const tl = [entry(6), entry(3, { primary: blight }), entry(0, { status: "failed", diagnosis_status: undefined })];
+    const cells = stripCells(tl, "healthy", TZ);
+    expect(cells.map((c) => c.status)).toEqual(["healthy", "healthy", "unknown"]);
   });
 
   it("words the strip for a first check and an empty history", () => {

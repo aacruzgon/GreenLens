@@ -5,7 +5,7 @@ import { isApiError, useCreateInvite, useGarden, useInvites, useMe, useMembers, 
 import { can } from "@/domain/permissions";
 import type { Invite, Member, Role } from "@/domain/types";
 
-import { LEAVE_WARNING, REMOVE_WARNING, ROLE_ORDER, canLeave, inviteMessage, inviteSubtitle, memberRows, roleName, type MemberRow } from "../model/members";
+import { LEAVE_WARNING, REMOVE_WARNING, canLeave, inviteMessage, inviteSubtitle, memberRows, type MemberRow } from "../model/members";
 
 export interface InviteRow {
   invite: Invite;
@@ -38,23 +38,12 @@ export function useMembersScreen(gardenId: string) {
     await Share.share({ message: inviteMessage(garden.data?.name ?? "my garden", invite) }).catch(() => undefined);
   };
 
+  // The role comes from the Invite and Role menus (components/RoleMenu), not an alert.
   const invite = (role: Role) =>
-    createInvite.mutateAsync({ role }).then(share, failed("The invite wasn't made"));
+    void createInvite.mutateAsync({ role }).then(share, failed("The invite wasn't made"));
 
-  const chooseInviteRole = () =>
-    Alert.alert("Invite as", "The link works once and for 7 days.", [
-      ...ROLE_ORDER.map((role) => ({ text: roleName(role), onPress: () => void invite(role) })),
-      { text: "Cancel", style: "cancel" as const },
-    ]);
-
-  const changeRole = (m: Member) =>
-    Alert.alert(`${m.display_name}'s role`, undefined, [
-      ...ROLE_ORDER.filter((r) => r !== m.role).map((role) => ({
-        text: roleName(role),
-        onPress: () => setRole.mutateAsync({ userId: m.user_id, role }).catch(failed("The role didn't change")),
-      })),
-      { text: "Cancel", style: "cancel" as const },
-    ]);
+  const changeRole = (m: Member, role: Role) =>
+    void setRole.mutateAsync({ userId: m.user_id, role }).catch(failed("The role didn't change"));
 
   const removeMember = (m: Member) =>
     Alert.alert(`Remove ${m.display_name}?`, REMOVE_WARNING, [
@@ -93,6 +82,6 @@ export function useMembersScreen(gardenId: string) {
     invitesLoading: isOwner && invites.isPending,
     inviting: createInvite.isPending,
     canLeave: members.data ? canLeave(members.data, meId) : false,
-    actions: { chooseInviteRole, share, changeRole, removeMember, revokeInvite, leave, back: () => router.back() },
+    actions: { invite, share, changeRole, removeMember, revokeInvite, leave, back: () => router.back() },
   };
 }
