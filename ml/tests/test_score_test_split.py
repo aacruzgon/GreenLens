@@ -256,3 +256,26 @@ def test_the_committed_test_split_report_rebuilds_from_its_json_exactly():
     again = json.loads(json.dumps(ts.rebuilt(doc, doc["measured"], None)))
     assert again == doc
     assert ts.markdown(again, path.name) == path.with_suffix(".md").read_text()
+
+
+def test_the_report_rebuilds_after_the_manifest_gains_other_cases_but_not_after_its_own_change(tmp_path):
+    path = ts.REPORTS / "test-split-2026-10-23"
+    doc = json.loads(path.with_suffix(".json").read_text())
+    lines = (ts.ROOT / doc["inputs"]["manifest"]["file"]).read_text().splitlines()
+    new = tmp_path / "manifest.jsonl"
+    dev = json.dumps(case("lidar-001") | {"split": "dev"})
+    new.write_text("\n".join([dev, *reversed(lines)]) + "\n")
+    moved = doc | {"inputs": doc["inputs"] | {"manifest": doc["inputs"]["manifest"] | {"file": str(new)}}}
+    again = json.loads(json.dumps(ts.rebuilt(moved, doc["measured"], None)))
+    assert again["inputs"]["manifest"] == moved["inputs"]["manifest"]
+    assert {k: v for k, v in again.items() if k != "inputs"} == {k: v for k, v in doc.items() if k != "inputs"}
+
+    first = next(i for i, l in enumerate(lines) if json.loads(l)["split"] == "test")
+    edited = json.loads(lines[first]) | {"label_confidence": "edited"}
+    new.write_text("\n".join([*lines[:first], json.dumps(edited), *lines[first + 1:]]) + "\n")
+    with pytest.raises(SystemExit, match="test cases changed"):
+        ts.rebuilt(moved, doc["measured"], None)
+    del moved["inputs"]["manifest"]["split_sha256"]
+    new.write_text("\n".join([dev, *lines]) + "\n")
+    with pytest.raises(SystemExit, match="test cases changed"):
+        ts.rebuilt(moved, doc["measured"], None)
