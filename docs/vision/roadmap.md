@@ -102,6 +102,7 @@ Day 8 of 10 (Oct 23). **The models are trained, calibrated and frozen (M17), and
 | [#147](https://github.com/aacruzgon/GreenLens/pull/147) | `fix/eval-neighbour-frames` | `main` | Merged (5abfcf1) | Neighbouring field-set frames share a plant key (4 cases change split: 102 dev, 58 test), the leakage check hashes the manifest as it reads it and reruns on it, Alan's other follow-ups from #140; this file and dev-roadmap.md on Oct 23 |
 | [#156](https://github.com/aacruzgon/GreenLens/pull/156) | `feat/calibration-seed-matrix` | `main` | Merged (b732321) | M16 on the 102 dev cases: `species_temperature` 1.3747, v3c's top 3 and temperature trade, the plant check on the cases; D1's re-check on the shipped prompts; `vlm_bench` reports name their cases file; this file and dev-roadmap.md on Oct 23 |
 | [#167](https://github.com/aacruzgon/GreenLens/pull/167) | `feat/m17-final-manifests` | `main` | Merged (801a826) | M17: the trained plant probe v2 (licence-clean) at 0.94 / 0.31, `plant_check`'s whole-plant rule, the photo credits beside the notices, and Alan's two follow-ups on #156's calibration test |
+| [#192](https://github.com/aacruzgon/GreenLens/pull/192) | `feat/m18-test-split` | `main` | Open | M18: the test split scored once at the shipped values (`score_test_split.py`), the leakage check with plant probe v2's photos, and the test numbers in devpost.md and evaluation 4 |
 | [#31](https://github.com/aacruzgon/GreenLens/pull/31) | `docs/roadmap-day1-wrap` | `main` | Merged (691bb40) | This file at the end of day 1 |
 
 ## 3. Tracker by build-plan period
