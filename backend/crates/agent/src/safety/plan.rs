@@ -13,7 +13,8 @@ use std::{
 };
 
 use domain::{
-    id::{OrganismId, PlantId, ProblemId, SourceId, StepId, TreatmentId},
+    connectors::FarmCitation,
+    id::{FarmRecordId, OrganismId, PlantId, ProblemId, SourceId, StepId, TreatmentId},
     knowledge::{OrganismSeed, ProblemSeed, SeedOrganismRole, TreatmentSeed},
     records::plan::{
         PlanNeighbour, PlanStep, PlanStepDraft, PlanTarget, PlanWhen, PlanWriterOutput,
@@ -62,6 +63,11 @@ pub fn step_to_draft(step: PlanStep) -> PlanStepDraft {
         targets: step.targets,
         plant_id: step.plant_id,
         citations: step.citations,
+        farm_citations: step
+            .farm_citations
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
     }
 }
 
@@ -87,6 +93,11 @@ pub struct ValidationContext<'k> {
     pub beneficials_seen: bool,
     /// The sources steps may cite.
     pub known_sources: &'k [SourceId],
+    /// The farm records steps may cite ([connectors 7]): the plan writer's search hits, or for a
+    /// preview the base plan's `farm_records`. Empty for a garden without farm records.
+    ///
+    /// [connectors 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#7-the-agent
+    pub farm_records: &'k [FarmCitation],
 }
 
 /// Where a rule failed.
@@ -117,6 +128,8 @@ pub enum PlanRule {
     Uncited,
     /// A citation names no known source.
     UnknownSource,
+    /// A farm citation names no farm record the plan was given.
+    UnknownFarmRecord,
     /// A neighbour step that is not `monitoring`.
     NeighbourNotMonitoring,
     /// `plant_id` is not one of the neighbours.
@@ -152,6 +165,9 @@ pub struct PlanValidation {
     pub watch_for: Vec<String>,
     /// Every source the passing steps cite, deduplicated, in first-cited order.
     pub citations: Vec<SourceId>,
+    /// Every farm record the passing steps cite, resolved from the context's, deduplicated, in
+    /// first-cited order: `ActionPlan.farm_records`.
+    pub farm_records: Vec<FarmCitation>,
     /// Every broken rule.
     pub failures: Vec<RuleFailure>,
 }
@@ -232,11 +248,24 @@ pub fn validate_plan(draft: PlanDraft, ctx: &ValidationContext<'_>) -> PlanValid
         }
     }
 
+    // Every farm id a passing step cites is one of the context's (checked per step), so each
+    // resolves.
+    let mut farm_records = Vec::new();
+    let mut farm_cited = HashSet::new();
+    for id in steps.iter().flat_map(|s| &s.farm_citations) {
+        if farm_cited.insert(id)
+            && let Some(c) = index.farm_records.get(id)
+        {
+            farm_records.push((*c).clone());
+        }
+    }
+
     PlanValidation {
         summary,
         steps,
         watch_for,
         citations,
+        farm_records,
         failures,
     }
 }
@@ -248,6 +277,7 @@ struct Index<'k> {
     problems: HashMap<&'k ProblemId, &'k ProblemSeed>,
     neighbours: HashMap<PlantId, &'k PlanNeighbour>,
     sources: HashSet<&'k SourceId>,
+    farm_records: HashMap<&'k FarmRecordId, &'k FarmCitation>,
 }
 
 impl<'k> Index<'k> {
@@ -258,6 +288,7 @@ impl<'k> Index<'k> {
             problems: ctx.problems.iter().map(|p| (&p.id, p)).collect(),
             neighbours: ctx.neighbours.iter().map(|n| (n.plant_id, n)).collect(),
             sources: ctx.known_sources.iter().collect(),
+            farm_records: ctx.farm_records.iter().map(|c| (&c.record_id, c)).collect(),
         }
     }
 }
@@ -363,9 +394,15 @@ fn check_step(
         );
     }
 
-    // Every step is cited.
+    // Every step is cited, by a knowledge source: farm records are the farm's history, never
+    // the advice ([connectors 7]).
     if draft.citations.is_empty() {
-        fail(PlanRule::Uncited, "cite at least one source".to_owned());
+        let reason = if draft.farm_citations.is_empty() {
+            "cite at least one source"
+        } else {
+            "farm records are not sources: cite at least one of the sources you were given too"
+        };
+        fail(PlanRule::Uncited, reason.to_owned());
     }
     for c in &draft.citations {
         if !index.sources.contains(c) {
@@ -373,6 +410,25 @@ fn check_step(
                 PlanRule::UnknownSource,
                 format!("source {c} is not one you were given"),
             );
+        }
+    }
+    // Each farm record once, in the model's order; an id that doesn't parse is as unknown as
+    // one the plan wasn't given.
+    let mut farm_citations: Vec<FarmRecordId> = Vec::with_capacity(draft.farm_citations.len());
+    for raw in &draft.farm_citations {
+        match raw.parse::<FarmRecordId>() {
+            Ok(id) if index.farm_records.contains_key(&id) => {
+                if !farm_citations.contains(&id) {
+                    farm_citations.push(id);
+                }
+            }
+            _ => fail(
+                PlanRule::UnknownFarmRecord,
+                format!(
+                    "farm record {} is not one you were given",
+                    truncated(raw, MAX_ECHOED_ID)
+                ),
+            ),
         }
     }
 
@@ -419,7 +475,7 @@ fn check_step(
         targets: draft.targets,
         plant_id: draft.plant_id,
         citations: draft.citations,
-        farm_citations: Vec::new(),
+        farm_citations,
         safety_note,
     })
 }
@@ -440,6 +496,17 @@ fn targets_neighbour_problem(
                 .is_some_and(|seed| seed.caused_by.contains(o))
         }),
     })
+}
+
+/// The most characters of a model-written id a retry message repeats.
+const MAX_ECHOED_ID: usize = 120;
+
+/// `text` cut to at most `max` characters, on a character boundary, with "…" when cut.
+fn truncated(text: &str, max: usize) -> std::borrow::Cow<'_, str> {
+    match text.char_indices().nth(max) {
+        Some((end, _)) => format!("{}…", &text[..end]).into(),
+        None => text.into(),
+    }
 }
 
 fn join(ids: &[ProblemId]) -> String {

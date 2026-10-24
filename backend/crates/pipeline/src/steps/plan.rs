@@ -5,10 +5,11 @@ use std::time::Instant;
 
 use agent::{
     beliefs::current_beliefs,
-    plan_writer::{PlanInput, SharedMemories},
+    plan_writer::{FARM_SEARCH_TIMEOUT, PlanInput, SharedMemories, farm_query, plan_farm_records},
 };
 use domain::{
     chat::{Belief, MemoryKind, MemoryTopic},
+    connectors::FarmRecordHit,
     events::{ScanEventBody, Stage},
     id::{OrganismId, SourceId, SpeciesId},
     knowledge::{OrganismSeed, SpeciesSeed},
@@ -46,6 +47,8 @@ struct PlanContext {
     constraints: Vec<domain::records::plan::PlanConstraint>,
     neighbours: Vec<domain::records::plan::PlanNeighbour>,
     known_sources: Vec<SourceId>,
+    /// The garden's farm records for this plan: empty without connectors.
+    farm_records: Vec<FarmRecordHit>,
 }
 
 impl Pipeline {
@@ -121,6 +124,7 @@ impl Pipeline {
             open_question: snap.scan.open_question.as_ref(),
             weather: snap.weather.as_ref(),
             known_sources: &ctx.known_sources,
+            farm_records: &ctx.farm_records,
         };
         let written = match self.deps.plan_author.write_plan(&input).await {
             Ok(w) => w,
@@ -167,7 +171,7 @@ impl Pipeline {
             steps: written.steps,
             watch_for: written.watch_for,
             citations,
-            farm_records: Vec::new(),
+            farm_records: written.farm_records,
             task_ids: tasks.iter().map(|t| t.id).collect(),
             llm_model: written.llm_model,
             prompt_version: written.prompt_version,
@@ -215,8 +219,8 @@ impl Pipeline {
 
     /// Everything the plan writer reads, owned for the step: the plan's problems with their
     /// treatments, the organisms seen and targeted, the species, the shared memories, the
-    /// constraints carried from the current plan, the neighbours and the sources a step may
-    /// cite. [`PlanInput`] then borrows it.
+    /// constraints carried from the current plan, the neighbours, the sources a step may cite
+    /// and the garden's farm records. [`PlanInput`] then borrows it.
     async fn plan_context(
         &self,
         snap: &ScanSnapshot,
@@ -245,9 +249,12 @@ impl Pipeline {
             Some(s) => k.species(s).await?,
             None => None,
         };
-        // The belief read runs beside the memory read and never fails: Agent Memory off, down
-        // or slower than its timeout gives no beliefs, and the plan is written without them.
-        let (memories, beliefs) = tokio::join!(
+        // The belief read and the farm-record search run beside the memory read and never fail:
+        // Agent Memory off, down or slower than its timeout gives no beliefs, and a garden
+        // without farm records, or a failed or slow search, gives no records ([connectors 7]);
+        // the plan is written without them.
+        let farm_query = farm_query(&snap.plant.name, diagnosis);
+        let (memories, beliefs, farm_records) = tokio::join!(
             self.deps
                 .memory
                 .shared_for_plan(snap.garden.id, snap.plant.id),
@@ -256,6 +263,13 @@ impl Pipeline {
                 snap.garden.id,
                 Some(snap.plant.id),
                 self.deps.config.beliefs_read_timeout,
+            ),
+            plan_farm_records(
+                self.deps.store.as_ref(),
+                self.deps.embedder.as_ref(),
+                snap.garden.id,
+                &farm_query,
+                FARM_SEARCH_TIMEOUT,
             ),
         );
         let memories = memories?;
@@ -316,6 +330,7 @@ impl Pipeline {
             constraints,
             neighbours,
             known_sources,
+            farm_records,
         })
     }
 

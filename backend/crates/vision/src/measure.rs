@@ -593,6 +593,6 @@ mod tests {
             )
             .unwrap();
         assert!((len - 30.0).abs() < 1e-9);
-        assert_eq!(measurer.version(), "measure-1+colour-1");
+        assert_eq!(measurer.version(), "measure-1+colour-3");
     }
 }
