@@ -584,13 +584,18 @@ fn pipeline_api(
     }))
 }
 
-/// The agent's settings: the defaults, with the deployment's poison-control text when set.
-pub(crate) fn agent_config(config: &Config) -> agent::AgentConfig {
+/// The agent's settings: the defaults, with the deployment's poison-control text when set. The
+/// text must pass the dose check, as the agent runs it through that check when it answers.
+pub(crate) fn agent_config(
+    config: &Config,
+    products: &agent::safety::ProductCatalogue,
+) -> Result<agent::AgentConfig, crate::config::ConfigError> {
     let mut agent_config = agent::AgentConfig::default();
     if let Some(text) = &config.poison_control_text {
+        crate::config::check_poison_control_text(text, products)?;
         text.clone_into(&mut agent_config.poison_control_text);
     }
-    agent_config
+    Ok(agent_config)
 }
 
 /// The chat agent over the ports, with its chat model, classifier and product catalogue.
@@ -700,12 +705,13 @@ pub async fn build(
         &out.chat_model,
         &products,
     );
+    let agent_settings = agent_config(&config, &products)?;
     let chat = chat_turns(
         &ports,
         out.chat_model,
         out.classifier,
         products,
-        agent_config(&config),
+        agent_settings,
         tasks.clone(),
     );
     let mut deletions = DeletionRunner::new(

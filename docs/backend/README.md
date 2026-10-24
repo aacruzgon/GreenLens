@@ -272,7 +272,7 @@ Each binary reads typed configuration from the environment at start and refuses 
 | `API_URL_SIGNING_KEY` | api | HMAC key of signed image URLs, at least 32 bytes |
 | `CLERK_ISSUER`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET` | api | Session-token verification, account deletion, Svix verification |
 | `LLM_API_KEY`, `LLM_CHAT_MODEL`, `LLM_CHEAP_MODEL` | api | `claude-opus-5-5` and `claude-haiku-5-5` by default |
-| `POISON_CONTROL_TEXT` | api | Optional. The poison-control answer with the local numbers, shown as written when the router takes that route. Unset or empty: a generic text without numbers |
+| `POISON_CONTROL_TEXT` | api | Optional. The poison-control answer with the local numbers, shown as written when the router takes that route; must pass the dose check, or `api` refuses to start. Unset or empty: a generic text without numbers |
 | `LLM_API_KEY`, `FALLBACK_VISION_MODEL` | fallback worker | The hosted vision model, `claude-opus-5-5` by default |
 | `WORKER_TOKENS` / `WORKER_TOKEN` | api / worker | Per-worker bearer tokens |
 | `--caps`, `API_BASE_URL`, `WORKER_ID` | worker | The role (a flag), where to claim, and the worker's name |

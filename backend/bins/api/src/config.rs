@@ -183,8 +183,9 @@ pub struct Config {
     pub shutdown_drain: Duration,
     /// `DIAGNOSIS_MARGIN`: the fusion margin of contracts 7 (open question 3).
     pub diagnosis_margin: i32,
-    /// `POISON_CONTROL_TEXT`: the local poison-control numbers, shown verbatim when the router
-    /// takes the poison-control route. Unset or empty keeps the agent's generic text.
+    /// `POISON_CONTROL_TEXT`: the local poison-control numbers, shown as written when the router
+    /// takes the poison-control route; every sentence must pass the dose check
+    /// ([`check_poison_control_text`]). Unset or empty keeps the agent's generic text.
     pub poison_control_text: Option<String>,
     /// `LOG_FORMAT`: `json` (default) or `pretty`.
     pub log_json: bool,
@@ -312,6 +313,31 @@ impl Config {
             connectors: connectors(&env)?,
         })
     }
+}
+
+/// Refuses a poison-control text whose sentence the dose check would replace at run time: the
+/// agent streams that text sentence by sentence through the same check, so a number such as
+/// "24/7: 1-800-..." read as a ratio would be swapped for the safety note in the one answer that
+/// must carry the numbers.
+pub fn check_poison_control_text(
+    text: &str,
+    products: &agent::safety::ProductCatalogue,
+) -> Result<(), ConfigError> {
+    let mut splitter = agent::safety::SentenceSplitter::new();
+    let sentences = splitter.push(text).into_iter().chain(splitter.finish());
+    for sentence in sentences {
+        if let Some(found) = agent::safety::dose_check(&sentence, products) {
+            return Err(ConfigError::Invalid {
+                name: "POISON_CONTROL_TEXT",
+                problem: format!(
+                    "the dose check ({:?}) would replace this sentence: {:?}",
+                    found.rule,
+                    sentence.trim()
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Whether `url` may be the app's return target: `https`, or a custom app scheme, never a
@@ -509,6 +535,28 @@ mod tests {
         assert_eq!(read(&vars), None);
         vars.insert("POISON_CONTROL_TEXT", " Call 1 800 000 0000. ".to_owned());
         assert_eq!(read(&vars).as_deref(), Some("Call 1 800 000 0000."));
+    }
+
+    #[test]
+    fn a_poison_control_text_the_dose_check_would_replace_is_refused() {
+        let products =
+            agent::safety::ProductCatalogue::new(&domain::knowledge::ProductsSeed::default());
+        let demo = "Poisoning? Call the Ontario Poison Centre now: 1-800-268-9017 (24 hours), or 911 \
+            if the person is unwell. For a pet, call your vet or the Pet Poison Helpline: \
+            1-855-764-7661 (a fee applies). Have the product label or a photo of the plant ready. \
+            Do not make anyone vomit unless they tell you to.";
+        check_poison_control_text(demo, &products).unwrap();
+
+        let error = check_poison_control_text(
+            "Call the Ontario Poison Centre, 24/7: 1-800-268-9017. Keep the label ready.",
+            &products,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            &error,
+            ConfigError::Invalid { name: "POISON_CONTROL_TEXT", problem }
+                if problem.contains("ColonRatio") && problem.contains("24/7: 1-800-268-9017")
+        ));
     }
 
     #[test]

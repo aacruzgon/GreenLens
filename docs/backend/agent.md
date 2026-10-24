@@ -1223,7 +1223,7 @@ pub fn decide(
 | `PoisonControl` | `safety_sensitive` | `AgentConfig::poison_control_text`, streamed sentence by sentence; no model call, no tools; `prompt_version` `poison_control/…`, `model` absent |
 | `OffTopic` | `off_topic` | A one- or two-sentence redirect from the cheapest model, no tools |
 
-`off_topic` needs a clear win (a margin of 0.2 over the runner-up), so a garden question is never brushed off on a coin toss. With no usable scores (Jev and the fallback both failed, or the classifier took longer than `classifier_timeout`, 3 s) the turn is a care question; the dose check still applies to every sentence. `POISON_CONTROL_TEXT` gives no phone numbers, which differ by country and change; the deployment sets the local ones with `api`'s `POISON_CONTROL_TEXT`, which fills `AgentConfig::poison_control_text`.
+`off_topic` needs a clear win (a margin of 0.2 over the runner-up), so a garden question is never brushed off on a coin toss. With no usable scores (Jev and the fallback both failed, or the classifier took longer than `classifier_timeout`, 3 s) the turn is a care question; the dose check still applies to every sentence. The constant `POISON_CONTROL_TEXT` gives no phone numbers, which differ by country and change; the deployment sets the local ones with `api`'s `POISON_CONTROL_TEXT` setting, which fills `AgentConfig::poison_control_text`. `api` runs the dose check over each sentence of that text at start-up and refuses to start when one would be replaced, since the answer is streamed through the same check.
 
 ---
 
