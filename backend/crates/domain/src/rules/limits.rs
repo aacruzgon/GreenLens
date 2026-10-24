@@ -24,6 +24,8 @@ pub const INVITE_ATTEMPTS_PER_MINUTE: u32 = 10;
 pub const MESSAGE_MAX_CHARS: usize = 2000;
 /// Images per chat message ([contracts 8]).
 pub const MESSAGE_MAX_IMAGES: usize = 3;
+/// Answer blocks per assistant message ([contracts 8], answer blocks).
+pub const MESSAGE_MAX_BLOCKS: usize = 3;
 /// Weather cache rows older than this are deleted ([database 4], cleanup).
 pub const WEATHER_CACHE_KEEP: Duration = Duration::from_hours(2);
 /// Finished jobs older than this are deleted.

@@ -1,6 +1,6 @@
 # PDM Backend: `domain` contract types
 
-> **Status:** Draft v0.3.5, 2026-10-23. v0.3.5: `PlanStepDraft.farm_citations`, the farm records a plan-writer step cites, optional and omitted when empty, strings that validation parses so a bad id refuses the step and not the answer (EON E5.4). v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
+> **Status:** Draft v0.3.7, 2026-10-23. v0.3.7: answer blocks ([contracts 8](../architecture/contracts.md#answer-blocks)): `AnswerBlock` (`call_id` and a `BlockBody` tagged by `kind`), `AnswerBlockKind`, `BlockPlant`, `FrostPlant`, the `answer_block` event (`AnswerBlockEvent`), `Message.blocks` (omitted when empty) and `ToolName::ShowBlock`; `Lookalike` derives `ToSchema`, since a `candidates` block carries it. v0.3.6: `SpeciesSeed.frost`, a species' frost tenderness (`tender` or `hardy`), top level and absent when the sources don't say (backend S5 work 9). v0.3.5: `PlanStepDraft.farm_citations`, the farm records a plan-writer step cites, optional and omitted when empty, strings that validation parses so a bad id refuses the step and not the answer (EON E5.4). v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
 
 Companion to the [backend architecture](README.md) and to the [`domain` crate](domain.md). Sections 1–10 follow [contracts.md](../architecture/contracts.md) 1–10, so "contracts 7" and "domain-types 7" describe the same shapes. Every listing is copied from the compiled source of `crates/domain` (`cargo check`, `cargo test` and `cargo clippy --all-targets` pass on Rust 1.99.1 with serde 1.0.229, utoipa 6.0.0, schemars 1.2.3, chrono 0.4.45 and ulid 3.0.0); the module paths are in [the map](#11-typescript-to-rust-map).
 
@@ -4605,6 +4605,10 @@ pub struct Message<U: UrlState = Signed> {
     pub farm_citations: Vec<FarmCitation>,
     /// Confirmation cards.
     pub pending_actions: Vec<PendingAction>,
+    /// The answer blocks an assistant message sent, in order, at most 3 ([contracts 8], answer
+    /// blocks); absent when it sent none, and read as empty from a message stored before them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<AnswerBlock>,
     /// The stream dropped before `message_completed`.
     pub interrupted: bool,
     /// When it was stored.
@@ -4793,6 +4797,16 @@ pub struct RescanRequested {
     pub instructions: String,
 }
 
+/// `answer_block` data: sent when `show_block` succeeds, so always after its anchor's
+/// `tool_finished`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct AnswerBlockEvent {
+    /// `1`.
+    pub v: V1,
+    /// The block, as stored in `Message.blocks`.
+    pub block: AnswerBlock,
+}
+
 /// `message_completed` data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct MessageCompleted {
@@ -4840,6 +4854,8 @@ pub enum ChatEvent {
     MemorySaved(MemorySaved),
     /// `rescan_requested`
     RescanRequested(RescanRequested),
+    /// `answer_block`
+    AnswerBlock(AnswerBlockEvent),
     /// `message_completed`
     MessageCompleted(MessageCompleted),
     /// `error`
@@ -5143,6 +5159,126 @@ pub struct MemorySearch {
 }
 ```
 
+### Answer blocks
+
+Native components the app draws with an answer, each built by `agent` from one tool result of the turn and the store ([contracts 8, answer blocks](../architecture/contracts.md#answer-blocks)).
+
+```rust
+/// `AnswerBlock.kind`, and the `kind` argument of `show_block`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AnswerBlockKind {
+    /// The garden map and its pinned plants; anchored on `get_garden_map`.
+    GardenMap,
+    /// Daily weather rows; anchored on `get_forecast`, or on `get_scan`'s weather snapshot.
+    WeatherHours,
+    /// The frost nights and the garden's plants to cover; anchored on `get_forecast`.
+    FrostPlanner,
+    /// One plant's measured points; anchored on `get_plant_measurements`.
+    MeasurementTrend,
+    /// A problem and its look-alikes; anchored on `compare_lookalikes`.
+    Candidates,
+}
+
+/// `BlockPlant`: a plant as a block shows it, filled in from the store.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct BlockPlant {
+    /// The plant.
+    pub plant_id: PlantId,
+    /// Its name.
+    pub name: String,
+    /// Its health status.
+    pub status: PlantStatus,
+    /// cm: its latest `plant_height_cm` point; absent when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub height_cm: Option<f64>,
+}
+
+/// `FrostPlant = BlockPlant & { frost_tender?: boolean }`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct FrostPlant {
+    /// Every field of `BlockPlant`.
+    #[serde(flatten)]
+    pub plant: BlockPlant,
+    /// `true` for a confirmed species with `frost: tender`, `false` for `hardy`; absent when the
+    /// species is only suggested or unknown, or its sources don't say. Never `false` for "don't
+    /// know".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub frost_tender: Option<bool>,
+}
+
+/// `AnswerBlock` ([contracts 8], answer blocks): a native component the app draws in an answer.
+/// The API builds it from one tool result of the turn (its anchor, `call_id`) and the store, so
+/// it holds records and ids only, never text the model wrote.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct AnswerBlock {
+    /// The anchor: the tool call of the same turn whose result the block shows.
+    pub call_id: String,
+    /// The kind and its records.
+    #[serde(flatten)]
+    pub body: BlockBody,
+}
+
+/// `AnswerBlock`'s kinds, tagged by `kind`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BlockBody {
+    /// From `get_garden_map`.
+    GardenMap {
+        /// The map, from the result.
+        map: GardenMap,
+        /// Plant → plants within `NEIGHBOUR_RADIUS_M`, from the result.
+        neighbours: BTreeMap<PlantId, Vec<PlantId>>,
+        /// Every live plant pinned on the map, from the store.
+        plants: Vec<BlockPlant>,
+        /// The plants the answer is about, from the `show_block` call, once each: each is one of
+        /// `plants`. May be empty.
+        focus_plant_ids: Vec<PlantId>,
+    },
+    /// From `get_forecast`, or from `get_scan`'s weather snapshot.
+    WeatherHours {
+        /// Daily rows: the forecast, or the scan's snapshot of it at scan time.
+        days: Vec<ForecastDay>,
+        /// Set when the anchor is `get_scan`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[schema(nullable = false)]
+        scan_id: Option<ScanId>,
+    },
+    /// From `get_forecast`.
+    FrostPlanner {
+        /// The result's days with `frost_risk`, first first.
+        nights: Vec<ForecastDay>,
+        /// The garden's live plants that aren't dead, from the store, with their confirmed
+        /// species' frost tenderness.
+        plants: Vec<FrostPlant>,
+    },
+    /// From `get_plant_measurements`.
+    MeasurementTrend {
+        /// The plant, from the call's arguments.
+        plant_id: PlantId,
+        /// Its name, from the store.
+        plant_name: String,
+        /// The quantity the points measure.
+        quantity: GrowthQuantity,
+        /// As returned, oldest first.
+        points: Vec<MeasurementPoint>,
+    },
+    /// From `compare_lookalikes`.
+    Candidates {
+        /// The problem asked about: its id from the call, its name from the knowledge base.
+        disease: ProblemRef,
+        /// The look-alikes, from the result.
+        lookalikes: Vec<Lookalike>,
+    },
+}
+```
+
+- `AnswerBlock` is `{ call_id }` with `BlockBody` flattened into it, so the generated schema is `allOf` of the two and the app's type is `{ call_id } & (…)`. The body is internally tagged by `kind`; an unknown kind doesn't decode.
+- `FrostPlant` flattens `BlockPlant` and adds `frost_tender`, which is omitted, never `false`, when the species is unknown or has no `frost`.
+- `Message.blocks` has `#[serde(default)]`, so a message stored before blocks reads as having none, and `skip_serializing_if = "Vec::is_empty"`, so the app sees the field only when a block was sent.
+
 ### Tool return shapes
 
 ```rust
@@ -5185,6 +5321,9 @@ pub enum ToolName {
     Remember,
     /// [`RescanRequest`] and a `rescan_requested` event.
     RequestRescan,
+    /// An [`AnswerBlock`] and an `answer_block` event, built from one tool result of the turn.
+    /// Every role.
+    ShowBlock,
     /// A `PendingAction` (editors and owners).
     CreateTask,
     /// A `PendingAction` (editors and owners).
@@ -5228,8 +5367,8 @@ pub struct KnowledgeHit {
     pub citation: Citation,
 }
 
-/// `compare_lookalikes` items.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// `compare_lookalikes` items, and `candidates.lookalikes`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Lookalike {
     /// The look-alike.
     pub problem_id: ProblemId,
@@ -5272,7 +5411,7 @@ pub struct RescanRequest {
 }
 ```
 
-These go to the model, never to the app, so they derive serde only. `get_scan` returns `ScanDetail<Stored>`: "without image URLs", which is exactly the stored URL state.
+These go to the model, never to the app, so they derive serde only; `Lookalike` also derives `ToSchema`, because a `candidates` block carries it to the app. `get_scan` returns `ScanDetail<Stored>`: "without image URLs", which is exactly the stored URL state.
 
 ---
 
@@ -6364,6 +6503,12 @@ pub struct FarmCitation {
     pub at: Timestamp,
     /// Opens the record in Slack or Drive (or, for an `era` connector, the simulator).
     pub link: String,
+    /// The record as the farm wrote it, rates included: one stored chunk, at most 2,000
+    /// characters. Set only for a record of an `era` connector, whose data is synthetic; the app
+    /// shows it in a sheet, labelled as Era's demo data. A vendor record's citation never has it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub text: Option<String>,
 }
 
 /// One `search_farm_records` result: the record's text, framed as data for the model, and its
@@ -6387,6 +6532,7 @@ fn a_farm_citation_is_exactly_its_contract() {
         author: Some("Sam".to_owned()),
         at: "2026-10-12T07:30:00Z".parse().unwrap(),
         link: "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100".to_owned(),
+        text: None,
     };
     assert_eq!(
         serde_json::to_value(&citation).unwrap(),
@@ -6409,6 +6555,14 @@ fn a_farm_citation_is_exactly_its_contract() {
             .get("author")
             .is_none()
     );
+    // An `era` record's citation carries its text, rates included.
+    let era = FarmCitation {
+        text: Some("Sprayed bed 3 at 2.5 L/ha.".to_owned()),
+        ..citation.clone()
+    };
+    let v = serde_json::to_value(&era).unwrap();
+    assert_eq!(v["text"], "Sprayed bed 3 at 2.5 L/ha.");
+    assert_eq!(serde_json::from_value::<FarmCitation>(v).unwrap(), era);
     let hit = FarmRecordHit {
         text: "Rings on bed 3 again.".to_owned(),
         citation,
@@ -6673,6 +6827,16 @@ pub enum LightNeed {
     Shade,
 }
 
+/// `SpeciesSeed.frost`: how a species takes a light frost.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Frost {
+    /// Damaged by a light frost.
+    Tender,
+    /// Stands a light frost.
+    Hardy,
+}
+
 /// `SpeciesSeed.care`: required when `profile` is `full`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -6724,6 +6888,11 @@ pub struct SpeciesSeed {
     /// Required when `full`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub care: Option<Care>,
+    /// Frost tenderness: `tender` is damaged by a light frost, `hardy` stands one. Absent when
+    /// the sources don't say. Separate from `care.hardiness_zones`, whose `annual` means "grown
+    /// as an annual": lettuce is grown as an annual but stands a light frost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frost: Option<Frost>,
     /// Checked against `classifier_labels.yaml` at ingestion.
     pub classifier_supported: bool,
     /// The text prompt `BioCLIP` scores against.
@@ -7069,6 +7238,7 @@ pub struct SoilProfile {
 | `Memory` | `Memory`, `MemoryKind`, `MemoryTopic`, `MemorySource`, `MemoryQuery`, `CreateMemoryRequest` | `chat` |
 | `Belief`, `PlantBeliefs`, `search_memory`'s result | `Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch` | `chat` |
 | tool return shapes | `SimilarCase`, `ProblemRef`, `KnowledgeHit`, `Lookalike`, `SoilProfileView`, `GardenMapView`, `RescanRequest`, `ToolName` | `chat` |
+| `AnswerBlock`, `answer_block` | `AnswerBlock`, `BlockBody`, `AnswerBlockKind`, `BlockPlant`, `FrostPlant`, `AnswerBlockEvent` | `chat` |
 | `GardenLocationInput`, `Garden` | same names, `ConsentPrecision`, `LocationQuery`, `SoilProfileStatus`, `TimeZone`, `CreateGardenRequest`, `UpdateGardenRequest`, `GardenWeather` | `garden::gardens` |
 | members, `Invite` | `Member`, `Invite`, `CreateInviteRequest`, `UpdateMemberRequest` | `garden::members` |
 | `TimelineEntry`, `MeasurementPoint` | `TimelineEntry<U>`, `MeasurementPoint`, `GrowthQuantity`, `TimelineMeasurements`, `CreatePlantRequest`, `UpdatePlantRequest` | `garden::plants` |

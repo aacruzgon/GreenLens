@@ -696,6 +696,75 @@ async fn a_drive_source_is_all_its_records() {
     );
 }
 
+/// Connectors 7: a hit's citation carries the record's text when its connector is an `era` one
+/// (synthetic data), and never when it is a vendor connector. Both searches agree.
+#[tokio::test]
+async fn only_an_era_records_citation_carries_its_text() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let viewer: Membership<Viewer> = owner_of(&store, &f).await.at_least();
+    let vendor = active_slack(&store, &f, f.garden).await;
+    let mut demo = new_connector(&f, ConnectorKind::Slack);
+    demo.status = ConnectorStatus::Active;
+    demo.endpoint = ConnectorEndpoint::Era;
+    demo.oauth = None;
+    demo.account = Some(slack_account());
+    demo.secret = Some(sealed(b"sealed-token"));
+    demo.sources = vec![source("C1", "field-reports")];
+    let era = demo.id;
+    store.seed_connector(f.garden, demo).await.unwrap();
+    let rate = "Sprayed bed 3 at 1.75 g/L.";
+    store
+        .upsert_records(
+            vendor,
+            vec![record(
+                vendor,
+                "C1/1.000100",
+                0,
+                rate,
+                Some(one_hot(0)),
+                t0(),
+            )],
+        )
+        .await
+        .unwrap();
+    store
+        .upsert_records(
+            era,
+            vec![record(
+                era,
+                "C1/2.000100",
+                0,
+                rate,
+                Some(one_hot(0)),
+                at(60),
+            )],
+        )
+        .await
+        .unwrap();
+
+    let query = Embedding(one_hot(0));
+    let hits = store
+        .search_records(viewer, &query, FarmRecordFilter::default(), 10)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 2);
+    for m in &hits {
+        assert_eq!(m.hit.text, rate);
+        let expected = (m.hit.citation.record_id.connector == era).then(|| rate.to_owned());
+        assert_eq!(m.hit.citation.text, expected);
+    }
+    assert!(hits.iter().any(|m| m.hit.citation.text.is_some()));
+    assert!(hits.iter().any(|m| m.hit.citation.text.is_none()));
+    assert_eq!(
+        store
+            .search_records_for_plan(f.garden, &query, FarmRecordFilter::default(), 10)
+            .await
+            .unwrap(),
+        hits
+    );
+}
+
 /// The exact search: only the proof's garden, ranked by cosine similarity, with its filters;
 /// a deleting connector's records are left out. The plan writer's search by garden agrees.
 #[tokio::test]
@@ -1066,6 +1135,7 @@ async fn plans_and_messages_carry_farm_citations() {
         author: Some("Sam".into()),
         at: t0(),
         link: "https://maplerow.slack.com/archives/C1/p1729000000000100".into(),
+        text: None,
     };
 
     // The plan.
@@ -1157,6 +1227,7 @@ async fn plans_and_messages_carry_farm_citations() {
         attachments: Vec::new(),
         citations: Vec::new(),
         farm_citations,
+        blocks: Vec::new(),
         tool_calls: Vec::new(),
         route: None,
         interrupted: false,

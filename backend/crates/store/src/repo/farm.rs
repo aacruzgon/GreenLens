@@ -20,8 +20,8 @@ use chrono::{DateTime, Utc};
 use domain::{
     authz::{Membership, Owner, Viewer},
     connectors::{
-        Connector, ConnectorKind, ConnectorSource, ConnectorStatus, FarmCitation, FarmRecordHit,
-        SyncErrorCode,
+        Connector, ConnectorEndpoint, ConnectorKind, ConnectorSource, ConnectorStatus,
+        FarmCitation, FarmRecordHit, SyncErrorCode,
     },
     error::{DomainError, InvalidStateDetails},
     id::{ConnectorId, FarmRecordId, GardenId, UserId},
@@ -317,7 +317,7 @@ COMMIT;";
     /// `search_farm_records` (EON gap G7): `memory`'s exact cosine search without its sharing
     /// filter, within one garden, leaving out a connector being deleted. `$author` comes
     /// lowercased (EON gap G12).
-    pub const SEARCH: &str = "SELECT id, connector.kind AS system, title, author, link, text, at,
+    pub const SEARCH: &str = "SELECT id, connector.kind AS system, connector.endpoint AS endpoint, title, author, link, text, at,
   vector::similarity::cosine(embedding, $query) AS similarity FROM farm_record
 WHERE garden = $garden AND ($kind = NONE OR kind = $kind) AND ($since = NONE OR at >= $since)
   AND ($until = NONE OR at < $until)
@@ -446,6 +446,8 @@ pub struct FarmHitRow {
     pub id: RecordId,
     /// Its connector's kind.
     pub system: ConnectorKindRow,
+    /// Its connector's endpoint: only an `era` record's citation carries its text.
+    pub endpoint: ConnectorEndpointRow,
     /// The channel or document title.
     pub title: String,
     /// The author's display name.
@@ -1187,6 +1189,10 @@ impl SurrealStore {
                     reason = "a cosine similarity is in -1..=1"
                 )]
                 let similarity = row.similarity.unwrap_or(0.0) as f32;
+                // Era's data is synthetic, so its citation carries the record as stored; a
+                // vendor record's text reaches the model only (connectors 7).
+                let era = ConnectorEndpoint::from(row.endpoint) == ConnectorEndpoint::Era;
+                let cited_text = era.then(|| row.text.clone());
                 Ok(FarmRecordMatch {
                     hit: FarmRecordHit {
                         text: row.text,
@@ -1197,6 +1203,7 @@ impl SurrealStore {
                             author: row.author,
                             at: ts(row.at),
                             link: row.link,
+                            text: cited_text,
                         },
                     },
                     similarity,
