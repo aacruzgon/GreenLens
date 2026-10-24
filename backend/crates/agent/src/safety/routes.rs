@@ -74,6 +74,29 @@ impl Default for Calibration {
     }
 }
 
+impl Calibration {
+    /// Jev's calibration, fitted on 2026-10-23 on `jev-1.14.0` with the 41 labelled messages of
+    /// `tests/live_jev.rs`. Jev asks one yes/no question per label, and two of its answers run
+    /// high where the LLM's don't: `off_topic` reached 0.40–0.67 on farm-records questions,
+    /// 0.59 on "Add a task to water bed 2 tomorrow morning." and 0.85 on "I got some of the
+    /// spray in my eyes, help" (above `safety_sensitive`'s 0.69), and `care_question` reached
+    /// 0.70–0.88 on task changes. So `off_topic` is lowered by 0.25 (plainly off-topic messages
+    /// still scored 0.97–0.99), `task_change` raised by 0.1, and `safety_sensitive` raised by
+    /// 0.1 to fail safe (no message outside the safety set scored it above 0.21). The margins
+    /// stay those of [`Calibration::default`]. A new Jev version is fitted again before
+    /// `JEV_MODEL` moves to it.
+    pub fn jev() -> Self {
+        Self {
+            offsets: BTreeMap::from([
+                ("off_topic".to_owned(), -0.25),
+                ("task_change".to_owned(), 0.1),
+                ("safety_sensitive".to_owned(), 0.1),
+            ]),
+            ..Self::default()
+        }
+    }
+}
+
 /// How a message is answered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteDecision {
@@ -378,6 +401,84 @@ mod tests {
                 false
             ),
             RouteDecision::PoisonControl
+        );
+    }
+
+    /// Jev's live scores of 2026-10-23 (`jev-1.14.0`) for the messages its calibration was
+    /// fitted on, at their closest: a task change 0.08 ahead of `care_question`, a farm
+    /// question 0.10 ahead of `off_topic`, and a splash of spray where `off_topic` outscores
+    /// `safety_sensitive`.
+    #[test]
+    fn jevs_calibration_routes_its_close_calls() {
+        /// A message, whether the garden has farm records, Jev's scores, and the decision.
+        type Case<'a> = (&'a str, bool, &'a [(&'a str, f64)], RouteDecision);
+        let jev = Calibration::jev();
+        let cases: [Case<'_>; 5] = [
+            (
+                "Change the plan to water every three days instead of daily.",
+                false,
+                &[
+                    ("task_change", 0.96),
+                    ("care_question", 0.88),
+                    ("off_topic", 0.20),
+                ],
+                RouteDecision::Model(ChatRoute::TaskChange),
+            ),
+            (
+                "Help, the spray got on my skin",
+                false,
+                &[("off_topic", 0.85), ("safety_sensitive", 0.69)],
+                RouteDecision::Model(ChatRoute::SafetySensitive),
+            ),
+            (
+                "When were target rings first reported on bed 3?",
+                true,
+                &[
+                    ("farm_records", 0.77),
+                    ("off_topic", 0.67),
+                    ("safety_sensitive", 0.21),
+                ],
+                RouteDecision::Model(ChatRoute::CareQuestion),
+            ),
+            (
+                "Can I spray neem oil on my tomatoes the day before harvest?",
+                false,
+                &[("care_question", 0.95), ("safety_sensitive", 0.92)],
+                RouteDecision::Model(ChatRoute::SafetySensitive),
+            ),
+            (
+                "What's the bitcoin price?",
+                true,
+                &[
+                    ("off_topic", 0.98),
+                    ("farm_records", 0.02),
+                    ("safety_sensitive", 0.01),
+                    ("task_change", 0.01),
+                ],
+                RouteDecision::OffTopic,
+            ),
+        ];
+        for (text, farm_records, pairs, want) in cases {
+            assert_eq!(
+                decide(text, Some(&scores(pairs)), &jev, farm_records),
+                want,
+                "{text}"
+            );
+        }
+        // Without the offsets the skin splash would hang on the off-topic margin alone.
+        let s = scores(&[("off_topic", 0.85), ("safety_sensitive", 0.60)]);
+        assert_eq!(
+            decide(
+                "Help, the spray got on my skin",
+                Some(&s),
+                &Calibration::default(),
+                false
+            ),
+            RouteDecision::OffTopic
+        );
+        assert_eq!(
+            decide("Help, the spray got on my skin", Some(&s), &jev, false),
+            RouteDecision::Model(ChatRoute::SafetySensitive)
         );
     }
 

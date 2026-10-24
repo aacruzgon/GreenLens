@@ -6,6 +6,7 @@ mod connect;
 
 use std::{path::Path, sync::Arc, time::Duration};
 
+use agent::safety::Calibration;
 use anyhow::Context as _;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -323,6 +324,8 @@ struct Outbound {
     notifier: Arc<dyn Notifier>,
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
+    /// The router's calibration for the classifier wired: Jev's scores and the LLM's differ.
+    calibration: Calibration,
     beliefs: Arc<dyn BeliefStore>,
     connect: Arc<dyn ConnectVendors>,
     farm: FarmSources,
@@ -417,20 +420,27 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         },
     );
     let chat_model: Arc<dyn ChatModel> = Arc::new(agent::model::AnthropicChat::new(llm));
-    let classifier: Arc<dyn TextClassifier> = match &config.providers.jev {
-        Some((base_url, api_key)) => Arc::new(JevClassifier::new(
-            http.clone(),
-            JevConfig {
-                base_url: base_url.clone(),
-                api_key: api_key.clone(),
-                timeout: Duration::from_secs(2),
-            },
-        )),
-        None => Arc::new(agent::model::LlmClassifier::new(
-            Arc::clone(&chat_model),
-            256,
-        )),
-    };
+    let (classifier, calibration): (Arc<dyn TextClassifier>, Calibration) =
+        if let Some(jev) = &config.providers.jev {
+            tracing::info!(model = %jev.model, "text classifier: jev");
+            let jev_config = JevConfig {
+                model: jev.model.clone(),
+                ..JevConfig::new(jev.url.clone(), jev.api_key.clone())
+            };
+            (
+                Arc::new(JevClassifier::new(http.clone(), jev_config)),
+                Calibration::jev(),
+            )
+        } else {
+            tracing::info!("text classifier: the LLM fallback (JEV_API_KEY is not set)");
+            (
+                Arc::new(agent::model::LlmClassifier::new(
+                    Arc::clone(&chat_model),
+                    256,
+                )),
+                Calibration::default(),
+            )
+        };
     let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
         |c| SlackClient::new(http.clone(), c),
         |c| DriveClient::new(http.clone(), c),
@@ -486,6 +496,7 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         )),
         chat_model,
         classifier,
+        calibration,
         beliefs,
         connect,
         farm,
@@ -584,11 +595,12 @@ fn pipeline_api(
     }))
 }
 
-/// The chat agent over the ports, with its chat model, classifier and product catalogue.
+/// The chat agent over the ports, with its chat model, classifier and its calibration, and the
+/// product catalogue.
 fn chat_turns(
     ports: &Ports,
     chat: Arc<dyn ChatModel>,
-    classifier: Arc<dyn TextClassifier>,
+    (classifier, calibration): (Arc<dyn TextClassifier>, Calibration),
     products: Arc<agent::safety::ProductCatalogue>,
     tasks: TaskTracker,
 ) -> Arc<dyn ChatTurns> {
@@ -606,7 +618,10 @@ fn chat_turns(
             clock: Arc::clone(&ports.clock),
             ids: Arc::clone(&ports.ids),
             products,
-            config: agent::AgentConfig::default(),
+            config: agent::AgentConfig {
+                calibration,
+                ..agent::AgentConfig::default()
+            },
         },
         tasks,
     ))
@@ -693,7 +708,7 @@ pub async fn build(
     let chat = chat_turns(
         &ports,
         out.chat_model,
-        out.classifier,
+        (out.classifier, out.calibration),
         products,
         tasks.clone(),
     );

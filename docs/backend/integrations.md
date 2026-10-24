@@ -1,6 +1,6 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.8, 2026-10-20. v0.8: live site data (backend roadmap S2): the fixtures were recorded again on 2026-10-20 and Nominatim's and Zippopotam's answers added; where SoilGrids has no data at the point, `slc::SoilLandscapes` answers from Soil Landscapes of Canada v3.2, read offline from a 0.9 MB file, before any nearby probe (architecture open decision 10, proposed); a GPS garden whose reverse lookup fails is labelled by its time zone ("Toronto time zone") instead of failing with `503`, the label falls back to the county, and Nominatim's `{"error": …}` answer is no place (section 19, items 2 and 4). v0.7.5: Slack's re-read starts at `newest` when that is older than its 7 days, so a sync after a week or more without one skips no message, and the gap doesn't count toward a thread's 30 quiet days (found by EON T-E4.5's Slack half). v0.7.4: Jev's route task sends `FARM_ROUTE_LABELS`, the route labels with `farm_records`, for a garden with farm records (gap G10); the label lists come from `domain::ports`, and Jev keeps only the scores of the labels it sent. v0.7.3: `google_drive::DriveSource` implements the `FarmSource` port (E4.3): the start token taken before a recursive first listing, then `changes.list` read to its last page with only the files under the folder kept, through a cursor that holds the folder tree and the files held, so a folder moved out takes its files and one moved in is listed; 25 files a page; `FolderListing::tree` records each folder's parent, `DriveConfig::era` points the client at a simulator, and `era_sim::fidelity` reads a simulator's fidelity. After its audit: `changes_page` reads one page of `changes.list` and the sync's backlog goes a page at a time; a change with no file id (a shared drive's own) is skipped; a refused change token or an unreadable cursor resyncs with a listing that reports every file in `FarmPage::listed`; `files.get` (`DriveClient::file`) checks the chosen folder first; past 500 files or folders is `too_large`; a file whose read keeps failing is tried once a run, then once a day after 5; a binary `text/plain` file is kept by name. v0.7.2: `tests/era_hosted.rs` runs the two clients against the team's hosted Era company in the nightly `era-hosted` workflow, five metered calls a run, and the simulator command leaves out the strict and hosted tests (section 18). v0.7.1: a Slack thread's cursor keeps `reply_count`, so a deleted reply reads the thread again, and the end of a pass checks older threads for new replies (`conversations.replies`, `limit=1`, round-robin) up to the sync's `probe_limit`, two per connector run; a failed check other than a refused token keeps the page, a deleted parent is forgotten and its record removed, an answer for another message is skipped, and threads past 180 days are forgotten before any check; transport errors drop the request URL. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.8.1, 2026-10-23. v0.8.1: Jev's client speaks TypeSafe's real API (backend roadmap S5): one `POST /v1/systemone` on a pinned model (`JEV_MODEL`, default `jev-1.14.0`) with the text as `state` and a `noul` question per route label, one `noul` for the memory gate (`remember`, with `skip` its complement) and one `choice` for the chunk topic; the request, response, refusals and timeout are ✓ against the live API and wiremock, and the memory labels are now `domain::ports::MEMORY_LABELS` (`remember`, `skip`), the ones `agent`'s gate reads, instead of the stub's own (section 13; open question 8 settled). v0.8: live site data (backend roadmap S2): the fixtures were recorded again on 2026-10-20 and Nominatim's and Zippopotam's answers added; where SoilGrids has no data at the point, `slc::SoilLandscapes` answers from Soil Landscapes of Canada v3.2, read offline from a 0.9 MB file, before any nearby probe (architecture open decision 10, proposed); a GPS garden whose reverse lookup fails is labelled by its time zone ("Toronto time zone") instead of failing with `503`, the label falls back to the county, and Nominatim's `{"error": …}` answer is no place (section 19, items 2 and 4). v0.7.5: Slack's re-read starts at `newest` when that is older than its 7 days, so a sync after a week or more without one skips no message, and the gap doesn't count toward a thread's 30 quiet days (found by EON T-E4.5's Slack half). v0.7.4: Jev's route task sends `FARM_ROUTE_LABELS`, the route labels with `farm_records`, for a garden with farm records (gap G10); the label lists come from `domain::ports`, and Jev keeps only the scores of the labels it sent. v0.7.3: `google_drive::DriveSource` implements the `FarmSource` port (E4.3): the start token taken before a recursive first listing, then `changes.list` read to its last page with only the files under the folder kept, through a cursor that holds the folder tree and the files held, so a folder moved out takes its files and one moved in is listed; 25 files a page; `FolderListing::tree` records each folder's parent, `DriveConfig::era` points the client at a simulator, and `era_sim::fidelity` reads a simulator's fidelity. After its audit: `changes_page` reads one page of `changes.list` and the sync's backlog goes a page at a time; a change with no file id (a shared drive's own) is skipped; a refused change token or an unreadable cursor resyncs with a listing that reports every file in `FarmPage::listed`; `files.get` (`DriveClient::file`) checks the chosen folder first; past 500 files or folders is `too_large`; a file whose read keeps failing is tried once a run, then once a day after 5; a binary `text/plain` file is kept by name. v0.7.2: `tests/era_hosted.rs` runs the two clients against the team's hosted Era company in the nightly `era-hosted` workflow, five metered calls a run, and the simulator command leaves out the strict and hosted tests (section 18). v0.7.1: a Slack thread's cursor keeps `reply_count`, so a deleted reply reads the thread again, and the end of a pass checks older threads for new replies (`conversations.replies`, `limit=1`, round-robin) up to the sync's `probe_limit`, two per connector run; a failed check other than a refused token keeps the page, a deleted parent is forgotten and its record removed, an answer for another message is skipped, and threads past 180 days are forgotten before any check; transport errors drop the request URL. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo nextest run -p integrations` all pass: 197 tests, against `wiremock` servers and the live responses recorded on 2026-10-15 and again on 2026-10-20.
 
@@ -179,7 +179,7 @@ crates/integrations/
    │  └─ tests.rs              wiremock tests
    ├─ era_sim.rs               feature `era-sim`, test support only: Tenant, Faults, fixture()
    ├─ expo_push.rs             ExpoPush: Notifier (push, check_receipts)
-   └─ jev.rs                   JevClassifier: TextClassifier (stub)
+   └─ jev.rs                   JevClassifier: TextClassifier (TypeSafe System One)
 ```
 
 `tests/` holds the Era tests (`era_fixture.rs`, `era_slack.rs`, `era_drive.rs`, `era_strict.rs`, and `era_hosted.rs` for the hosted company; section 18). `era_sim` is compiled only with the `era-sim` feature, which the crate enables for its own tests, so no release build contains it.
@@ -2672,17 +2672,26 @@ A push is a hint, never the only copy. A batch that fails is logged and dropped,
 
 ## 13. Jev
 
-Jev is a zero-shot text classifier in early access ([architecture 10](../architecture/README.md#10-models-and-gpu-placement)). Its API isn't public, so the request and response here are placeholders (*unverified*). `api` wires `JevClassifier` only when `JEV_*` is configured. Otherwise it wires `agent::model::LlmClassifier` (the cheapest model with structured output), which is the real fallback. Nothing on the critical path depends on Jev.
+Jev is TypeSafe's System One model, a zero-shot text classifier ([architecture 10](../architecture/README.md#10-models-and-gpu-placement)). `api` wires `JevClassifier` when `JEV_API_KEY` and `JEV_URL` are set, with `Calibration::jev()` for the router ([backend agent 7](agent.md#7-router-and-safety-gate)). Otherwise it wires `agent::model::LlmClassifier` (the cheapest model with structured output) and the default calibration. Nothing on the critical path depends on Jev.
 
 ```rust
+/// The Jev version the router's calibration was fitted on (2026-10-23).
+pub const DEFAULT_MODEL: &str = "jev-1.14.0";
+
+/// The default deadline of one call, connect to last byte: within the router's
+/// `classifier_timeout` (3 s), so a slow call fails here and is logged as Jev's.
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Settings.
 #[derive(Debug, Clone)]
 pub struct JevConfig {
-    /// The early-access endpoint.
+    /// `JEV_URL`, such as `https://api.typesafe.ai`.
     pub base_url: String,
-    /// The API key.
+    /// `JEV_API_KEY`, sent as a bearer token.
     pub api_key: SecretString,
-    /// Deadline: the router is on every chat turn's critical path, so 2 s.
+    /// `JEV_MODEL`: a versioned model id, [`DEFAULT_MODEL`] unless set.
+    pub model: String,
+    /// Deadline of one call: [`DEFAULT_TIMEOUT`].
     pub timeout: Duration,
 }
 
@@ -2694,9 +2703,49 @@ pub struct JevClassifier {
 }
 ```
 
-`ClassifierTask::Route { farm_records }` is sent as task `route` with `ROUTE_LABELS`, or with `FARM_ROUTE_LABELS` (the same and `farm_records`) when the garden has farm records, as the LLM fallback asks (gap G10; [backend agent 7](agent.md#7-router-and-safety-gate)). Both lists are `domain::ports`' own, re-exported here. A score for a label that wasn't sent is dropped, so an unasked `farm_records` can't reach the router.
+**The call** ✓ (TypeSafe's [API reference](https://docs.typesafe.ai/api/system-one.md) and [models page](https://docs.typesafe.ai/models.md), read on 2026-10-23, and run against `https://api.typesafe.ai` the same day). One `POST {JEV_URL}/v1/systemone` per classification, with `Authorization: Bearer <JEV_API_KEY>` and a JSON body:
 
-Any transport failure or error status is `ModelError::Unavailable { model: "jev" }`. The router then falls back as `agent` decides.
+```json
+{
+  "model": "jev-1.14.0",
+  "state": "Why are my tomato leaves turning yellow?",
+  "questions": {
+    "diagnosis_question": {"type": "noul", "instructions": "Does this gardener's message ask what is wrong with a plant: …?"},
+    "care_question": {"type": "noul", "instructions": "…"},
+    "task_change": {"type": "noul", "instructions": "…"},
+    "safety_sensitive": {"type": "noul", "instructions": "…"},
+    "off_topic": {"type": "noul", "instructions": "…"}
+  }
+}
+```
+
+The answer names the version that answered and the usage; a `noul` is the probability of yes, a `choice` has a probability per option:
+
+```json
+{
+  "model": "jev-1.14.0",
+  "answers": {
+    "diagnosis_question": {"type": "noul", "noul": 0.97},
+    "care_question": {"type": "noul", "noul": 0.6}
+  },
+  "usage": {"input_tokens": 436, "output_tokens": 93}
+}
+```
+
+| Task | Questions | Scores |
+|---|---|---|
+| `Route { farm_records: false }` | one `noul` per label of `ROUTE_LABELS` | each label's `noul` |
+| `Route { farm_records: true }` | the same with `farm_records`, and `safety_sensitive` and `off_topic` worded for the farm's records (gap G10) | each label's `noul` |
+| `MemoryWorthy` | one `noul`, `remember` | `remember` = the `noul`, `skip` = 1 − it (`MEMORY_LABELS`) |
+| `ChunkTopic` | one `choice`, `topic`, over `TOPIC_LABELS` with a description each | each topic's probability |
+
+The route asks a yes/no question per label rather than one `choice`, so the labels are judged independently, as the LLM classifier scores them: "How much Kocide went into the backpack per litre for the bed 3 spray on July 10?" scored `safety_sensitive` 0.98 and `farm_records` 0.65, where a `choice` split 0.53 and 0.47 between them, and `FARM_SAFETY_FLOOR` (0.5) keeps its meaning. The instructions follow the LLM prompt's label descriptions. Only the labels asked are scored: an answer for another name, of another type, or missing scores 0, and a probability is clamped to 0–1. No answer to any question asked is `InvalidOutput`. All four label lists are `domain::ports`' own, shared with `agent`.
+
+**Model.** `JEV_MODEL` (default `DEFAULT_MODEL`, `jev-1.14.0`) is a versioned id; `api` refuses `jev-latest` and `jev-preview`, aliases that move with each release, because the router's calibration was fitted on one version. Each answer's version and input tokens are logged at debug level (`jev answered`).
+
+**Measured** on 2026-10-23 with `jev-1.14.0` (`tests/live_jev.rs` in `agent`, 82 route calls over two runs and 16 memory-gate calls): median 94–104 ms a call, the slowest 394 ms (the first, on a new connection); 436 input tokens for a route call without farm records, 508 with them, 346 for the memory gate, so about US$0.00002 a route call at US$0.042 per million input tokens (output is free).
+
+**Failures.** A transport failure, the deadline (`DEFAULT_TIMEOUT`, 2 s from connect to the last byte, within the router's 3 s `classifier_timeout`) or a refusal status is `ModelError::Unavailable { model: "jev" }`; the router then routes as a care question and the memory gate skips the turn, as `agent` decides. The error says the status and, on `429` and `529`, the `retry-after` seconds, never the body (a `422` echoes the request, with the user's text). There is no retry: a chat turn can't wait out a rate limit. A body that isn't a `SystemOneResponse` is `InvalidOutput`. All of these are covered by wiremock tests ✓.
 
 ---
 
@@ -4053,7 +4102,7 @@ Paused time (`start_paused`) is used only where no real I/O runs: the retry and 
 5. **Open-Meteo licence.** The free API is non-commercial. Settle it before any public launch ([architecture 15](../architecture/README.md#15-open-decisions)).
 6. **The hosted LLM's box format and the stripped keywords.** Settled by a live run on 2026-10-23 (task P9, [report](../../ml/training/eval/reports/p9-fallback-2026-10-23.md); [contracts 12](../architecture/contracts.md#12-open-questions), item 26): the model answers in pixels of the image as sent (`abs_px_prepared`), and every call with the stripped schemas and images was accepted.
 7. **Late `user.created` after `user.deleted`.** Settled in `api`: `user.created` changes nothing, and the account tombstone refuses a deleted account's tokens (section 11).
-8. **Jev's API** is a placeholder until early access arrives.
+8. **Jev's API.** Settled on 2026-10-23: the client follows TypeSafe's published System One API and ran against it (section 13).
 
 ---
 
@@ -4080,6 +4129,7 @@ Paused time (`start_paused`) is used only where no real I/O runs: the retry and 
 - Clerk: [session tokens](https://clerk.com/docs/guides/sessions/session-tokens) · [manual JWT verification](https://clerk.com/docs/guides/sessions/manual-jwt-verification) · [webhooks](https://clerk.com/docs/guides/development/webhooks/overview) · [Backend API](https://clerk.com/docs/reference/backend-api) · [system limits](https://clerk.com/docs/guides/how-clerk-works/system-limits)
 - Svix: [manual verification](https://docs.svix.com/receiving/verifying-payloads/how-manual)
 - Expo: [sending notifications](https://docs.expo.dev/push-notifications/sending-notifications/)
+- TypeSafe (Jev), read on 2026-10-23: [System One API](https://docs.typesafe.ai/api/system-one.md) · [models](https://docs.typesafe.ai/models.md) · [noul](https://docs.typesafe.ai/primitives/noul.md) · [errors and rate limits](https://docs.typesafe.ai/api/errors.md)
 
 **Project documents and skills**
 - [Data contracts](../architecture/contracts.md) · [architecture](../architecture/README.md) · [frontend](../frontend/README.md) · [backend architecture](README.md) · [domain](domain.md) · [domain-types](domain-types.md)
