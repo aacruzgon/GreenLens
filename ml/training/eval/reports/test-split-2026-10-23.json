@@ -1,0 +1,3865 @@
+{
+ "date": "2026-10-23",
+ "command": "python -m ml.training.eval.score_test_split --plant ml/training/eval/reports/plant-check-test-cases-2026-10-23.json --vlm ml/training/runs/vlm-bench/qwen35-awq-test --faces ml/training/runs/faces/raw/test-original-0.3.jsonl --out test-split-2026-10-23",
+ "split": "test",
+ "cases": 58,
+ "shipped": {
+  "species_temperature": 1.3747,
+  "matrix": {
+   "version": "edb29fe878952e7b",
+   "file": "bioclip_labels/bioclip_labels_edb29fe878952e7b.json"
+  },
+  "disease_head": {
+   "version": "disease-head-v3c-2026-10-20",
+   "file": "disease_head/disease-head-v3c-2026-10-20.json"
+  },
+  "plant_pair": {
+   "set": "plant-probe-v2-2026-10-23",
+   "tau_leaf": 0.94,
+   "tau_plant": 0.31
+  }
+ },
+ "missing": {},
+ "inputs": {
+  "manifest": {
+   "file": "ml/training/eval/manifest.jsonl",
+   "sha256": "e48d59e7852da853"
+  },
+  "models_manifest": {
+   "file": "ml/models/manifest.toml",
+   "sha256": "a0fc89cb94d1dacd"
+  },
+  "plant": {
+   "file": "ml/training/eval/reports/plant-check-test-cases-2026-10-23.json",
+   "sha256": "450e3683363ddf28"
+  },
+  "disease_head": {
+   "file": "ml/models/files/disease_head/disease-head-v3c-2026-10-20.json",
+   "sha256": "0b035a88f44c6988"
+  },
+  "vlm_out": {
+   "file": "ml/training/runs/vlm-bench/qwen35-awq-test/px1003520-c2/out.jsonl",
+   "sha256": "85301d064e1bab01"
+  },
+  "faces": {
+   "file": "ml/training/runs/faces/raw/test-original-0.3.jsonl",
+   "sha256": "b46c38688b00b160"
+  }
+ },
+ "vlm_meta": {
+  "label": "qwen35-awq-test",
+  "max_pixels": 1003520,
+  "concurrency": 2,
+  "seconds": 140.2,
+  "peak_gpu_mib": 12783,
+  "exit": 0,
+  "cases_file": {
+   "file": "ml/training/runs/vlm-bench/qwen35-awq-test/px1003520-c2/cases.jsonl",
+   "sha256": "0f5f939fe0bfb1f8"
+  },
+  "out": {
+   "file": "ml/training/runs/vlm-bench/qwen35-awq-test/px1003520-c2/out.jsonl",
+   "sha256": "85301d064e1bab01"
+  },
+  "model": "cyankiwi/Qwen3.5-9B-AWQ-4bit"
+ },
+ "measured": {
+  "plant_passes": {
+   "corn-maize-bd-2026-common-rust-img-234": true,
+   "corn-maize-bd-2026-common-rust-img-928": true,
+   "corn-maize-bd-2026-gray-leaf-spot-img-487": true,
+   "corn-maize-bd-2026-gray-leaf-spot-img-498": true,
+   "corn-maize-bd-2026-gray-leaf-spot-img-500": true,
+   "corn-maize-bd-2026-corn-leaf-blight-img-977": true,
+   "corn-maize-bd-2026-corn-leaf-blight-img-680": true,
+   "corn-maize-bd-2026-healthy-leaf-img-918": true,
+   "corn-maize-bd-2026-healthy-leaf-img-35": true,
+   "corn-maize-bd-2026-healthy-leaf-img-41": true,
+   "tomato-tomato-bd-2025-early-blight-early-blight-27": true,
+   "tomato-tomato-bd-2025-early-blight-early-blight-465": true,
+   "tomato-tomato-bd-2025-late-blight-late-blight-5": true,
+   "tomato-tomato-bd-2025-late-blight-late-blight-41": true,
+   "tomato-tomato-bd-2025-late-blight-late-blight-94": true,
+   "tomato-tomato-bd-2025-late-blight-late-blight-80": true,
+   "tomato-tomato-bd-2025-late-blight-late-blight-7": true,
+   "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-1": true,
+   "tomato-tomato-bd-2025-healthy-healthy-150": true,
+   "tomato-tomato-bd-iphone-2025-early-blight-img-4257-02d": true,
+   "tomato-tomato-bd-iphone-2025-early-blight-img-2624": true,
+   "tomato-tomato-bd-iphone-2025-late-blight-img-5537-02d": true,
+   "tomato-tomato-bd-iphone-2025-leaf-mold-img-4295-02d": true,
+   "tomato-tomato-bd-iphone-2025-leaf-mold-img-4233-02d": true,
+   "tomato-tomato-bd-iphone-2025-bacterial-spot-img-4497-02d": true,
+   "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3679-02d": true,
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3979-02d": true,
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3876-02d": true,
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3841-02d": true,
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1738": true,
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1052": true,
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1741": true,
+   "tomato-inat-389981240": true,
+   "tomato-inat-388410969": true,
+   "apple-inat-408734239": true,
+   "apple-inat-402203493": true,
+   "apple-inat-402180921": true,
+   "apple-inat-401743982": true,
+   "apple-inat-401742038": true,
+   "apple-inat-401735945": true,
+   "apple-inat-401735866": true,
+   "apple-inat-401728510": true,
+   "grape-inat-401327155": true,
+   "squash-inat-407881529": true,
+   "squash-inat-407338990": true,
+   "corn-maize-bd-2026-common-rust-img-202": true,
+   "corn-maize-bd-2026-healthy-leaf-img-43": true,
+   "tomato-tomato-bd-2025-early-blight-early-blight-304": true,
+   "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-47": true,
+   "tomato-tomato-bd-2025-healthy-healthy-231": true,
+   "tomato-tomato-bd-2025-healthy-healthy-296": true,
+   "tomato-tomato-bd-2025-healthy-healthy-191": true,
+   "apple-inat-381828732": true,
+   "grape-inat-391923141": true,
+   "grape-inat-374488455": true,
+   "grape-inat-372783105": true,
+   "grape-inat-371068837": true,
+   "grape-inat-367580279": true
+  },
+  "species_cases": {
+   "apple-inat-381828732": {
+    "truth": "apple",
+    "top3": [
+     "apple",
+     "peach",
+     "cherry"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "apple-inat-401728510": {
+    "truth": "apple",
+    "top3": [
+     "apple",
+     "cherry",
+     "peach"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "apple-inat-401735866": {
+    "truth": "apple",
+    "top3": [
+     "apple",
+     "rose",
+     "cherry"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "apple-inat-401735945": {
+    "truth": "apple",
+    "top3": [
+     "apple",
+     "cherry",
+     "peach"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "apple-inat-401742038": {
+    "truth": "apple",
+    "top3": [
+     "apple",
+     "cherry",
+     "peach"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "apple-inat-401743982": {
+    "truth": "apple",
+    "top3": [
+     "apple",
+     "cherry",
+     "peach"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "apple-inat-402180921": {
+    "truth": "apple",
+    "top3": [
+     "apple",
+     "peach",
+     "cherry"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "apple-inat-402203493": {
+    "truth": "apple",
+    "top3": [
+     "cherry",
+     "apple",
+     "peach"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "apple-inat-408734239": {
+    "truth": "apple",
+    "top3": [
+     "apple",
+     "peach",
+     "cherry"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-common-rust-img-202": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "hosta",
+     "soybean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-common-rust-img-234": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "hosta",
+     "soybean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-common-rust-img-928": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "soybean",
+     "onion"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-corn-leaf-blight-img-680": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "soybean",
+     "onion"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-corn-leaf-blight-img-977": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "hosta",
+     "peach"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-gray-leaf-spot-img-487": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "soybean",
+     "squash"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-gray-leaf-spot-img-498": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "hosta",
+     "soybean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-gray-leaf-spot-img-500": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "soybean",
+     "bean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-35": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "hosta",
+     "lettuce"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-41": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "hosta",
+     "soybean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-43": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "lettuce",
+     "soybean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-918": {
+    "truth": "corn",
+    "top3": [
+     "corn",
+     "lettuce",
+     "hosta"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "grape-inat-367580279": {
+    "truth": "grape",
+    "top3": [
+     "grape",
+     "cucumber",
+     "bean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "grape-inat-371068837": {
+    "truth": "grape",
+    "top3": [
+     "grape",
+     "cucumber",
+     "squash"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "grape-inat-372783105": {
+    "truth": "grape",
+    "top3": [
+     "grape",
+     "cucumber",
+     "bean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "grape-inat-374488455": {
+    "truth": "grape",
+    "top3": [
+     "grape",
+     "onion",
+     "bean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "grape-inat-391923141": {
+    "truth": "grape",
+    "top3": [
+     "grape",
+     "bean",
+     "blueberry"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "grape-inat-401327155": {
+    "truth": "grape",
+    "top3": [
+     "grape",
+     "cucumber",
+     "peach"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1052": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "pepper"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1738": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "pepper"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1741": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "pepper"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-inat-388410969": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "pepper"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-inat-389981240": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "pepper",
+     "potato"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-47": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "soybean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-early-blight-early-blight-27": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "soybean",
+     "potato"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-early-blight-early-blight-304": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "pepper"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-early-blight-early-blight-465": {
+    "truth": "tomato",
+    "top3": [
+     "grape",
+     "bean",
+     "tomato"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-150": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "pepper"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-191": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "basil"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-231": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "pepper"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-296": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "bean"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-41": {
+    "truth": "tomato",
+    "top3": [
+     "potato",
+     "tomato",
+     "soybean"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-5": {
+    "truth": "tomato",
+    "top3": [
+     "potato",
+     "tomato",
+     "pepper"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-7": {
+    "truth": "tomato",
+    "top3": [
+     "pepper",
+     "potato",
+     "tomato"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-80": {
+    "truth": "tomato",
+    "top3": [
+     "potato",
+     "blueberry",
+     "soybean"
+    ],
+    "top1_right": false,
+    "top3_right": false
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-94": {
+    "truth": "tomato",
+    "top3": [
+     "potato",
+     "tomato",
+     "pepper"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-1": {
+    "truth": "tomato",
+    "top3": [
+     "soybean",
+     "tomato",
+     "bean"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3679-02d": {
+    "truth": "tomato",
+    "top3": [
+     "pepper",
+     "tomato",
+     "bean"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-iphone-2025-bacterial-spot-img-4497-02d": {
+    "truth": "tomato",
+    "top3": [
+     "pepper",
+     "potato",
+     "tomato"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-iphone-2025-early-blight-img-2624": {
+    "truth": "tomato",
+    "top3": [
+     "hosta",
+     "lettuce",
+     "potato"
+    ],
+    "top1_right": false,
+    "top3_right": false
+   },
+   "tomato-tomato-bd-iphone-2025-early-blight-img-4257-02d": {
+    "truth": "tomato",
+    "top3": [
+     "potato",
+     "squash",
+     "tomato"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-iphone-2025-late-blight-img-5537-02d": {
+    "truth": "tomato",
+    "top3": [
+     "soybean",
+     "lettuce",
+     "pepper"
+    ],
+    "top1_right": false,
+    "top3_right": false
+   },
+   "tomato-tomato-bd-iphone-2025-leaf-mold-img-4233-02d": {
+    "truth": "tomato",
+    "top3": [
+     "potato",
+     "tomato",
+     "pepper"
+    ],
+    "top1_right": false,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-iphone-2025-leaf-mold-img-4295-02d": {
+    "truth": "tomato",
+    "top3": [
+     "potato",
+     "bean",
+     "soybean"
+    ],
+    "top1_right": false,
+    "top3_right": false
+   },
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3841-02d": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "pepper",
+     "potato"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3876-02d": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "pepper"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   },
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3979-02d": {
+    "truth": "tomato",
+    "top3": [
+     "tomato",
+     "potato",
+     "pepper"
+    ],
+    "top1_right": true,
+    "top3_right": true
+   }
+  },
+  "bioclip_stored": {
+   "corn-maize-bd-2026-common-rust-img-234": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.9958
+   },
+   "corn-maize-bd-2026-common-rust-img-928": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.9331
+   },
+   "corn-maize-bd-2026-gray-leaf-spot-img-487": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.7628
+   },
+   "corn-maize-bd-2026-gray-leaf-spot-img-498": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.4807
+   },
+   "corn-maize-bd-2026-gray-leaf-spot-img-500": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.7723
+   },
+   "corn-maize-bd-2026-corn-leaf-blight-img-977": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.6975
+   },
+   "corn-maize-bd-2026-corn-leaf-blight-img-680": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.9817
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-918": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.9965
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-35": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.93
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-41": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.6821
+   },
+   "tomato-tomato-bd-2025-early-blight-early-blight-27": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.8633
+   },
+   "tomato-tomato-bd-2025-early-blight-early-blight-465": {
+    "truth": "tomato",
+    "top": "grape",
+    "confidence": 0.4297
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-5": {
+    "truth": "tomato",
+    "top": "potato",
+    "confidence": 0.5183
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-41": {
+    "truth": "tomato",
+    "top": "potato",
+    "confidence": 0.3903
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-94": {
+    "truth": "tomato",
+    "top": "potato",
+    "confidence": 0.7762
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-80": {
+    "truth": "tomato",
+    "top": "potato",
+    "confidence": 0.4199
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-7": {
+    "truth": "tomato",
+    "top": "pepper",
+    "confidence": 0.3824
+   },
+   "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-1": {
+    "truth": "tomato",
+    "top": "soybean",
+    "confidence": 0.2436
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-150": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.9588
+   },
+   "tomato-tomato-bd-iphone-2025-early-blight-img-4257-02d": {
+    "truth": "tomato",
+    "top": "potato",
+    "confidence": 0.2358
+   },
+   "tomato-tomato-bd-iphone-2025-early-blight-img-2624": {
+    "truth": "tomato",
+    "top": "hosta",
+    "confidence": 0.3877
+   },
+   "tomato-tomato-bd-iphone-2025-late-blight-img-5537-02d": {
+    "truth": "tomato",
+    "top": "soybean",
+    "confidence": 0.4452
+   },
+   "tomato-tomato-bd-iphone-2025-leaf-mold-img-4295-02d": {
+    "truth": "tomato",
+    "top": "potato",
+    "confidence": 0.3452
+   },
+   "tomato-tomato-bd-iphone-2025-leaf-mold-img-4233-02d": {
+    "truth": "tomato",
+    "top": "potato",
+    "confidence": 0.6751
+   },
+   "tomato-tomato-bd-iphone-2025-bacterial-spot-img-4497-02d": {
+    "truth": "tomato",
+    "top": "pepper",
+    "confidence": 0.2967
+   },
+   "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3679-02d": {
+    "truth": "tomato",
+    "top": "pepper",
+    "confidence": 0.6987
+   },
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3979-02d": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.838
+   },
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3876-02d": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.669
+   },
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3841-02d": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.4987
+   },
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1738": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.4321
+   },
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1052": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.6092
+   },
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1741": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.5089
+   },
+   "tomato-inat-389981240": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.7554
+   },
+   "tomato-inat-388410969": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.9448
+   },
+   "apple-inat-408734239": {
+    "truth": "apple",
+    "top": "apple",
+    "confidence": 0.968
+   },
+   "apple-inat-402203493": {
+    "truth": "apple",
+    "top": "cherry",
+    "confidence": 0.4413
+   },
+   "apple-inat-402180921": {
+    "truth": "apple",
+    "top": "apple",
+    "confidence": 0.9808
+   },
+   "apple-inat-401743982": {
+    "truth": "apple",
+    "top": "apple",
+    "confidence": 0.9566
+   },
+   "apple-inat-401742038": {
+    "truth": "apple",
+    "top": "apple",
+    "confidence": 0.97
+   },
+   "apple-inat-401735945": {
+    "truth": "apple",
+    "top": "apple",
+    "confidence": 0.9578
+   },
+   "apple-inat-401735866": {
+    "truth": "apple",
+    "top": "apple",
+    "confidence": 0.9974
+   },
+   "apple-inat-401728510": {
+    "truth": "apple",
+    "top": "apple",
+    "confidence": 0.9884
+   },
+   "grape-inat-401327155": {
+    "truth": "grape",
+    "top": "grape",
+    "confidence": 0.999
+   },
+   "squash-inat-407881529": {
+    "truth": "squash",
+    "top": "bean",
+    "confidence": 0.4305
+   },
+   "squash-inat-407338990": {
+    "truth": "squash",
+    "top": "squash",
+    "confidence": 0.4266
+   },
+   "corn-maize-bd-2026-common-rust-img-202": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.6615
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-43": {
+    "truth": "corn",
+    "top": "corn",
+    "confidence": 0.9424
+   },
+   "tomato-tomato-bd-2025-early-blight-early-blight-304": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.5421
+   },
+   "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-47": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.9455
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-231": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.9378
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-296": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.4493
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-191": {
+    "truth": "tomato",
+    "top": "tomato",
+    "confidence": 0.7581
+   },
+   "apple-inat-381828732": {
+    "truth": "apple",
+    "top": "apple",
+    "confidence": 0.8823
+   },
+   "grape-inat-391923141": {
+    "truth": "grape",
+    "top": "grape",
+    "confidence": 0.9986
+   },
+   "grape-inat-374488455": {
+    "truth": "grape",
+    "top": "grape",
+    "confidence": 0.5506
+   },
+   "grape-inat-372783105": {
+    "truth": "grape",
+    "top": "grape",
+    "confidence": 0.9852
+   },
+   "grape-inat-371068837": {
+    "truth": "grape",
+    "top": "grape",
+    "confidence": 0.9954
+   },
+   "grape-inat-367580279": {
+    "truth": "grape",
+    "top": "grape",
+    "confidence": 0.9995
+   }
+  },
+  "upload_photos": {
+   "corn-maize-bd-2026-common-rust-img-234#0": {
+    "case": "corn-maize-bd-2026-common-rust-img-234",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "corn-maize-bd-2026-common-rust-img-928#0": {
+    "case": "corn-maize-bd-2026-common-rust-img-928",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "corn-maize-bd-2026-gray-leaf-spot-img-487#0": {
+    "case": "corn-maize-bd-2026-gray-leaf-spot-img-487",
+    "rejected": null,
+    "face_boxes": 1
+   },
+   "corn-maize-bd-2026-gray-leaf-spot-img-498#0": {
+    "case": "corn-maize-bd-2026-gray-leaf-spot-img-498",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "corn-maize-bd-2026-gray-leaf-spot-img-500#0": {
+    "case": "corn-maize-bd-2026-gray-leaf-spot-img-500",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "corn-maize-bd-2026-corn-leaf-blight-img-977#0": {
+    "case": "corn-maize-bd-2026-corn-leaf-blight-img-977",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "corn-maize-bd-2026-corn-leaf-blight-img-680#0": {
+    "case": "corn-maize-bd-2026-corn-leaf-blight-img-680",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-918#0": {
+    "case": "corn-maize-bd-2026-healthy-leaf-img-918",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-35#0": {
+    "case": "corn-maize-bd-2026-healthy-leaf-img-35",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-41#0": {
+    "case": "corn-maize-bd-2026-healthy-leaf-img-41",
+    "rejected": null,
+    "face_boxes": 2
+   },
+   "tomato-tomato-bd-2025-early-blight-early-blight-27#0": {
+    "case": "tomato-tomato-bd-2025-early-blight-early-blight-27",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-early-blight-early-blight-465#0": {
+    "case": "tomato-tomato-bd-2025-early-blight-early-blight-465",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-5#0": {
+    "case": "tomato-tomato-bd-2025-late-blight-late-blight-5",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-41#0": {
+    "case": "tomato-tomato-bd-2025-late-blight-late-blight-41",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-94#0": {
+    "case": "tomato-tomato-bd-2025-late-blight-late-blight-94",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-80#0": {
+    "case": "tomato-tomato-bd-2025-late-blight-late-blight-80",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-late-blight-late-blight-7#0": {
+    "case": "tomato-tomato-bd-2025-late-blight-late-blight-7",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-1#0": {
+    "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-1",
+    "rejected": "TooBlurry",
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-150#0": {
+    "case": "tomato-tomato-bd-2025-healthy-healthy-150",
+    "rejected": "TooBright",
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-iphone-2025-early-blight-img-4257-02d#0": {
+    "case": "tomato-tomato-bd-iphone-2025-early-blight-img-4257-02d",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-iphone-2025-early-blight-img-2624#0": {
+    "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2624",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-iphone-2025-late-blight-img-5537-02d#0": {
+    "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5537-02d",
+    "rejected": null,
+    "face_boxes": 4
+   },
+   "tomato-tomato-bd-iphone-2025-leaf-mold-img-4295-02d#0": {
+    "case": "tomato-tomato-bd-iphone-2025-leaf-mold-img-4295-02d",
+    "rejected": null,
+    "face_boxes": 1
+   },
+   "tomato-tomato-bd-iphone-2025-leaf-mold-img-4233-02d#0": {
+    "case": "tomato-tomato-bd-iphone-2025-leaf-mold-img-4233-02d",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-iphone-2025-bacterial-spot-img-4497-02d#0": {
+    "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-4497-02d",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3679-02d#0": {
+    "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3679-02d",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3979-02d#0": {
+    "case": "tomato-tomato-bd-iphone-2025-spider-mites-img-3979-02d",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3876-02d#0": {
+    "case": "tomato-tomato-bd-iphone-2025-spider-mites-img-3876-02d",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-iphone-2025-spider-mites-img-3841-02d#0": {
+    "case": "tomato-tomato-bd-iphone-2025-spider-mites-img-3841-02d",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1738#0": {
+    "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1738",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1052#0": {
+    "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1052",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1741#0": {
+    "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1741",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-inat-389981240#0": {
+    "case": "tomato-inat-389981240",
+    "rejected": null,
+    "face_boxes": 27
+   },
+   "tomato-inat-389981240#1": {
+    "case": "tomato-inat-389981240",
+    "rejected": null,
+    "face_boxes": 10
+   },
+   "tomato-inat-389981240#2": {
+    "case": "tomato-inat-389981240",
+    "rejected": null,
+    "face_boxes": 11
+   },
+   "tomato-inat-388410969#0": {
+    "case": "tomato-inat-388410969",
+    "rejected": null,
+    "face_boxes": 12
+   },
+   "tomato-inat-388410969#1": {
+    "case": "tomato-inat-388410969",
+    "rejected": null,
+    "face_boxes": 8
+   },
+   "apple-inat-408734239#0": {
+    "case": "apple-inat-408734239",
+    "rejected": null,
+    "face_boxes": 6
+   },
+   "apple-inat-408734239#1": {
+    "case": "apple-inat-408734239",
+    "rejected": null,
+    "face_boxes": 5
+   },
+   "apple-inat-402203493#0": {
+    "case": "apple-inat-402203493",
+    "rejected": null,
+    "face_boxes": 10
+   },
+   "apple-inat-402203493#1": {
+    "case": "apple-inat-402203493",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "apple-inat-402180921#0": {
+    "case": "apple-inat-402180921",
+    "rejected": null,
+    "face_boxes": 2
+   },
+   "apple-inat-402180921#1": {
+    "case": "apple-inat-402180921",
+    "rejected": null,
+    "face_boxes": 1
+   },
+   "apple-inat-402180921#2": {
+    "case": "apple-inat-402180921",
+    "rejected": null,
+    "face_boxes": 1
+   },
+   "apple-inat-401743982#0": {
+    "case": "apple-inat-401743982",
+    "rejected": null,
+    "face_boxes": 9
+   },
+   "apple-inat-401742038#0": {
+    "case": "apple-inat-401742038",
+    "rejected": null,
+    "face_boxes": 22
+   },
+   "apple-inat-401735945#0": {
+    "case": "apple-inat-401735945",
+    "rejected": null,
+    "face_boxes": 5
+   },
+   "apple-inat-401735866#0": {
+    "case": "apple-inat-401735866",
+    "rejected": null,
+    "face_boxes": 2
+   },
+   "apple-inat-401728510#0": {
+    "case": "apple-inat-401728510",
+    "rejected": null,
+    "face_boxes": 8
+   },
+   "grape-inat-401327155#0": {
+    "case": "grape-inat-401327155",
+    "rejected": null,
+    "face_boxes": 3
+   },
+   "squash-inat-407881529#0": {
+    "case": "squash-inat-407881529",
+    "rejected": null,
+    "face_boxes": 3
+   },
+   "squash-inat-407881529#1": {
+    "case": "squash-inat-407881529",
+    "rejected": null,
+    "face_boxes": 2
+   },
+   "squash-inat-407338990#0": {
+    "case": "squash-inat-407338990",
+    "rejected": null,
+    "face_boxes": 1
+   },
+   "corn-maize-bd-2026-common-rust-img-202#0": {
+    "case": "corn-maize-bd-2026-common-rust-img-202",
+    "rejected": null,
+    "face_boxes": 2
+   },
+   "corn-maize-bd-2026-healthy-leaf-img-43#0": {
+    "case": "corn-maize-bd-2026-healthy-leaf-img-43",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-early-blight-early-blight-304#0": {
+    "case": "tomato-tomato-bd-2025-early-blight-early-blight-304",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-47#0": {
+    "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-47",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-231#0": {
+    "case": "tomato-tomato-bd-2025-healthy-healthy-231",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-296#0": {
+    "case": "tomato-tomato-bd-2025-healthy-healthy-296",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "tomato-tomato-bd-2025-healthy-healthy-191#0": {
+    "case": "tomato-tomato-bd-2025-healthy-healthy-191",
+    "rejected": null,
+    "face_boxes": 0
+   },
+   "apple-inat-381828732#0": {
+    "case": "apple-inat-381828732",
+    "rejected": null,
+    "face_boxes": 3
+   },
+   "apple-inat-381828732#1": {
+    "case": "apple-inat-381828732",
+    "rejected": "TooBlurry",
+    "face_boxes": 8
+   },
+   "grape-inat-391923141#0": {
+    "case": "grape-inat-391923141",
+    "rejected": null,
+    "face_boxes": 13
+   },
+   "grape-inat-391923141#1": {
+    "case": "grape-inat-391923141",
+    "rejected": null,
+    "face_boxes": 9
+   },
+   "grape-inat-391923141#2": {
+    "case": "grape-inat-391923141",
+    "rejected": null,
+    "face_boxes": 5
+   },
+   "grape-inat-374488455#0": {
+    "case": "grape-inat-374488455",
+    "rejected": null,
+    "face_boxes": 3
+   },
+   "grape-inat-374488455#1": {
+    "case": "grape-inat-374488455",
+    "rejected": null,
+    "face_boxes": 5
+   },
+   "grape-inat-372783105#0": {
+    "case": "grape-inat-372783105",
+    "rejected": null,
+    "face_boxes": 16
+   },
+   "grape-inat-372783105#1": {
+    "case": "grape-inat-372783105",
+    "rejected": null,
+    "face_boxes": 1
+   },
+   "grape-inat-372783105#2": {
+    "case": "grape-inat-372783105",
+    "rejected": null,
+    "face_boxes": 8
+   },
+   "grape-inat-371068837#0": {
+    "case": "grape-inat-371068837",
+    "rejected": null,
+    "face_boxes": 1
+   },
+   "grape-inat-371068837#1": {
+    "case": "grape-inat-371068837",
+    "rejected": null,
+    "face_boxes": 2
+   },
+   "grape-inat-367580279#0": {
+    "case": "grape-inat-367580279",
+    "rejected": null,
+    "face_boxes": 30
+   }
+  },
+  "disease": {
+   "inputs": [
+    {
+     "case": "corn-maize-bd-2026-common-rust-img-234",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 3,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      7.084607,
+      7.446251,
+      3.369425,
+      6.070707
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-common-rust-img-928",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 3,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      7.941111,
+      5.040684,
+      2.867374,
+      2.564298
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-gray-leaf-spot-img-487",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 4,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      3.962994,
+      4.473846,
+      4.644718,
+      3.828445
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-gray-leaf-spot-img-498",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 4,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      4.163382,
+      5.908996,
+      6.701168,
+      0.820743
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-gray-leaf-spot-img-500",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 4,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      4.000638,
+      4.556469,
+      3.861459,
+      4.18509
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-corn-leaf-blight-img-977",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 5,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      3.320908,
+      3.350324,
+      3.895061,
+      5.472346
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-corn-leaf-blight-img-680",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 5,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      5.71265,
+      6.846885,
+      5.686068,
+      4.17537
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-healthy-leaf-img-918",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 6,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      4.385097,
+      6.162156,
+      3.532243,
+      9.236004
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-healthy-leaf-img-35",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 6,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      3.820842,
+      5.310756,
+      5.202594,
+      8.024355
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-healthy-leaf-img-41",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 6,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      3.440883,
+      3.596077,
+      3.026906,
+      6.603998
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-early-blight-early-blight-27",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 13,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      2.127422,
+      5.343162,
+      3.813183,
+      2.016154,
+      3.452862,
+      5.406553,
+      3.446838,
+      3.214473
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-early-blight-early-blight-465",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 13,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      0.570693,
+      5.661916,
+      5.634417,
+      3.741439,
+      4.174184,
+      7.682674,
+      2.622935,
+      1.392976
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-late-blight-late-blight-5",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 14,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -1.184261,
+      2.671866,
+      5.55585,
+      5.31126,
+      3.761008,
+      2.982229,
+      0.298813,
+      -0.58164
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-late-blight-late-blight-41",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 14,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -0.823344,
+      3.918308,
+      5.49785,
+      5.820658,
+      2.869901,
+      4.105565,
+      4.073787,
+      1.8771
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-late-blight-late-blight-80",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 14,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -2.6412,
+      2.454607,
+      5.624313,
+      7.187463,
+      3.25596,
+      5.128431,
+      0.722824,
+      1.731131
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-late-blight-late-blight-7",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 14,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -1.886718,
+      3.142215,
+      5.301193,
+      5.910291,
+      3.665643,
+      5.638306,
+      1.705064,
+      0.286261
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-1",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 18,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -2.078436,
+      3.896954,
+      3.746798,
+      1.779942,
+      1.4745,
+      3.542079,
+      -0.114861,
+      1.716299
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-healthy-healthy-150",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 11,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      4.860436,
+      3.709371,
+      1.691599,
+      3.889922,
+      4.023802,
+      2.519825,
+      0.460398,
+      2.169894
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-early-blight-img-4257-02d",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 13,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -1.270792,
+      3.99353,
+      4.596621,
+      6.950222,
+      4.706396,
+      4.179716,
+      2.20442,
+      1.941605
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2624",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 13,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -1.52042,
+      2.613878,
+      5.106417,
+      4.112681,
+      3.553107,
+      4.236946,
+      -0.085862,
+      1.34336
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5537-02d",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 14,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -2.424883,
+      5.141328,
+      4.388855,
+      1.671688,
+      2.655555,
+      6.720465,
+      -1.329268,
+      0.178917
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-leaf-mold-img-4295-02d",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 15,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -0.226778,
+      2.329133,
+      3.702966,
+      3.095116,
+      3.956977,
+      4.676817,
+      2.198322,
+      2.854861
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-leaf-mold-img-4233-02d",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 15,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -0.600301,
+      4.31796,
+      4.031256,
+      2.317321,
+      3.980089,
+      6.528022,
+      0.832334,
+      2.595257
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-4497-02d",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 12,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      1.419484,
+      4.28236,
+      2.594075,
+      2.724761,
+      4.190473,
+      4.328957,
+      1.62104,
+      2.962995
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3679-02d",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 12,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      0.652136,
+      6.253088,
+      3.363522,
+      1.438274,
+      2.703241,
+      4.177021,
+      -1.11698,
+      -0.334284
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-spider-mites-img-3979-02d",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 17,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -0.673943,
+      4.0952,
+      1.855922,
+      0.524848,
+      5.495315,
+      4.014845,
+      2.117064,
+      2.066744
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-spider-mites-img-3876-02d",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 17,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      2.724849,
+      4.295193,
+      2.152276,
+      1.546089,
+      5.771561,
+      5.240365,
+      2.825015,
+      -0.047352
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-spider-mites-img-3841-02d",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-iphone-2025",
+     "label": 17,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -0.821193,
+      4.019374,
+      -1.844175,
+      -3.082648,
+      3.794927,
+      3.986375,
+      2.060423,
+      2.882537
+     ]
+    },
+    {
+     "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1738",
+     "species": "tomato",
+     "source": "fieldsets/ccmt-2023",
+     "label": 16,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -0.378442,
+      6.37345,
+      4.526682,
+      1.621502,
+      7.070417,
+      6.605076,
+      0.71933,
+      0.190925
+     ]
+    },
+    {
+     "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1052",
+     "species": "tomato",
+     "source": "fieldsets/ccmt-2023",
+     "label": 15,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      2.334625,
+      4.824132,
+      4.759952,
+      4.513446,
+      3.652949,
+      4.545502,
+      3.591048,
+      1.353742
+     ]
+    },
+    {
+     "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1741",
+     "species": "tomato",
+     "source": "fieldsets/ccmt-2023",
+     "label": 16,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -0.808432,
+      4.434911,
+      3.968164,
+      3.097192,
+      5.00628,
+      5.548789,
+      1.237518,
+      1.442185
+     ]
+    },
+    {
+     "case": "tomato-inat-389981240",
+     "species": "tomato",
+     "source": "inat",
+     "label": 16,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -1.435829,
+      8.143064,
+      3.353832,
+      1.32511,
+      1.910038,
+      9.114037,
+      -1.394865,
+      -0.060497
+     ]
+    },
+    {
+     "case": "tomato-inat-389981240",
+     "species": "tomato",
+     "source": "inat",
+     "label": 16,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -1.297728,
+      7.711143,
+      4.517562,
+      2.216589,
+      2.895141,
+      8.439613,
+      -2.049128,
+      -0.697731
+     ]
+    },
+    {
+     "case": "apple-inat-408734239",
+     "species": "apple",
+     "source": "inat",
+     "label": 1,
+     "classes": [
+      0,
+      1,
+      2
+     ],
+     "logits": [
+      7.036744,
+      6.238593,
+      4.092207
+     ]
+    },
+    {
+     "case": "apple-inat-402203493",
+     "species": "apple",
+     "source": "inat",
+     "label": 1,
+     "classes": [
+      0,
+      1,
+      2
+     ],
+     "logits": [
+      4.867402,
+      7.61484,
+      4.536682
+     ]
+    },
+    {
+     "case": "apple-inat-402180921",
+     "species": "apple",
+     "source": "inat",
+     "label": 1,
+     "classes": [
+      0,
+      1,
+      2
+     ],
+     "logits": [
+      9.075831,
+      6.842086,
+      2.186387
+     ]
+    },
+    {
+     "case": "apple-inat-401743982",
+     "species": "apple",
+     "source": "inat",
+     "label": 1,
+     "classes": [
+      0,
+      1,
+      2
+     ],
+     "logits": [
+      8.15478,
+      6.916685,
+      4.026348
+     ]
+    },
+    {
+     "case": "grape-inat-401327155",
+     "species": "grape",
+     "source": "inat",
+     "label": 7,
+     "classes": [
+      7,
+      8
+     ],
+     "logits": [
+      6.969125,
+      3.412877
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-common-rust-img-202",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 3,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      7.378789,
+      4.00238,
+      2.54834,
+      2.641348
+     ]
+    },
+    {
+     "case": "corn-maize-bd-2026-healthy-leaf-img-43",
+     "species": "corn",
+     "source": "fieldsets/maize-bd-2026",
+     "label": 6,
+     "classes": [
+      3,
+      4,
+      5,
+      6
+     ],
+     "logits": [
+      4.368282,
+      6.070926,
+      3.701079,
+      5.886708
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-early-blight-early-blight-304",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 13,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      -0.020315,
+      3.220768,
+      5.172694,
+      3.464002,
+      2.5648,
+      3.405392,
+      2.386885,
+      3.412952
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-47",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 12,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      1.133903,
+      5.56223,
+      4.625132,
+      1.866158,
+      5.71352,
+      5.130579,
+      2.045973,
+      1.02542
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-healthy-healthy-231",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 11,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      1.816613,
+      4.459713,
+      4.005818,
+      1.504388,
+      4.669355,
+      5.180273,
+      2.39056,
+      3.1591
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-healthy-healthy-296",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 11,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      5.46915,
+      5.272921,
+      2.099631,
+      2.322322,
+      0.531024,
+      2.99097,
+      0.618188,
+      2.406623
+     ]
+    },
+    {
+     "case": "tomato-tomato-bd-2025-healthy-healthy-191",
+     "species": "tomato",
+     "source": "fieldsets/tomato-bd-2025",
+     "label": 11,
+     "classes": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+     ],
+     "logits": [
+      3.60463,
+      3.336631,
+      2.943669,
+      2.08727,
+      3.388635,
+      3.441669,
+      2.122358,
+      2.176893
+     ]
+    },
+    {
+     "case": "apple-inat-381828732",
+     "species": "apple",
+     "source": "inat",
+     "label": 1,
+     "classes": [
+      0,
+      1,
+      2
+     ],
+     "logits": [
+      6.164682,
+      8.884483,
+      1.981493
+     ]
+    },
+    {
+     "case": "grape-inat-391923141",
+     "species": "grape",
+     "source": "inat",
+     "label": 7,
+     "classes": [
+      7,
+      8
+     ],
+     "logits": [
+      8.964033,
+      2.805924
+     ]
+    },
+    {
+     "case": "grape-inat-372783105",
+     "species": "grape",
+     "source": "inat",
+     "label": 7,
+     "classes": [
+      7,
+      8
+     ],
+     "logits": [
+      7.809917,
+      2.639688
+     ]
+    },
+    {
+     "case": "grape-inat-372783105",
+     "species": "grape",
+     "source": "inat",
+     "label": 7,
+     "classes": [
+      7,
+      8
+     ],
+     "logits": [
+      8.006075,
+      4.255663
+     ]
+    },
+    {
+     "case": "grape-inat-371068837",
+     "species": "grape",
+     "source": "inat",
+     "label": 7,
+     "classes": [
+      7,
+      8
+     ],
+     "logits": [
+      9.417095,
+      1.426591
+     ]
+    },
+    {
+     "case": "grape-inat-367580279",
+     "species": "grape",
+     "source": "inat",
+     "label": 7,
+     "classes": [
+      7,
+      8
+     ],
+     "logits": [
+      8.867347,
+      4.383047
+     ]
+    }
+   ],
+   "left_out": {
+    "leaf photos with several crops": 6,
+    "no leaf shot": 2,
+    "species without head classes": 2
+   },
+   "temperature": 1.8205856928246815,
+   "head_labels": [
+    {
+     "index": 0,
+     "species_id": "apple",
+     "problem_id": "apple_cedar_apple_rust"
+    },
+    {
+     "index": 1,
+     "species_id": "apple",
+     "problem_id": "apple_scab"
+    },
+    {
+     "index": 2,
+     "species_id": "apple",
+     "problem_id": "healthy"
+    },
+    {
+     "index": 3,
+     "species_id": "corn",
+     "problem_id": "corn_common_rust"
+    },
+    {
+     "index": 4,
+     "species_id": "corn",
+     "problem_id": "corn_gray_leaf_spot"
+    },
+    {
+     "index": 5,
+     "species_id": "corn",
+     "problem_id": "corn_northern_leaf_blight"
+    },
+    {
+     "index": 6,
+     "species_id": "corn",
+     "problem_id": "healthy"
+    },
+    {
+     "index": 7,
+     "species_id": "grape",
+     "problem_id": "grape_black_rot"
+    },
+    {
+     "index": 8,
+     "species_id": "grape",
+     "problem_id": "healthy"
+    },
+    {
+     "index": 9,
+     "species_id": "pepper",
+     "problem_id": "healthy"
+    },
+    {
+     "index": 10,
+     "species_id": "pepper",
+     "problem_id": "pepper_bacterial_leaf_spot"
+    },
+    {
+     "index": 11,
+     "species_id": "tomato",
+     "problem_id": "healthy"
+    },
+    {
+     "index": 12,
+     "species_id": "tomato",
+     "problem_id": "tomato_bacterial_spot"
+    },
+    {
+     "index": 13,
+     "species_id": "tomato",
+     "problem_id": "tomato_early_blight"
+    },
+    {
+     "index": 14,
+     "species_id": "tomato",
+     "problem_id": "tomato_late_blight"
+    },
+    {
+     "index": 15,
+     "species_id": "tomato",
+     "problem_id": "tomato_leaf_mold"
+    },
+    {
+     "index": 16,
+     "species_id": "tomato",
+     "problem_id": "tomato_septoria_leaf_spot"
+    },
+    {
+     "index": 17,
+     "species_id": "tomato",
+     "problem_id": "tomato_spider_mites"
+    },
+    {
+     "index": 18,
+     "species_id": "tomato",
+     "problem_id": "tomato_yellow_leaf_curl_virus"
+    }
+   ]
+  },
+  "vlm": {
+   "cases": [
+    "corn-maize-bd-2026-common-rust-img-202",
+    "corn-maize-bd-2026-common-rust-img-234",
+    "corn-maize-bd-2026-common-rust-img-928",
+    "corn-maize-bd-2026-corn-leaf-blight-img-680",
+    "corn-maize-bd-2026-corn-leaf-blight-img-977",
+    "corn-maize-bd-2026-gray-leaf-spot-img-487",
+    "corn-maize-bd-2026-gray-leaf-spot-img-498",
+    "corn-maize-bd-2026-gray-leaf-spot-img-500",
+    "corn-maize-bd-2026-healthy-leaf-img-35",
+    "corn-maize-bd-2026-healthy-leaf-img-41",
+    "corn-maize-bd-2026-healthy-leaf-img-43",
+    "corn-maize-bd-2026-healthy-leaf-img-918",
+    "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1052",
+    "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1738",
+    "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1741",
+    "tomato-inat-388410969",
+    "tomato-inat-389981240",
+    "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-47",
+    "tomato-tomato-bd-2025-early-blight-early-blight-27",
+    "tomato-tomato-bd-2025-early-blight-early-blight-304",
+    "tomato-tomato-bd-2025-early-blight-early-blight-465",
+    "tomato-tomato-bd-2025-healthy-healthy-150",
+    "tomato-tomato-bd-2025-healthy-healthy-191",
+    "tomato-tomato-bd-2025-healthy-healthy-231",
+    "tomato-tomato-bd-2025-healthy-healthy-296",
+    "tomato-tomato-bd-2025-late-blight-late-blight-41",
+    "tomato-tomato-bd-2025-late-blight-late-blight-5",
+    "tomato-tomato-bd-2025-late-blight-late-blight-7",
+    "tomato-tomato-bd-2025-late-blight-late-blight-80",
+    "tomato-tomato-bd-2025-late-blight-late-blight-94",
+    "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-1",
+    "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3679-02d",
+    "tomato-tomato-bd-iphone-2025-bacterial-spot-img-4497-02d",
+    "tomato-tomato-bd-iphone-2025-early-blight-img-2624",
+    "tomato-tomato-bd-iphone-2025-early-blight-img-4257-02d",
+    "tomato-tomato-bd-iphone-2025-late-blight-img-5537-02d",
+    "tomato-tomato-bd-iphone-2025-leaf-mold-img-4233-02d",
+    "tomato-tomato-bd-iphone-2025-leaf-mold-img-4295-02d",
+    "tomato-tomato-bd-iphone-2025-spider-mites-img-3841-02d",
+    "tomato-tomato-bd-iphone-2025-spider-mites-img-3876-02d",
+    "tomato-tomato-bd-iphone-2025-spider-mites-img-3979-02d"
+   ],
+   "jobs": [
+    {
+     "case": "corn-maize-bd-2026-gray-leaf-spot-img-487",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7795,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-common-rust-img-234",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7659,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-corn-leaf-blight-img-977",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6419,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-gray-leaf-spot-img-500",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 9204,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-corn-leaf-blight-img-680",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7097,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-healthy-leaf-img-918",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5355,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-late-blight-late-blight-5",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5783,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-late-blight-late-blight-41",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6281,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-late-blight-late-blight-94",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6348,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-late-blight-late-blight-80",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5904,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-late-blight-late-blight-7",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5952,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-1",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5900,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-healthy-healthy-150",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5404,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-early-blight-img-4257-02d",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7084,
+     "guess": {
+      "species_id": "squash",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2624",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7256,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5537-02d",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7565,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-leaf-mold-img-4295-02d",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7788,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-leaf-mold-img-4233-02d",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6631,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-healthy-leaf-img-35",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5255,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-4497-02d",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 8825,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-healthy-leaf-img-41",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5318,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-early-blight-early-blight-27",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6562,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-early-blight-early-blight-465",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7218,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3679-02d",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6342,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-spider-mites-img-3979-02d",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7659,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-gray-leaf-spot-img-498",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 7401,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-spider-mites-img-3876-02d",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6636,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-iphone-2025-spider-mites-img-3841-02d",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6766,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-common-rust-img-928",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5861,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1738",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5626,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1052",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5364,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1741",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6313,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-inat-389981240",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 8302,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-inat-388410969",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 9895,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-common-rust-img-202",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6934,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "corn-maize-bd-2026-healthy-leaf-img-43",
+     "truth": "corn",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5838,
+     "guess": {
+      "species_id": "corn",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-early-blight-early-blight-304",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 6025,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-47",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5750,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-healthy-healthy-231",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5241,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.85
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-healthy-healthy-296",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5384,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    },
+    {
+     "case": "tomato-tomato-bd-2025-healthy-healthy-191",
+     "truth": "tomato",
+     "ok": true,
+     "calls": [
+      {
+       "schema": "findings",
+       "error": false
+      },
+      {
+       "schema": "indicators",
+       "error": false
+      }
+     ],
+     "job_ms": 5018,
+     "guess": {
+      "species_id": "tomato",
+      "confidence": 0.4
+     }
+    }
+   ]
+  },
+  "notes": "## How it ran\n\nThe run script is [`m18.sh`](../m18.sh), committed byte for byte as it ran (SHA-256 `7b9ffc03c1038d5a`). It holds the rig's GPU lock, stops when `ml/` or `backend/` has uncommitted changes, and refuses a second test stage once its `test.started` file exists. vLLM ran from a copy of main's `infra/rig.compose.yml` at 2846897 (byte for byte), with its defaults: Qwen3.5-9B AWQ at 0.78 of the GPU, 2 slots, 1,003,520 pixels, thinking off. The run's state files stay in the git-ignored `ml/training/runs/m18-2026-10-24/`. Times are on Oct 23, EDT.\n\n- **First attempt, at 9562d0c.** The leakage stage ran from 21:45:29 to 21:46:25 and found 0 matches not allowed, but it wrote its report over the committed `leakage-2026-10-23.*`, because it ran on the same date. The test stage stopped at 21:46:25 at the clean-tree check (a tracked file had changed), before writing `test.started` and before reading any test photo.\n- **Between the attempts.** The two files were restored from HEAD, the leakage stage was given `--out leakage-<date>-m18`, and main was merged (4fff017, 21:46:34), which changed only `docs/vision/devpost.md`.\n- **Second attempt, at 4fff017.** The leakage stage ran from 21:47:13 to 21:47:47: 0 not allowed ([leakage-2026-10-23-m18](leakage-2026-10-23-m18.md)). The test stage started at 21:47:47: the plant check to 21:48:29, the face check on the CPU to 21:49:49, the bench cases and the worker's build to 21:51:00, vLLM ready after 160 s, the 41 jobs in 140 s, vLLM down at 21:56:05 and this report at 21:56:22.\n- **Rebuilt from its JSON on Oct 23,** after Alan's review of #192, with no photo or model run again. T7 is now set against a perfectly calibrated head, T6 and T7 are also given without the 7, and T8's first tries are counted per call. The JSON now keeps the VLM jobs and the head's labels, so `--rebuild` needs nothing outside git. Every k of n is the same as in the first report; only T7's verdict changed, from missed to undecided.\n"
+ },
+ "t1": {
+  "all": {
+   "k": 58,
+   "n": 58,
+   "rate": 1.0,
+   "interval": [
+    0.9378821432937142,
+    0.9999999999999999
+   ],
+   "target": 0.99,
+   "at_least": true,
+   "verdict": "undecided"
+  },
+  "without_former_dev": {
+   "k": 51,
+   "n": 51,
+   "rate": 1.0,
+   "interval": [
+    0.9299533790738349,
+    0.9999999999999999
+   ],
+   "target": 0.99,
+   "at_least": true,
+   "verdict": "undecided"
+  }
+ },
+ "t2": {
+  "all": {
+   "k": 41,
+   "n": 56,
+   "rate": 0.7321428571428571,
+   "interval": [
+    0.6040544396384779,
+    0.8304269464449507
+   ],
+   "target": 0.85,
+   "at_least": true,
+   "verdict": "missed"
+  },
+  "without_former_dev": {
+   "k": 36,
+   "n": 50,
+   "rate": 0.72,
+   "interval": [
+    0.5833487619095525,
+    0.8252582940118571
+   ],
+   "target": 0.85,
+   "at_least": true,
+   "verdict": "missed"
+  }
+ },
+ "t3": {
+  "all": {
+   "k": 52,
+   "n": 56,
+   "rate": 0.9285714285714286,
+   "interval": [
+    0.8302455183835961,
+    0.9718739636165804
+   ],
+   "target": 0.95,
+   "at_least": true,
+   "verdict": "undecided"
+  },
+  "without_former_dev": {
+   "k": 46,
+   "n": 50,
+   "rate": 0.92,
+   "interval": [
+    0.8116175297192756,
+    0.9684504861306886
+   ],
+   "target": 0.95,
+   "at_least": true,
+   "verdict": "undecided"
+  }
+ },
+ "disease": {
+  "temperature": 1.8205856928246815,
+  "photos": 51,
+  "t5": {
+   "all": {
+    "k": 36,
+    "n": 43,
+    "rate": 0.8372093023255814,
+    "interval": [
+     0.7002759398200749,
+     0.9188337269708506
+    ],
+    "target": 0.85,
+    "at_least": true,
+    "verdict": "undecided",
+    "guessing": 0.6046511627906976
+   },
+   "sure": {
+    "k": 5,
+    "n": 5,
+    "rate": 1.0,
+    "interval": [
+     0.5655175313406071,
+     1.0
+    ],
+    "target": 0.85,
+    "at_least": true,
+    "verdict": "undecided",
+    "guessing": 0.6
+   },
+   "without_former_dev_and_repeats": {
+    "k": 32,
+    "n": 38,
+    "rate": 0.8421052631578947,
+    "interval": [
+     0.6958318808733855,
+     0.925561366282787
+    ],
+    "target": 0.85,
+    "at_least": true,
+    "verdict": "undecided",
+    "guessing": 0.6085526315789473
+   }
+  },
+  "t6": {
+   "all": {
+    "apple": {
+     "photos": 5,
+     "macro_f1": 0.2857142857142857
+    },
+    "corn": {
+     "photos": 12,
+     "macro_f1": 0.45892857142857146
+    },
+    "grape": {
+     "photos": 6,
+     "macro_f1": 1.0
+    },
+    "tomato": {
+     "photos": 28,
+     "macro_f1": 0.3422619047619047
+    }
+   },
+   "without_former_dev": {
+    "apple": {
+     "photos": 4,
+     "macro_f1": 0.3333333333333333
+    },
+    "corn": {
+     "photos": 10,
+     "macro_f1": 0.41428571428571426
+    },
+    "grape": {
+     "photos": 6,
+     "macro_f1": 1.0
+    },
+    "tomato": {
+     "photos": 27,
+     "macro_f1": 0.33035714285714285
+    }
+   }
+  },
+  "t7": {
+   "all": {
+    "ece": 0.2104784268812881,
+    "photos": 51,
+    "target": 0.05,
+    "verdict": "undecided",
+    "calibrated_mean": 0.16459336121267465,
+    "calibrated_p95": 0.22981101122939732,
+    "calibrated_at_or_above": 0.1152,
+    "draws": 20000,
+    "seed": 0,
+    "mean_confidence": 0.500521558553943,
+    "right": 26
+   },
+   "without_former_dev": {
+    "ece": 0.20390069208435674,
+    "photos": 47,
+    "target": 0.05,
+    "verdict": "undecided",
+    "calibrated_mean": 0.1743305921614806,
+    "calibrated_p95": 0.23890630291146198,
+    "calibrated_at_or_above": 0.2136,
+    "draws": 20000,
+    "seed": 0,
+    "mean_confidence": 0.5084883460724181,
+    "right": 24
+   }
+  },
+  "top1": 0.5098039215686274,
+  "confusion": {
+   "apple": {
+    "apple_scab": {
+     "apple_cedar_apple_rust": 3,
+     "apple_scab": 2
+    }
+   },
+   "corn": {
+    "corn_common_rust": {
+     "corn_common_rust": 2,
+     "corn_gray_leaf_spot": 1
+    },
+    "corn_gray_leaf_spot": {
+     "corn_northern_leaf_blight": 2,
+     "corn_gray_leaf_spot": 1
+    },
+    "corn_northern_leaf_blight": {
+     "healthy": 1,
+     "corn_gray_leaf_spot": 1
+    },
+    "healthy": {
+     "healthy": 3,
+     "corn_gray_leaf_spot": 1
+    }
+   },
+   "grape": {
+    "grape_black_rot": {
+     "grape_black_rot": 6
+    }
+   },
+   "tomato": {
+    "healthy": {
+     "healthy": 3,
+     "tomato_septoria_leaf_spot": 1
+    },
+    "tomato_bacterial_spot": {
+     "tomato_septoria_leaf_spot": 1,
+     "tomato_bacterial_spot": 1,
+     "tomato_leaf_mold": 1
+    },
+    "tomato_early_blight": {
+     "tomato_septoria_leaf_spot": 2,
+     "tomato_early_blight": 2,
+     "tomato_late_blight": 1
+    },
+    "tomato_late_blight": {
+     "tomato_late_blight": 3,
+     "tomato_early_blight": 1,
+     "tomato_septoria_leaf_spot": 1
+    },
+    "tomato_leaf_mold": {
+     "tomato_septoria_leaf_spot": 2,
+     "tomato_bacterial_spot": 1
+    },
+    "tomato_septoria_leaf_spot": {
+     "tomato_septoria_leaf_spot": 3,
+     "tomato_leaf_mold": 1
+    },
+    "tomato_spider_mites": {
+     "tomato_leaf_mold": 2,
+     "tomato_bacterial_spot": 1
+    },
+    "tomato_yellow_leaf_curl_virus": {
+     "tomato_bacterial_spot": 1
+    }
+   }
+  }
+ },
+ "vlm": {
+  "all": {
+   "jobs": 41,
+   "ran": 41,
+   "finished": 41,
+   "retried_calls": 0,
+   "t8_first_try": {
+    "k": 82,
+    "n": 82,
+    "rate": 1.0,
+    "interval": [
+     0.955249375635518,
+     1.0
+    ],
+    "target": 0.99,
+    "at_least": true,
+    "verdict": "undecided"
+   },
+   "t8_after_one_retry": {
+    "k": 41,
+    "n": 41,
+    "rate": 1.0,
+    "interval": [
+     0.9143324285798755,
+     1.0
+    ],
+    "check": "no failures"
+   },
+   "t9_species": {
+    "k": 40,
+    "n": 41,
+    "rate": 0.975609756097561,
+    "interval": [
+     0.8740493782190661,
+     0.9956814684788642
+    ]
+   },
+   "t10_job_p95_s": 8.8,
+   "job_p50_s": 6.3,
+   "t10_verdict": "met"
+  },
+  "without_former_dev": {
+   "jobs": 38,
+   "ran": 38,
+   "finished": 38,
+   "retried_calls": 0,
+   "t8_first_try": {
+    "k": 76,
+    "n": 76,
+    "rate": 1.0,
+    "interval": [
+     0.9518864142123544,
+     0.9999999999999998
+    ],
+    "target": 0.99,
+    "at_least": true,
+    "verdict": "undecided"
+   },
+   "t8_after_one_retry": {
+    "k": 38,
+    "n": 38,
+    "rate": 1.0,
+    "interval": [
+     0.9081901304590217,
+     1.0
+    ],
+    "check": "no failures"
+   },
+   "t9_species": {
+    "k": 37,
+    "n": 38,
+    "rate": 0.9736842105263158,
+    "interval": [
+     0.8650512375427468,
+     0.9953394123657999
+    ]
+   },
+   "t10_job_p95_s": 8.3,
+   "job_p50_s": 6.3,
+   "t10_verdict": "met"
+  }
+ },
+ "t4": {
+  "all": {
+   "k": 0,
+   "n": 41,
+   "rate": 0.0,
+   "interval": [
+    0.0,
+    0.08566757142012449
+   ],
+   "target": 0.03,
+   "at_least": false,
+   "verdict": "undecided",
+   "cases": []
+  },
+  "without_former_dev": {
+   "k": 0,
+   "n": 38,
+   "rate": 0.0,
+   "interval": [
+    0.0,
+    0.09180986954097846
+   ],
+   "target": 0.03,
+   "at_least": false,
+   "verdict": "undecided",
+   "cases": []
+  }
+ },
+ "upload": {
+  "all": {
+   "t17_rejected": {
+    "k": 3,
+    "n": 73,
+    "rate": 0.0410958904109589,
+    "interval": [
+     0.014073940244407071,
+     0.11400091706015032
+    ],
+    "target": 0.05,
+    "at_least": false,
+    "verdict": "undecided"
+   },
+   "t18_face_box": {
+    "k": 38,
+    "n": 73,
+    "rate": 0.5205479452054794,
+    "interval": [
+     0.4078159680453948,
+     0.631225456254401
+    ],
+    "target": 0.02,
+    "at_least": false,
+    "verdict": "missed"
+   },
+   "reasons": {
+    "TooBlurry": 2,
+    "TooBright": 1
+   }
+  },
+  "without_former_dev": {
+   "t17_rejected": {
+    "k": 3,
+    "n": 65,
+    "rate": 0.046153846153846156,
+    "interval": [
+     0.01581984029038796,
+     0.12713847351097587
+    ],
+    "target": 0.05,
+    "at_least": false,
+    "verdict": "undecided"
+   },
+   "t18_face_box": {
+    "k": 33,
+    "n": 65,
+    "rate": 0.5076923076923077,
+    "interval": [
+     0.389164523986785,
+     0.6253616062877682
+    ],
+    "target": 0.02,
+    "at_least": false,
+    "verdict": "missed"
+   },
+   "reasons": {
+    "TooBlurry": 2,
+    "TooBright": 1
+   }
+  }
+ },
+ "rebuilt": {
+  "command": "python -m ml.training.eval.score_test_split --rebuild ml/training/eval/reports/test-split-2026-10-23.json --vlm ml/training/runs/vlm-bench/qwen35-awq-test --notes ml/training/runs/m18-2026-10-24/notes.md",
+  "date": "2026-10-23"
+ }
+}

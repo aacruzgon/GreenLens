@@ -2,6 +2,7 @@
 
     python -m ml.training.data.faces                          # the Open Images photos (once)
     python -m ml.training.eval.face_check run --models-dir DIR [--thresholds 0.15 0.2 0.3 …] [--sets dev]
+    python -m ml.training.eval.face_check run --models-dir DIR --sets test --variants original --thresholds 0.3   # M18, once
     python -m ml.training.eval.face_check run … --variants original --thresholds 0.3 --pass-a-long-side 640
     python -m ml.training.eval.face_check score [--out faces-2026-10-22] [--notes notes.md] [--crop-thresholds 0.3]
     python -m ml.training.eval.face_check run … --variants original --landmarks
@@ -12,7 +13,7 @@ face_check.rs`: `imaging::decode_upload`, the quality gate on its 512 px downsca
 `FaceDetector::detect`, YuNet on the CPU with two intra-op threads, as `api` runs them), and
 runs it on:
 - the Open Images photos of `data/splits/faces_openimages.tsv` (`data/faces.py`), and
-- the dev cases' plant photos (`eval/manifest.jsonl`; never the test split),
+- the dev cases' plant photos (`eval/manifest.jsonl`),
 each as three uploads (VARIANTS): the photo as it is, and at most 3,200 and 2,048 px on the
 long side (PIL Lanczos, JPEG quality 85, as #41 proposes; a smaller photo is only re-encoded).
 One process per variant and threshold, one after another, so the times aren't shared. It needs
@@ -21,6 +22,10 @@ One process per variant and threshold, one after another, so the times aren't sh
 when they live in another checkout. Raw lines go to
 training/runs/faces/raw/<set>-<variant>-<threshold>.jsonl. `--pass-a-long-side N` runs with pass A
 at N px instead (`-aN.jsonl`), which `score` unites with the shipped run to weigh a third pass.
+
+`--sets test` runs the test cases' photos for M18, which scores them once with
+`ml.training.eval.score_test_split` (T17, T18). `score`, `landmarks` and everything they choose read the
+Open Images and dev photos only.
 
 `score` follows evaluation 4: a face counts when it is 20 px or more across (its box's width) in
 the stored image (1,600 px long side), and it is caught when the union of the detected boxes,
@@ -84,6 +89,7 @@ MIN_FACE = 20        # evaluation 4: faces 20 px or more across in the stored im
 MIN_BLUR = 40.0      # QualityConfig::min_blur_score
 SIZES = ((0, 20), (20, 40), (40, 80), (80, 160), (160, 100_000))
 SETS = ("openimages", "dev")
+RUN_SETS = (*SETS, "test")   # `run` only: the test photos are scored by score_test_split.py (M18), never by `score`
 MIN_BOX = (0, 8, 12, 16)  # px across in the stored image: the minimum-box rule the report estimates
 
 
@@ -212,12 +218,17 @@ def openimages_photos() -> list[dict]:
 
 
 def dev_photos(manifest: Path | None = None, photos: Path | None = None) -> list[dict]:
-    """The dev cases' photos only: the test split is scored once, on Oct 24."""
+    """The dev cases' photos only: the test split is scored once, by M18."""
+    return split_photos("dev", manifest, photos)
+
+
+def split_photos(split: str, manifest: Path | None = None, photos: Path | None = None) -> list[dict]:
+    """One split's photos, keyed `<case>#<n>`."""
     manifest, photos = manifest or MANIFEST, photos or EVAL_PHOTOS
     out = []
     for line in manifest.read_text().splitlines():
         case = json.loads(line)
-        if case["split"] != "dev":
+        if case["split"] != split:
             continue
         for i, image in enumerate(case["images"]):
             out.append({"key": f"{case['case_id']}#{i}", "path": photos / image["file"], "kind": image["kind"]})
@@ -271,7 +282,8 @@ def cmd_run(args) -> int:
     if ort is None or not ort.exists():
         raise SystemExit("no ONNX Runtime library: give --ort or install onnxruntime in .venv")
     build()
-    sets = {"openimages": openimages_photos, "dev": lambda: dev_photos(photos=args.eval_photos)}
+    sets = {"openimages": openimages_photos, "dev": lambda: dev_photos(photos=args.eval_photos),
+            "test": lambda: split_photos("test", photos=args.eval_photos)}
     for name in args.sets:
         photos = sets[name]()
         files = variants_of(name, photos)
@@ -1237,7 +1249,7 @@ def main(argv=None) -> int:
     r.add_argument("--ort", help="libonnxruntime (default: the venv's onnxruntime)")
     r.add_argument("--thresholds", type=float, nargs="+", default=list(THRESHOLDS))
     r.add_argument("--force", action="store_true", help="run again over existing raw files")
-    r.add_argument("--sets", nargs="+", choices=SETS, default=list(SETS))
+    r.add_argument("--sets", nargs="+", choices=RUN_SETS, default=list(SETS))
     r.add_argument("--variants", nargs="+", choices=list(VARIANTS), default=list(VARIANTS))
     r.add_argument("--pass-a-long-side", type=int,
                    help="run with pass A at this size instead (FaceConfig::pass_a_long_side), to score an extra "

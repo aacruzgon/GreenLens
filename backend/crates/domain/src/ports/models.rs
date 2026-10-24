@@ -187,6 +187,20 @@ pub const FARM_ROUTE_LABELS: [&str; 6] = [
     "off_topic",
 ];
 
+/// The labels of [`ClassifierTask::MemoryWorthy`]: the exchange holds a fact worth remembering,
+/// or it doesn't. `agent`'s memory gate compares the two; its classifier and Jev share them.
+pub const MEMORY_LABELS: [&str; 2] = ["remember", "skip"];
+
+/// The labels of [`ClassifierTask::ChunkTopic`]: the chunk topics ([contracts 10],
+/// `ChunkSeed.topic`), shared by `agent`'s classifier and Jev.
+pub const TOPIC_LABELS: [&str; 5] = [
+    "symptoms",
+    "conditions",
+    "management",
+    "care",
+    "recognition",
+];
+
 /// One label's score. Scores are compared with each other, not read as probabilities.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LabelScore {

@@ -1,10 +1,12 @@
+import { TZDate } from "@date-fns/tz";
+
 import { CITATIONS, blightSteps, makePlan, tasksFromPlan } from "@/api/mock/fixtures";
-import { DateKit } from "@/api/mock/util";
+import { DateKit, MOCK_TIME_ZONE } from "@/api/mock/util";
 import type { PlanStep, Task } from "@/domain/types";
 
 import { occurrences, stepViews, supersededNote, upNext, whenWord } from "../model/plan";
 
-const k = new DateKit(new Date(2026, 9, 17, 12));
+const k = new DateKit(new TZDate(2026, 9, 17, 12, 0, MOCK_TIME_ZONE));
 const TODAY = k.date(0);
 const t2 = { id: "plant_tomato_2", name: "Tomato 2" };
 const t1 = { id: "plant_tomato_1", name: "Tomato 1" };
