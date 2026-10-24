@@ -95,6 +95,7 @@ Day 8 of 10 (Oct 23). **The models are trained, measured and calibrated offline;
 | [#140](https://github.com/aacruzgon/GreenLens/pull/140) | `feat/eval-refill` | `main` | Merged (919f149) | 41 replacement evaluation cases reviewed by Alan (160 in all), the leakage check on them, and the manifest's SHA-256 in its report |
 | [#147](https://github.com/aacruzgon/GreenLens/pull/147) | `fix/eval-neighbour-frames` | `main` | Merged (5abfcf1) | Neighbouring field-set frames share a plant key (4 cases change split: 102 dev, 58 test), the leakage check hashes the manifest as it reads it and reruns on it, Alan's other follow-ups from #140; this file and dev-roadmap.md on Oct 23 |
 | [#156](https://github.com/aacruzgon/GreenLens/pull/156) | `feat/calibration-seed-matrix` | `main` | Open | M16 on the 102 dev cases: `species_temperature` 1.3747, v3c's top 3 and temperature trade, the plant check on the cases; D1's re-check on the shipped prompts; `vlm_bench` reports name their cases file; this file and dev-roadmap.md on Oct 23 |
+| [#179](https://github.com/aacruzgon/GreenLens/pull/179) | `feat/fake-vlm-qwen35-recordings` | `main` | Open | P3's follow-up: the fake server's recordings on Qwen3.5 with the shipped prompts, as its default, and their [report](../../ml/training/eval/reports/fake-vlm-qwen35-2026-10-23.md) |
 | [#31](https://github.com/aacruzgon/GreenLens/pull/31) | `docs/roadmap-day1-wrap` | `main` | Merged (691bb40) | This file at the end of day 1 |
 
 ## 3. Tracker by build-plan period
