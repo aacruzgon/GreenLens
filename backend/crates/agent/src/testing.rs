@@ -17,6 +17,8 @@ use futures::stream::{self, BoxStream, StreamExt as _};
 pub struct ScriptedModel {
     streams: Mutex<VecDeque<Vec<ChatChunk>>>,
     completions: Mutex<VecDeque<ChatCompletion>>,
+    /// Every stream stays open after its script, as a slow provider would.
+    hang: bool,
     /// Every request, in call order.
     pub requests: Mutex<Vec<ChatRequest>>,
 }
@@ -28,6 +30,15 @@ impl ScriptedModel {
         Self {
             streams: Mutex::new(scripts.into()),
             ..Self::default()
+        }
+    }
+
+    /// As [`Self::streaming`], but each stream stays open after its script and never ends, so
+    /// a test can cut the call short.
+    pub fn streaming_then_hanging(scripts: Vec<Vec<ChatChunk>>) -> Self {
+        Self {
+            hang: true,
+            ..Self::streaming(scripts)
         }
     }
 
@@ -133,7 +144,12 @@ impl ChatModel for ScriptedModel {
             .into_iter()
             .map(|c| read_framed_id(c, request))
             .collect::<Vec<_>>();
-        stream::iter(script.into_iter().map(Ok)).boxed()
+        let chunks = stream::iter(script.into_iter().map(Ok));
+        if self.hang {
+            chunks.chain(stream::pending()).boxed()
+        } else {
+            chunks.boxed()
+        }
     }
 
     async fn complete(&self, request: &ChatRequest) -> Result<ChatCompletion, ModelError> {

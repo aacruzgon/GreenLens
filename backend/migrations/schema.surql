@@ -733,6 +733,8 @@ DEFINE FIELD OVERWRITE scans      ON usage_daily TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE requests   ON usage_daily TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE tokens_in  ON usage_daily TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE tokens_out ON usage_daily TYPE int DEFAULT 0;
+-- the daily chat budget's count: cache reads at 0.1 and cache writes at 1.25 of an input token
+DEFINE FIELD OVERWRITE chat_budget ON usage_daily TYPE int DEFAULT 0;
 
 -- id = idempotency_key:[user, "METHOD /path", key]. CREATE fails when the key exists, which is
 -- the race-free "first request wins" (contracts 1, Idempotency).

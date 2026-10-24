@@ -41,8 +41,8 @@ use domain::{
     error::{Budget, DomainError, ErrorCode},
     id::{ChatImageId, MessageId},
     ports::{
-        ChatChunk, ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask, ContentPart,
-        IdGenExt as _, ModelError, NewMessage, ObjectKey, StopReason,
+        CallUsage, ChatChunk, ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask,
+        ContentPart, IdGenExt as _, ModelError, NewMessage, ObjectKey, StopReason,
     },
     records::diagnosis::Citation,
     rules::limits::{MESSAGE_MAX_CHARS, MESSAGE_MAX_IMAGES},
@@ -204,7 +204,7 @@ impl ChatAgent {
             .usage
             .usage(member.user(), now.utc_day())
             .await?;
-        let spent = used.tokens_in.saturating_add(used.tokens_out);
+        let spent = used.chat_budget;
         let budget = deps.config.daily_chat_tokens;
         if spent >= budget {
             return Err(DomainError::BudgetExceeded {
@@ -386,18 +386,22 @@ struct Reply {
     /// The answer blocks sent, in order (`Message.blocks`).
     blocks: Vec<AnswerBlock>,
     usage: Usage,
+    /// The calls' weight in the daily budget (`CallUsage::budget_tokens`, summed).
+    budget: u64,
     purpose: Option<ChatPurpose>,
     prompt_version: &'static str,
 }
 
 impl Reply {
-    fn add_usage(&mut self, u: Usage) {
-        self.usage.tokens_in = self.usage.tokens_in.saturating_add(u.tokens_in);
-        self.usage.tokens_out = self.usage.tokens_out.saturating_add(u.tokens_out);
+    fn add_usage(&mut self, u: CallUsage) {
+        self.usage.tokens_in = self.usage.tokens_in.saturating_add(u.usage.tokens_in);
+        self.usage.tokens_out = self.usage.tokens_out.saturating_add(u.usage.tokens_out);
+        self.budget = self.budget.saturating_add(u.budget_tokens());
     }
 
-    fn spent(&self) -> u64 {
-        u64::from(self.usage.tokens_in) + u64::from(self.usage.tokens_out)
+    /// What the turn has spent of the daily budget.
+    const fn spent(&self) -> u64 {
+        self.budget
     }
 }
 
@@ -459,7 +463,7 @@ async fn run(
     if let Err(e) = deps
         .stores
         .usage
-        .add_chat_usage(member.user(), turn.now.utc_day(), reply.usage)
+        .add_chat_usage(member.user(), turn.now.utc_day(), reply.usage, reply.budget)
         .await
     {
         tracing::warn!(error = %e, "chat usage not recorded");
@@ -646,13 +650,20 @@ async fn stream_call(
 ) -> Result<CallResult, Ended> {
     let mut result = CallResult::default();
     let mut raw = String::new();
-    let mut usage = Usage::default();
+    let mut usage = CallUsage::default();
     let mut stream = deps.chat.stream(request);
     loop {
+        // A call cut short still counts: what it reported so far goes into the budget.
         let next = tokio::select! {
             biased;
-            () = turn.shutdown.cancelled() => return Err(Ended::Interrupted),
-            () = out.tx.closed() => return Err(Ended::Interrupted),
+            () = turn.shutdown.cancelled() => {
+                reply.add_usage(usage);
+                return Err(Ended::Interrupted);
+            }
+            () = out.tx.closed() => {
+                reply.add_usage(usage);
+                return Err(Ended::Interrupted);
+            }
             next = stream.next() => next,
         };
         let chunk = match next {

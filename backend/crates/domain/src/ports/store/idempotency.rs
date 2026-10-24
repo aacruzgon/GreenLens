@@ -80,6 +80,9 @@ pub struct UsageTotals {
     pub tokens_in: u64,
     /// Chat tokens out.
     pub tokens_out: u64,
+    /// Chat tokens as the daily budget counts them, cache reads and writes weighted by price
+    /// ([`CallUsage::budget_tokens`](crate::ports::CallUsage::budget_tokens)).
+    pub chat_budget: u64,
 }
 
 /// The `usage_daily` table. The scan count is incremented inside `ScanRepo::create_scan`'s
@@ -90,11 +93,13 @@ pub trait UsageRepo: Send + Sync {
     /// The day's totals, for the budget check before a chat turn.
     async fn usage(&self, user: UserId, day: chrono::NaiveDate) -> Result<UsageTotals, StoreError>;
 
-    /// `UPSERT … SET tokens_in += …, tokens_out += …` after a chat turn.
+    /// `UPSERT … SET tokens_in += …, tokens_out += …, chat_budget += …` after a chat turn:
+    /// the raw counts, and the turn's weight in the budget.
     async fn add_chat_usage(
         &self,
         user: UserId,
         day: chrono::NaiveDate,
         usage: Usage,
+        budget_tokens: u64,
     ) -> Result<UsageTotals, StoreError>;
 }
