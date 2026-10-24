@@ -6,7 +6,7 @@
 // Dates are relative to the device's date: "today - 27 days" is the first scan, "today" is the live scan.
 
 import { MOCK_IMAGE_CREDIT, MOCK_IMAGE_SIZE, mockImageUrl, type MockImageName } from "./images";
-import { bandFor, DateKit, type S } from "./util";
+import { bandFor, DateKit, MOCK_TIME_ZONE, type S } from "./util";
 
 // ----------------------------------------------------------------------------------------------
 // Ids other code can rely on
@@ -652,7 +652,7 @@ export function buildSeed(k: DateKit = new DateKit()): Seed {
     name: "Back garden",
     location_label: "Toronto, ON",
     location_precision: "city",
-    time_zone: "America/Toronto",
+    time_zone: MOCK_TIME_ZONE,
     member_count: 1,
     my_role: "owner",
     soil_profile_status: "ready",
