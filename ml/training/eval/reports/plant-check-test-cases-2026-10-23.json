@@ -1,0 +1,44 @@
+{
+ "label": "plant-check-test-cases-2026-10-23",
+ "command": "python -m ml.training.eval.plant_check --cases ml/training/eval/manifest.jsonl --case-split test --probe ml/models/files/plant_probe/plant-probe-v2-2026-10-23.json --pair plant-probe-v2-2026-10-23:0.94:0.31 --label plant-check-test-cases-2026-10-23",
+ "date": "2026-10-23",
+ "cases_file": {
+  "file": "ml/training/eval/manifest.jsonl",
+  "sha256": "e48d59e7852da853"
+ },
+ "probes": [
+  {
+   "file": "ml/models/files/plant_probe/plant-probe-v2-2026-10-23.json",
+   "sha256": "459b1b6dbbfaa3c1"
+  }
+ ],
+ "cases": 58,
+ "shots": 73,
+ "kinds": {
+  "whole_plant": 58,
+  "leaf_closeup": 8,
+  "flower_fruit": 3,
+  "leaf_underside": 4
+ },
+ "holdout_report": null,
+ "val_report": null,
+ "pairs": [
+  {
+   "set": "plant-probe-v2-2026-10-23",
+   "tau_leaf": 0.94,
+   "tau_plant": 0.31,
+   "case_recall": 1.0,
+   "shot_recall": 1.0,
+   "highest_tau_plant_at_99": 0.98,
+   "failing_cases": [],
+   "at_pair": {
+    "tau_plant": 0.31,
+    "case_recall": 1.0
+   },
+   "at_highest": {
+    "tau_plant": 0.98,
+    "case_recall": 1.0
+   }
+  }
+ ]
+}
