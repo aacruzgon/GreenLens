@@ -64,7 +64,7 @@ RUNS = ROOT / "ml/training/runs/leakage"
 ALLOWED = EVAL / "leakage_allowed.tsv"
 COSINE = 0.98  # training 4's duplicate threshold
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
-NO_IMAGES = {"coco_annotations_2017"}  # datasets in sources.yaml that are annotations only
+NO_IMAGES = {"coco_annotations_2017", "openimages_v7_faces"}  # datasets in sources.yaml that are annotations only
 # COCO photos fetched outside sources.yaml: the detector's backgrounds (detector/background.py)
 # and the plant check's hold-out negatives (data/negatives_holdout.py).
 COCO_FOLDERS = ("coco_train2017_bg", "coco_train2017_holdout")
