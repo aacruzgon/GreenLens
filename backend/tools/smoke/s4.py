@@ -413,6 +413,14 @@ class S4:
         mv = scan["diagnosis"].get("model_versions") or {}
         ev.append(f"diagnosis model_versions: {mv}")
         need(mv, "the diagnosis has no model_versions")
+        if self.args.real_models:
+            # Vision J4's "done when": a real model's version on every result, so a stub worker
+            # or a stage known only from a partial event fails the rig run.
+            fake = sorted({f"{o['pipeline_stage']}/{o['source']}: {o['model_version']}" for o in obs
+                           if o["source"] != "user" and o["model_version"] in ("stub", "partial")})
+            need(not fake, f"--real-models: observations from a stub or a partial event: {fake}")
+            need("stub" not in mv and "stub" not in mv.values(),
+                 f"--real-models: the diagnosis's model_versions name the stub: {mv}")
         plan = scan["plan"]
         need(plan.get("llm_model") and plan.get("prompt_version"),
              "the plan has no llm_model or prompt_version")
@@ -655,6 +663,10 @@ def main():
                          "the api trusts, also on the control plane")
     ap.add_argument("--email", default="s4+clerk_test@example.com",
                     help="the Clerk test user (a +clerk_test address); 3 scans of the daily 30")
+    ap.add_argument("--real-models", action="store_true",
+                    help="fail the scan check when a result came from the stub worker or only from "
+                         "a partial event (vision J4's run on the rig); leave it off on a laptop's "
+                         "stub")
     ap.add_argument("--phone-suffix", type=int, default=104,
                     help="the user's Clerk test phone number +1555555<0100-0199>, if the "
                          "instance asks for one")

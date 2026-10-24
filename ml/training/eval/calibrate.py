@@ -35,7 +35,10 @@ Each dev case runs through the worker's perception steps on the same model files
   the API would get if the worker sent 3 problems per leaf. The temperature doesn't change either
   ranking. What it changes is how often the head claims a problem at medium confidence, which
   shows a possible problem and keeps a scan from `healthy`, and how often its top class is
-  `healthy` at medium, which counts as positive evidence of health (contracts 7). The report gives
+  `healthy` at medium, which counts as positive evidence of health (contracts 7). Since backend
+  roadmap S4 it also moves scores: a candidate the head names adds `classifier_weight`, 3 at high
+  confidence and 2 at medium (contracts 7, `CandidateScore`), so `T_disease` is fitted with the
+  diagnosis margin. The report gives
   both, overall and per species, at the head file's temperature (fitted when the head was chosen), one fitted on
   validation and dev (evaluation 5), one fitted on dev, and one per species fitted on dev; and
   each dev fit again with every case scored at a temperature fitted without it (5 folds).

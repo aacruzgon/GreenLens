@@ -294,6 +294,7 @@ mod tests {
             &["tomato_early_blight", "tomato_septoria_leaf_spot"],
         );
         cands[0].classifier = Some(Confidence::saturating(0.9));
+        cands[0].head = cands[0].classifier;
         let ranked = scored(&cands, &[]);
         let s: Vec<_> = ranked.iter().map(|s| s.score.clone()).collect();
         assert_eq!((s[0].score, s[0].classifier_weight), (3, 3));
@@ -328,6 +329,7 @@ mod tests {
             &["tomato_early_blight", "tomato_septoria_leaf_spot"],
         );
         cands[0].classifier = Some(Confidence::saturating(0.71));
+        cands[0].head = cands[0].classifier;
         let ev: Vec<_> = cands
             .iter()
             .flat_map(Candidate::indicators)
@@ -504,6 +506,7 @@ mod props {
             let mut cands = fixtures::candidates(&profiles, &names[..answers.len().min(4)]);
             for (c, h) in cands.iter_mut().zip(&heads) {
                 c.classifier = h.map(Confidence::saturating);
+                c.head = c.classifier;
             }
             let mut ev = Vec::new();
             for (c, row) in cands.iter().zip(&answers) {
@@ -550,6 +553,7 @@ mod props {
             let profiles = fixtures::problems();
             let mut cands = fixtures::candidates(&profiles, &["tomato_early_blight"]);
             cands[0].classifier = head.map(Confidence::saturating);
+            cands[0].head = cands[0].classifier;
             let inds: Vec<_> = cands[0].indicators().collect();
             let mut ev = Vec::new();
             for (ind, a) in inds.iter().zip(&row) {

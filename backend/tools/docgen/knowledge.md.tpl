@@ -167,7 +167,7 @@ Every number compared here is the profile's own. The one shared weather definiti
 | Rule | Here |
 |---|---|
 | Score | Sum of the weights of matched (`yes`) indicators minus the weights of contradicted (`no`) ones, plus `classifier_weight` |
-| `classifier_weight` | The disease classifier's call on the problem: 3 at high confidence, 2 at medium, 0 at low or when it didn't name it (`scoring::classifier_weight`). Without it the head only ranked candidates, and on the S5 rig run a candidate the photos couldn't show (blossom end rot, no fruit in either shot) won at 0 over the head's early blight at −2 |
+| `classifier_weight` | The disease head's call on the problem: 3 at high confidence, 2 at medium, 0 at low or when it didn't name it (`scoring::classifier_weight`, from `Candidate::head`). On the fallback the hosted LLM makes the disease call (observations of source `llm_fallback`): it picks candidates and counts for the healthy rule, but adds 0, since the same model answers the indicators and would count twice. Without it the head only ranked candidates, and on the S5 rig run a candidate the photos couldn't show (blossom end rot, no fruit in either shot) won at 0 over the head's early blight at −2 |
 | `unsure` | Counts for nothing; listed in `unsure` |
 | One answer per indicator | Ranked `user`, then `measurement`, then `vlm` (the order of `EvidenceSource`); between two of the same source, the later one wins |
 | Settled | An indicator answered by the user or a measurement is never asked again |

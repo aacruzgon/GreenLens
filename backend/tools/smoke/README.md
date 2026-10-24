@@ -186,6 +186,8 @@ A full run takes about 15 minutes. `--late-scan-id` reuses a scan already contin
 
 **Answers.** `--answers` is a comma list of `<indicator>=yes|no|unsure`, with `*` as the default (`*=unsure` when absent). A question's `indicator_id` is the indicator's own slug, without its problem (contracts 3), and a key matches it exactly, as `<problem>.<slug>`, or as its suffix: `concentric_rings_bullseye=yes,*=unsure` answers early blight's target-spot question `yes` and the rest `unsure`. The `late` scan's question is never answered from it.
 
+**`--real-models`** fails `scan` when an observation's `model_version` is `stub` or `partial`, or the diagnosis's `model_versions` name the stub: J4 needs a real model's version on every result. Leave it off on a laptop's stub.
+
 **`--out FILE`** writes a JSON fixture (vision dev-roadmap J4's event log): for each check, every event of the scan's stream (`type`, `seq`, `data`), the last `GET /scans/{id}`, and the model versions it shows. Signed URLs keep their path, without the signature.
 
 **Photos.** S2 and S5 ran on PlantDoc's test photo `dscn3175.jpg`, a tomato with early blight: `python -m ml.training.data.fetch plantdoc_cls` puts it, git-ignored, at `ml/training/data/raw/plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/dscn3175.jpg`. Upload the whole photo as `--photo` and a leaf close-up cropped from it as `--leaf-photo`; the crop isn't in the repository. `../app/assets/mock/tomato-blight.jpg` (early-blight leaves, CC BY 2.0) is another close-up. On S5's run, early blight won only with its target-spot question answered `yes` ([roadmap 9](../../../docs/backend/roadmap.md#9-s5-chat-and-the-garden-map)).
@@ -213,7 +215,7 @@ The control plane runs on the rig's 3070 host, from the checkout at `/srv/pdm/re
 CP="cd /srv/pdm/repo && docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose"
 python3 tools/smoke/s4.py --base-url https://<control-plane-host> \
   --photo dscn3175.jpg --leaf-photo dscn3175-leaf.jpg \
-  --answers concentric_rings_bullseye=yes,*=unsure --expect-problem tomato_early_blight \
+  --answers concentric_rings_bullseye=yes,*=unsure --expect-problem tomato_early_blight --real-models \
   --email s4-rig+clerk_test@example.com --phone-suffix 192 --out s4-rig.json \
   --api-kill-cmd "ssh <rig> '$CP kill api'" --api-start-cmd "ssh <rig> '$CP start api'"
 ```

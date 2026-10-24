@@ -64,13 +64,14 @@ impl<'e> AnswerSet<'e> {
     }
 }
 
-/// What the disease classifier adds to a candidate it named ([contracts 7],
+/// What the disease head adds to a candidate it named ([contracts 7],
 /// `CandidateScore.classifier_weight`): as much as the strongest indicator at high confidence,
 /// as an ordinary one at medium, and nothing at low, as `unsure` counts for nothing. The
 /// classifier never confirms a diagnosis alone: [`crate::status::decide`] also needs a
-/// matched indicator.
+/// matched indicator. The fallback's LLM call ([`Candidate::head`] `None`) adds nothing: the same
+/// model answers the indicators there, and would count twice.
 pub fn classifier_weight(candidate: &Candidate<'_>) -> u8 {
-    match candidate.classifier.map(Confidence::band) {
+    match candidate.head.map(Confidence::band) {
         Some(ConfidenceBand::High) => 3,
         Some(ConfidenceBand::Medium) => 2,
         Some(ConfidenceBand::Low) | None => 0,
@@ -190,6 +191,7 @@ mod tests {
         let mut blight = fixtures::candidate(&profiles, "tomato_early_blight");
         let weight = |c: Option<f64>, blight: &mut Candidate<'_>| {
             blight.classifier = c.map(Confidence::saturating);
+            blight.head = blight.classifier;
             score_candidate(blight, &AnswerSet::default())
         };
         let high = weight(Some(0.8), &mut blight);
@@ -198,6 +200,19 @@ mod tests {
         assert_eq!((medium.classifier_weight, medium.score), (2, 2));
         assert_eq!(weight(Some(0.49), &mut blight).score, 0);
         assert_eq!(weight(None, &mut blight).score, 0);
+    }
+
+    /// On the fallback the hosted LLM makes the disease call and answers the indicators too
+    /// (PR #212's review): its call ranks the candidate but adds no weight, or one model's
+    /// opinion would count twice.
+    #[test]
+    fn the_fallbacks_disease_call_adds_no_weight() {
+        let profiles = fixtures::problems();
+        let mut blight = fixtures::candidate(&profiles, "tomato_early_blight");
+        blight.classifier = Some(Confidence::saturating(0.85));
+        blight.head = None;
+        let s = score_candidate(&blight, &AnswerSet::default());
+        assert_eq!((s.classifier_weight, s.score), (0, 0));
     }
 
     /// The S5 rig run (backend roadmap section 9): the head called early blight at 0.575,
@@ -209,6 +224,7 @@ mod tests {
         let profiles = fixtures::problems();
         let mut blight = fixtures::candidate(&profiles, "tomato_early_blight");
         blight.classifier = Some(Confidence::saturating(0.575));
+        blight.head = blight.classifier;
         let other = fixtures::candidate(&profiles, "tomato_late_blight");
         let angular = blight.profile.discriminating().nth(1).unwrap().id.clone();
         let evidence = vec![fixtures::evidence(

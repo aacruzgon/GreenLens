@@ -383,6 +383,10 @@ pub struct ClassifierHit {
     pub problem: ProblemId,
     /// Its highest confidence across the leaf regions.
     pub confidence: Confidence,
+    /// Its highest confidence from the disease head itself, the only call that adds
+    /// `classifier_weight` to a score; `None` when only the fallback's LLM named it, since the
+    /// same model answers the indicators there and would count twice.
+    pub head: Option<Confidence>,
 }
 
 /// The scan's classifier candidates ([contracts 5], classifier candidates): the 3 distinct
@@ -404,6 +408,7 @@ pub fn classifier_hits(
         .map(|(problem, confidence)| ClassifierHit {
             problem,
             confidence,
+            head: None,
         })
         .collect();
     hits.sort_by(|a, b| {
@@ -456,6 +461,9 @@ pub struct Candidate<'k> {
     pub source: SelectionSource,
     /// The classifier's confidence, when it was a classifier candidate.
     pub classifier: Option<Confidence>,
+    /// The disease head's own confidence ([`ClassifierHit::head`]), which alone adds
+    /// `classifier_weight`.
+    pub head: Option<Confidence>,
     /// The weather against its conditions.
     pub weather_fit: WeatherFit,
 }
@@ -512,6 +520,11 @@ pub fn rank_candidates<'k>(input: &RankInput<'_, 'k>) -> CandidateSet<'k> {
                 .iter()
                 .find(|h| &h.problem == id)
                 .map(|h| h.confidence),
+            head: input
+                .classifier
+                .iter()
+                .find(|h| &h.problem == id)
+                .and_then(|h| h.head),
             weather_fit: weather_fit(&profile.conditions, input.weather),
         })
     };
@@ -574,6 +587,7 @@ pub fn outside_candidates<'k>(
             profile,
             source,
             classifier: None,
+            head: None,
             weather_fit: weather_fit(&profile.conditions, weather),
         })
         .collect()
@@ -678,7 +692,7 @@ pub const fn fit_rank(fit: WeatherFit) -> u8 {
 | Rule | Here |
 |---|---|
 | Score | Sum of the weights of matched (`yes`) indicators minus the weights of contradicted (`no`) ones, plus `classifier_weight` |
-| `classifier_weight` | The disease classifier's call on the problem: 3 at high confidence, 2 at medium, 0 at low or when it didn't name it (`scoring::classifier_weight`). Without it the head only ranked candidates, and on the S5 rig run a candidate the photos couldn't show (blossom end rot, no fruit in either shot) won at 0 over the head's early blight at −2 |
+| `classifier_weight` | The disease head's call on the problem: 3 at high confidence, 2 at medium, 0 at low or when it didn't name it (`scoring::classifier_weight`, from `Candidate::head`). On the fallback the hosted LLM makes the disease call (observations of source `llm_fallback`): it picks candidates and counts for the healthy rule, but adds 0, since the same model answers the indicators and would count twice. Without it the head only ranked candidates, and on the S5 rig run a candidate the photos couldn't show (blossom end rot, no fruit in either shot) won at 0 over the head's early blight at −2 |
 | `unsure` | Counts for nothing; listed in `unsure` |
 | One answer per indicator | Ranked `user`, then `measurement`, then `vlm` (the order of `EvidenceSource`); between two of the same source, the later one wins |
 | Settled | An indicator answered by the user or a measurement is never asked again |
@@ -1096,6 +1110,7 @@ fn status_invariants(
     let mut cands = fixtures::candidates(&profiles, &names[..answers.len().min(4)]);
     for (c, h) in cands.iter_mut().zip(&heads) {
         c.classifier = h.map(Confidence::saturating);
+        c.head = c.classifier;
     }
     let mut ev = Vec::new();
     for (c, row) in cands.iter().zip(&answers) {
@@ -1144,6 +1159,7 @@ fn score_is_arithmetic_and_respects_source_rank(
     let profiles = fixtures::problems();
     let mut cands = fixtures::candidates(&profiles, &["tomato_early_blight"]);
     cands[0].classifier = head.map(Confidence::saturating);
+    cands[0].head = cands[0].classifier;
     let inds: Vec<_> = cands[0].indicators().collect();
     let mut ev = Vec::new();
     for (ind, a) in inds.iter().zip(&row) {
