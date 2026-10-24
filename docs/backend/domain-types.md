@@ -4306,7 +4306,6 @@ pub struct PlanStepDraft {
     /// instead of a source. Strings as the model wrote them: validation parses each, so an id
     /// that doesn't parse refuses the step, never the whole answer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[schemars(with = "Vec<FarmRecordId>")]
     pub farm_citations: Vec<String>,
 }
 

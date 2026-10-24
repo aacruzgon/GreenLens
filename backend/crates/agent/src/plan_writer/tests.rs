@@ -445,15 +445,9 @@ fn the_plan_schema_offers_farm_citations() {
     let step = &PLAN_SCHEMA["$defs"]["PlanStepDraft"];
     let farm = &step["properties"]["farm_citations"];
     assert_eq!(farm["type"], "array");
-    // Strings to serde, but the schema still describes farm record ids.
-    assert_eq!(
-        farm["items"]["pattern"],
-        "^[0-9A-HJKMNP-TV-Z]{26}\\.[0-9]+\\..+$"
-    );
-    assert_eq!(
-        farm["items"]["description"],
-        "<connector_id>.<n>.<vendor_id>"
-    );
+    // Plain strings: a pattern per item made revise_plan's strict tool schema too complex
+    // for the API; validation parses each id.
+    assert_eq!(farm["items"], json!({"type": "string"}));
     assert!(
         !step["required"]
             .as_array()
