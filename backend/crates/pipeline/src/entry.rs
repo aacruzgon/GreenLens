@@ -321,7 +321,7 @@ impl Pipeline {
                 return Ok(Some(question_scoped(job, write)));
             }
         };
-        let names = self.names(Some(&perception), None).await?;
+        let names = self.perception_names(&perception, &snap, run).await?;
         let write =
             results::perception_writes(&ctx, &perception, &images, &names.lookups(), || {
                 self.deps.ids.id()
@@ -486,6 +486,28 @@ impl Pipeline {
             })
     }
 
+    /// [`Self::names`] for a perception result, with the disease classes the knowledge base
+    /// maps for the species the worker classified ([`results::MappedClasses`]).
+    async fn perception_names(
+        &self,
+        result: &domain::jobs::PerceptionResult,
+        snap: &domain::ports::ScanSnapshot,
+        run: domain::wire::Run,
+    ) -> Result<results::Names, PipelineError> {
+        let mut names = self.names(Some(result), None).await?;
+        if result.disease.is_some() {
+            let labels = self.deps.knowledge.classifier_labels().await?;
+            let species = results::disease_species(
+                snap.working_species.as_ref(),
+                result,
+                &snap.observations,
+                run,
+            );
+            names.classifier = results::MappedClasses::new(species.as_ref(), &labels);
+        }
+        Ok(names)
+    }
+
     /// The organism profiles a `vlm` result's findings name.
     /// What a result's observations are named from ([`results::Names`]): the classifier's
     /// problems, `BioCLIP`'s species and the VLM's species guess from the knowledge base, and the
@@ -602,7 +624,7 @@ impl Pipeline {
         let new_id = || self.deps.ids.id();
         Ok(match decoded {
             JobResult::Perception(r) => {
-                let names = self.names(Some(&r), None).await?;
+                let names = self.perception_names(&r, &snap, run).await?;
                 let mut writes =
                     results::perception_writes(&ctx, &r, &images, &names.lookups(), new_id);
                 if job.segmentation {
@@ -1239,6 +1261,7 @@ mod tests {
         };
         let names = std::collections::BTreeMap::new();
         let lookups = results::Lookups {
+            classifier: &results::MappedClasses::default(),
             problem_names: &names,
             species_names: &names,
             organisms: &[],
