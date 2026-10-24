@@ -1,11 +1,12 @@
 """`training.eval.score_test_split` (M18): the counts, intervals and guards of the test split's report, on
-made-up inputs. Nothing here reads a test result."""
+made-up inputs. The one test that opens the committed report only recomputes it from its own JSON."""
 
 import json
 
 import numpy as np
 import pytest
 
+from ml.training.eval import calibrate as cal
 from ml.training.eval import score_test_split as ts
 
 
@@ -99,13 +100,35 @@ def test_t5_counts_the_top_3_on_each_set_and_t6_t7_come_with_it():
     cases = [case("a"), case("b", sure=False), case(ts.FORMER_DEV[4]), case(ts.REPEAT_LEAVES[0])]
     items = [item("a", 1, 1), item("b", 2, 1), item(ts.FORMER_DEV[4], 3, 3), item(ts.REPEAT_LEAVES[0], 4, 1),
              item("a", 0, 0)]                                    # a healthy leaf: not in T5
-    d = ts.disease(items, head(), cases)
+    d = ts.disease(items, head(), cases, draws=200)
     assert (d["t5"]["all"]["k"], d["t5"]["all"]["n"]) == (3, 4)    # the repeat leaf's label is outside its top 3
     assert d["t5"]["sure"]["n"] == 3
     assert d["t5"]["without_former_dev_and_repeats"]["n"] == 2
     assert d["t5"]["all"]["guessing"] == pytest.approx(3 / 5)
-    assert d["t6"]["tomato"]["photos"] == 5 and 0 < d["t6"]["tomato"]["macro_f1"] < 1
-    assert d["t7"]["ece"] is not None and d["temperature"] == 1.82 and len(d["inputs"]) == 5
+    assert d["t6"]["all"]["tomato"]["photos"] == 5 and 0 < d["t6"]["all"]["tomato"]["macro_f1"] < 1
+    assert d["t6"]["without_former_dev"]["tomato"]["photos"] == 4
+    assert (d["t7"]["all"]["photos"], d["t7"]["without_former_dev"]["photos"]) == (5, 4)
+    assert d["t7"]["all"]["ece"] is not None and d["temperature"] == 1.82
+
+
+def test_the_calibrated_head_is_binned_as_calibrate_bins_the_ece():
+    conf = np.random.default_rng(1).uniform(0.2, 1.0, 51)
+    right = np.random.default_rng(0).random((5, 51)) < conf          # calibrated_eces' draws, seed 0
+    assert ts.calibrated_eces(conf, draws=5) == pytest.approx([cal.ece(conf, r) for r in right])
+
+
+def test_t7_is_judged_against_a_calibrated_head_with_the_same_confidences():
+    # Sure and wrong half the time on 200 photos: far above anything a calibrated head scores.
+    conf = np.full(200, 0.95)
+    assert ts.ece_row(conf, np.arange(200) < 100, draws=2000)["verdict"] == "missed"
+    # 0.9 and right 9 times in 10 on 1,000 photos: under the target, and so is a calibrated head.
+    conf = np.full(1000, 0.9)
+    assert ts.ece_row(conf, np.arange(1000) % 10 != 0, draws=2000)["verdict"] == "met"
+    # 51 spread confidences, right as often as they say: well over 0.05, but no worse than a calibrated head.
+    conf = np.linspace(0.2, 0.99, 51)
+    r = ts.ece_row(conf, np.random.default_rng(3).random(51) < conf, draws=2000)
+    assert r["ece"] > 0.05 and r["calibrated_mean"] > 0.05 and r["verdict"] == "undecided"
+    assert ts.ece_row(np.zeros(0), np.zeros(0, bool))["verdict"] == "no photos"
 
 
 def bench_case(cid, species="tomato"):
@@ -114,8 +137,9 @@ def bench_case(cid, species="tomato"):
             "payload": {"candidates": [{"problem_id": "p", "indicators": [{"indicator_id": "i1"}]}]}}
 
 
-def bench_row(cid, ok=True, retried=0, species="tomato", ms=60_000):
+def bench_row(cid, ok=True, retried=0, species="tomato", ms=60_000, error_on=None):
     calls = [{"schema": "findings@5", "ms": 1}, {"schema": "indicators@3", "ms": 1}] + [{"schema": "findings@5", "ms": 1}] * retried
+    calls = [{**c, "error": "timed out" if c["schema"] == error_on else None} for c in calls]
     result = {"findings": {"species_guess": {"species_id": species, "confidence": 0.85}, "damage": [], "organisms": []},
               "indicators": {"answers": [{"indicator_id": "i1", "answer": "yes"}]}}
     return {"case_id": cid, "ok": ok, "calls": calls, "job_ms": ms, "result": result if ok else None}
@@ -123,18 +147,28 @@ def bench_row(cid, ok=True, retried=0, species="tomato", ms=60_000):
 
 def test_the_vlm_rows_count_first_try_calls_finished_jobs_species_and_p95():
     bench = {c: bench_case(c) for c in ("a", "b", "c", ts.FORMER_DEV[5])}
-    rows = [bench_row("a"), bench_row("b", retried=1, species="pepper"), bench_row("c", ok=False, ms=200_000),
-            bench_row(ts.FORMER_DEV[5], ms=30_000)]
-    r = ts.vlm(rows, bench)
+    rows = [bench_row("a"), bench_row("b", retried=1, species="pepper"),
+            bench_row("c", ok=False, ms=200_000, error_on="indicators@3"), bench_row(ts.FORMER_DEV[5], ms=30_000)]
+    run = ts.vlm_jobs(rows, bench)
+    r = ts.vlm(run)
     a = r["all"]
     assert (a["jobs"], a["finished"], a["retried_calls"]) == (4, 3, 1)
-    assert (a["t8_first_try"]["k"], a["t8_first_try"]["n"]) == (5, 6)
-    assert (a["t8_after_one_retry"]["k"], a["t8_after_one_retry"]["n"]) == (3, 4)
+    # Every job's calls count, the failed job's too: b's retried call and c's failed call missed their first try.
+    assert (a["t8_first_try"]["k"], a["t8_first_try"]["n"]) == (6, 8)
+    assert (a["t8_after_one_retry"]["k"], a["t8_after_one_retry"]["n"], a["t8_after_one_retry"]["check"]) == (3, 4, "failures")
     assert (a["t9_species"]["k"], a["t9_species"]["n"]) == (2, 3)
     assert a["t10_job_p95_s"] == 200.0 and a["t10_verdict"] == "missed"     # a failed job's time counts
     assert r["without_former_dev"]["jobs"] == 3
-    assert ts.species_guesses(rows) == {c: {"species_id": s, "confidence": 0.85}
+    assert ts.species_guesses(run["jobs"]) == {c: {"species_id": s, "confidence": 0.85}
                                         for c, s in (("a", "tomato"), ("b", "pepper"), (ts.FORMER_DEV[5], "tomato"))}
+
+
+def test_a_call_misses_its_first_try_once_however_it_failed():
+    call = lambda schema, error=False: {"schema": schema, "error": error}
+    assert ts.first_tries({"calls": [call("f"), call("i")]}) == (2, 0)
+    assert ts.first_tries({"calls": [call("f"), call("f"), call("i")]}) == (2, 1)            # retried after bad JSON
+    assert ts.first_tries({"calls": [call("f", True), call("f"), call("i")]}) == (2, 1)      # an error, then retried
+    assert ts.first_tries({"calls": [call("f"), call("i", True)]}) == (2, 1)                 # an error, no retry
 
 
 def test_a_vlm_run_must_be_at_the_shipped_pixels_and_slots(tmp_path):
@@ -167,6 +201,10 @@ def test_the_upload_rows_count_rejected_photos_and_photos_with_a_box(tmp_path):
     raw.write_text("".join(json.dumps(r) + "\n" for r in lines[:2]))
     with pytest.raises(SystemExit, match="no result"):
         ts.upload_photos(raw, cases, tmp_path)
+    resized = tmp_path / "test-640-0.3.jsonl"
+    resized.write_text(raw.read_text())
+    with pytest.raises(SystemExit, match="must be face_check's test-original-0.3.jsonl"):
+        ts.upload_photos(resized, cases, tmp_path)
 
 
 def test_the_shipped_values_come_from_the_final_manifest():
@@ -184,7 +222,15 @@ def test_the_report_says_what_wasnt_measured():
          "plant_pair": {"set": "p", "tau_leaf": 0.9, "tau_plant": 0.3}}
     rep = {"command": "c", "date": "d", "split": "test", "cases": 0, "shipped": s, "missing": {"T1": "no plant_check report given"},
            "inputs": {"manifest": {"file": "m", "sha256": "1"}, "models_manifest": {"file": "t", "sha256": "2"}},
-           "t1": None, "plant_passes": {}, "t2": None, "t3": None, "species_cases": {}, "t4": None, "disease": None,
-           "disease_left_out": {}, "vlm": None, "vlm_meta": None, "upload": None}
+           "t1": None, "t2": None, "t3": None, "t4": None, "disease": None, "vlm": None, "vlm_meta": None, "upload": None,
+           "measured": {"notes": "## How it ran\n\nOnce."}}
     md = ts.markdown(rep, "t")
-    assert md.count(ts.NOT_BUILT) == 6 and "no plant_check report given" in md
+    assert md.count(ts.NOT_BUILT) == 6 and "no plant_check report given" in md and "## How it ran" in md
+
+
+def test_the_committed_test_split_report_rebuilds_from_its_json_exactly():
+    path = ts.REPORTS / "test-split-2026-10-23"
+    doc = json.loads(path.with_suffix(".json").read_text())
+    again = json.loads(json.dumps(ts.rebuilt(doc, doc["measured"], None)))
+    assert again == doc
+    assert ts.markdown(again, path.name) == path.with_suffix(".md").read_text()
