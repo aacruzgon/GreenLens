@@ -696,8 +696,77 @@ async fn a_drive_source_is_all_its_records() {
     );
 }
 
+/// Connectors 7: a hit's citation carries the record's text when its connector is an `era` one
+/// (synthetic data), and never when it is a vendor connector. Both searches agree.
+#[tokio::test]
+async fn only_an_era_records_citation_carries_its_text() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let viewer: Membership<Viewer> = owner_of(&store, &f).await.at_least();
+    let vendor = active_slack(&store, &f, f.garden).await;
+    let mut demo = new_connector(&f, ConnectorKind::Slack);
+    demo.status = ConnectorStatus::Active;
+    demo.endpoint = ConnectorEndpoint::Era;
+    demo.oauth = None;
+    demo.account = Some(slack_account());
+    demo.secret = Some(sealed(b"sealed-token"));
+    demo.sources = vec![source("C1", "field-reports")];
+    let era = demo.id;
+    store.seed_connector(f.garden, demo).await.unwrap();
+    let rate = "Sprayed bed 3 at 1.75 g/L.";
+    store
+        .upsert_records(
+            vendor,
+            vec![record(
+                vendor,
+                "C1/1.000100",
+                0,
+                rate,
+                Some(one_hot(0)),
+                t0(),
+            )],
+        )
+        .await
+        .unwrap();
+    store
+        .upsert_records(
+            era,
+            vec![record(
+                era,
+                "C1/2.000100",
+                0,
+                rate,
+                Some(one_hot(0)),
+                at(60),
+            )],
+        )
+        .await
+        .unwrap();
+
+    let query = Embedding(one_hot(0));
+    let hits = store
+        .search_records(viewer, &query, FarmRecordFilter::default(), 10)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 2);
+    for m in &hits {
+        assert_eq!(m.hit.text, rate);
+        let expected = (m.hit.citation.record_id.connector == era).then(|| rate.to_owned());
+        assert_eq!(m.hit.citation.text, expected);
+    }
+    assert!(hits.iter().any(|m| m.hit.citation.text.is_some()));
+    assert!(hits.iter().any(|m| m.hit.citation.text.is_none()));
+    assert_eq!(
+        store
+            .search_records_for_plan(f.garden, &query, FarmRecordFilter::default(), 10)
+            .await
+            .unwrap(),
+        hits
+    );
+}
+
 /// The exact search: only the proof's garden, ranked by cosine similarity, with its filters;
-/// a deleting connector's records are left out.
+/// a deleting connector's records are left out. The plan writer's search by garden agrees.
 #[tokio::test]
 #[expect(clippy::too_many_lines, reason = "two gardens and three filters")]
 async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
@@ -705,6 +774,7 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
     let f = fixture(&store).await;
     let viewer: Membership<Viewer> = owner_of(&store, &f).await.at_least();
     let c = active_slack(&store, &f, f.garden).await;
+    assert!(!store.garden_has_records(f.garden).await.unwrap());
     let near = vec![0.9, 0.1, 0.0, 0.0];
     let middle = vec![0.5, 0.5, 0.0, 0.0];
     let far = vec![0.0, 0.0, 1.0, 0.0];
@@ -801,7 +871,21 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
     assert_eq!(theirs.len(), 1);
     assert_eq!(theirs[0].hit.text, "other garden");
 
-    // A disconnected connector's records leave the search at once.
+    // The plan writer's check and search, by the scan's garden, find the same as its members.
+    assert!(store.garden_has_records(f.garden).await.unwrap());
+    assert!(store.garden_has_records(other).await.unwrap());
+    for (garden, expected) in [(f.garden, &hits), (other, &theirs)] {
+        assert_eq!(
+            &store
+                .search_records_for_plan(garden, &query, FarmRecordFilter::default(), 10)
+                .await
+                .unwrap(),
+            expected
+        );
+    }
+
+    // A disconnected connector's records leave the search, and the plan writer's check, at
+    // once.
     let owner = owner_of(&store, &f).await;
     store.start_connector_deletion(owner, c).await.unwrap();
     assert_eq!(
@@ -811,6 +895,51 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
             .unwrap(),
         Vec::new()
     );
+    assert!(!store.garden_has_records(f.garden).await.unwrap());
+}
+
+/// The plan writer's check and search follow the connectors that stay: with one of a garden's
+/// two connectors being deleted, the garden has records while the other holds some, and none
+/// once it holds none.
+#[tokio::test]
+async fn the_record_check_leaves_out_only_a_deleting_connector() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let going = active_slack(&store, &f, f.garden).await;
+    let staying = active_slack(&store, &f, f.garden).await;
+    for (c, vendor_id, text, i) in [
+        (going, "C1/1.000100", "going", 0),
+        (staying, "C2/1.000100", "staying", 1),
+    ] {
+        store
+            .upsert_records(
+                c,
+                vec![record(c, vendor_id, 0, text, Some(one_hot(i)), t0())],
+            )
+            .await
+            .unwrap();
+    }
+    store.start_connector_deletion(owner, going).await.unwrap();
+
+    assert!(store.garden_has_records(f.garden).await.unwrap());
+    let hits = store
+        .search_records_for_plan(
+            f.garden,
+            &Embedding(one_hot(0)),
+            FarmRecordFilter::default(),
+            10,
+        )
+        .await
+        .unwrap();
+    let texts: Vec<&str> = hits.iter().map(|h| h.hit.text.as_str()).collect();
+    assert_eq!(texts, ["staying"]);
+
+    store
+        .delete_source_records(staying, "C2".into())
+        .await
+        .unwrap();
+    assert!(!store.garden_has_records(f.garden).await.unwrap());
 }
 
 /// `until` keeps what came before the instant; `author` matches part of the display name,
@@ -1006,6 +1135,7 @@ async fn plans_and_messages_carry_farm_citations() {
         author: Some("Sam".into()),
         at: t0(),
         link: "https://maplerow.slack.com/archives/C1/p1729000000000100".into(),
+        text: None,
     };
 
     // The plan.
@@ -1097,6 +1227,7 @@ async fn plans_and_messages_carry_farm_citations() {
         attachments: Vec::new(),
         citations: Vec::new(),
         farm_citations,
+        blocks: Vec::new(),
         tool_calls: Vec::new(),
         route: None,
         interrupted: false,

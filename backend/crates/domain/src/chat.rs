@@ -10,6 +10,7 @@ use crate::{
     connectors::FarmCitation,
     error::ErrorCode,
     garden::map::GardenMap,
+    garden::plants::{GrowthQuantity, MeasurementPoint},
     id::{
         ChatImageId, ConversationId, GardenId, ImageId, MemoryId, MessageId, PendingActionId,
         PlanId, PlantId, ProblemId, ScanId, StepId,
@@ -20,9 +21,9 @@ use crate::{
         observation::Observation,
         plan::{ActionPlan, PlanStep},
         task::Task,
-        weather::SoilNow,
+        weather::{ForecastDay, SoilNow},
     },
-    scan::ImageKind,
+    scan::{ImageKind, PlantStatus},
     url::{ImagePath, Sign, Signed, SignedUrl, Signer, Stored, UrlSlot, UrlState},
     wire::{Page, Timestamp, V1},
 };
@@ -156,6 +157,10 @@ pub struct Message<U: UrlState = Signed> {
     pub farm_citations: Vec<FarmCitation>,
     /// Confirmation cards.
     pub pending_actions: Vec<PendingAction>,
+    /// The answer blocks an assistant message sent, in order, at most 3 ([contracts 8], answer
+    /// blocks); absent when it sent none, and read as empty from a message stored before them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<AnswerBlock>,
     /// The stream dropped before `message_completed`.
     pub interrupted: bool,
     /// When it was stored.
@@ -174,6 +179,7 @@ impl Sign for Message<Stored> {
             citations: self.citations,
             farm_citations: self.farm_citations,
             pending_actions: self.pending_actions,
+            blocks: self.blocks,
             interrupted: self.interrupted,
             created_at: self.created_at,
         }
@@ -371,6 +377,16 @@ pub struct RescanRequested {
     pub instructions: String,
 }
 
+/// `answer_block` data: sent when `show_block` succeeds, so always after its anchor's
+/// `tool_finished`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct AnswerBlockEvent {
+    /// `1`.
+    pub v: V1,
+    /// The block, as stored in `Message.blocks`.
+    pub block: AnswerBlock,
+}
+
 /// `message_completed` data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct MessageCompleted {
@@ -418,6 +434,8 @@ pub enum ChatEvent {
     MemorySaved(MemorySaved),
     /// `rescan_requested`
     RescanRequested(RescanRequested),
+    /// `answer_block`
+    AnswerBlock(AnswerBlockEvent),
     /// `message_completed`
     MessageCompleted(MessageCompleted),
     /// `error`
@@ -436,8 +454,156 @@ impl ChatEvent {
             Self::PendingAction(_) => "pending_action",
             Self::MemorySaved(_) => "memory_saved",
             Self::RescanRequested(_) => "rescan_requested",
+            Self::AnswerBlock(_) => "answer_block",
             Self::MessageCompleted(_) => "message_completed",
             Self::Error(_) => "error",
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Answer blocks
+// ---------------------------------------------------------------------------------------------
+
+/// `AnswerBlock.kind`, and the `kind` argument of `show_block`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AnswerBlockKind {
+    /// The garden map and its pinned plants; anchored on `get_garden_map`.
+    GardenMap,
+    /// Daily weather rows; anchored on `get_forecast`, or on `get_scan`'s weather snapshot.
+    WeatherHours,
+    /// The frost nights and the garden's plants to cover; anchored on `get_forecast`.
+    FrostPlanner,
+    /// One plant's measured points; anchored on `get_plant_measurements`.
+    MeasurementTrend,
+    /// A problem and its look-alikes; anchored on `compare_lookalikes`.
+    Candidates,
+}
+
+impl AnswerBlockKind {
+    /// The wire name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::GardenMap => "garden_map",
+            Self::WeatherHours => "weather_hours",
+            Self::FrostPlanner => "frost_planner",
+            Self::MeasurementTrend => "measurement_trend",
+            Self::Candidates => "candidates",
+        }
+    }
+}
+
+/// `BlockPlant`: a plant as a block shows it, filled in from the store.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct BlockPlant {
+    /// The plant.
+    pub plant_id: PlantId,
+    /// Its name.
+    pub name: String,
+    /// Its health status.
+    pub status: PlantStatus,
+    /// cm: its latest `plant_height_cm` point; absent when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub height_cm: Option<f64>,
+}
+
+/// `FrostPlant = BlockPlant & { frost_tender?: boolean }`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct FrostPlant {
+    /// Every field of `BlockPlant`.
+    #[serde(flatten)]
+    pub plant: BlockPlant,
+    /// `true` for a confirmed species with `frost: tender`, `false` for `hardy`; absent when the
+    /// species is only suggested or unknown, or its sources don't say. Never `false` for "don't
+    /// know".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub frost_tender: Option<bool>,
+}
+
+/// `AnswerBlock` ([contracts 8], answer blocks): a native component the app draws in an answer.
+/// The API builds it from one tool result of the turn (its anchor, `call_id`) and the store, so
+/// it holds records and ids only, never text the model wrote.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct AnswerBlock {
+    /// The anchor: the tool call of the same turn whose result the block shows.
+    pub call_id: String,
+    /// The kind and its records.
+    #[serde(flatten)]
+    pub body: BlockBody,
+}
+
+impl AnswerBlock {
+    /// The block's kind.
+    pub const fn kind(&self) -> AnswerBlockKind {
+        self.body.kind()
+    }
+}
+
+/// `AnswerBlock`'s kinds, tagged by `kind`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BlockBody {
+    /// From `get_garden_map`.
+    GardenMap {
+        /// The map, from the result.
+        map: GardenMap,
+        /// Plant → plants within `NEIGHBOUR_RADIUS_M`, from the result.
+        neighbours: BTreeMap<PlantId, Vec<PlantId>>,
+        /// Every live plant pinned on the map, from the store.
+        plants: Vec<BlockPlant>,
+        /// The plants the answer is about, from the `show_block` call, once each: each is one of
+        /// `plants`. May be empty.
+        focus_plant_ids: Vec<PlantId>,
+    },
+    /// From `get_forecast`, or from `get_scan`'s weather snapshot.
+    WeatherHours {
+        /// Daily rows: the forecast, or the scan's snapshot of it at scan time.
+        days: Vec<ForecastDay>,
+        /// Set when the anchor is `get_scan`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[schema(nullable = false)]
+        scan_id: Option<ScanId>,
+    },
+    /// From `get_forecast`.
+    FrostPlanner {
+        /// The result's days with `frost_risk`, first first.
+        nights: Vec<ForecastDay>,
+        /// The garden's live plants that aren't dead, from the store, with their confirmed
+        /// species' frost tenderness.
+        plants: Vec<FrostPlant>,
+    },
+    /// From `get_plant_measurements`.
+    MeasurementTrend {
+        /// The plant, from the call's arguments.
+        plant_id: PlantId,
+        /// Its name, from the store.
+        plant_name: String,
+        /// The quantity the points measure.
+        quantity: GrowthQuantity,
+        /// As returned, oldest first.
+        points: Vec<MeasurementPoint>,
+    },
+    /// From `compare_lookalikes`.
+    Candidates {
+        /// The problem asked about: its id from the call, its name from the knowledge base.
+        disease: ProblemRef,
+        /// The look-alikes, from the result.
+        lookalikes: Vec<Lookalike>,
+    },
+}
+
+impl BlockBody {
+    /// The kind.
+    pub const fn kind(&self) -> AnswerBlockKind {
+        match self {
+            Self::GardenMap { .. } => AnswerBlockKind::GardenMap,
+            Self::WeatherHours { .. } => AnswerBlockKind::WeatherHours,
+            Self::FrostPlanner { .. } => AnswerBlockKind::FrostPlanner,
+            Self::MeasurementTrend { .. } => AnswerBlockKind::MeasurementTrend,
+            Self::Candidates { .. } => AnswerBlockKind::Candidates,
         }
     }
 }
@@ -803,6 +969,9 @@ pub enum ToolName {
     Remember,
     /// [`RescanRequest`] and a `rescan_requested` event.
     RequestRescan,
+    /// An [`AnswerBlock`] and an `answer_block` event, built from one tool result of the turn.
+    /// Every role.
+    ShowBlock,
     /// A `PendingAction` (editors and owners).
     CreateTask,
     /// A `PendingAction` (editors and owners).
@@ -857,8 +1026,8 @@ pub struct KnowledgeHit {
     pub citation: Citation,
 }
 
-/// `compare_lookalikes` items.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// `compare_lookalikes` items, and `candidates.lookalikes`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Lookalike {
     /// The look-alike.
     pub problem_id: ProblemId,
@@ -990,6 +1159,7 @@ mod tests {
             citations: Vec::new(),
             farm_citations,
             pending_actions: Vec::new(),
+            blocks: Vec::new(),
             interrupted: false,
             created_at: "2026-10-19T09:00:00Z".parse().unwrap(),
         }
@@ -1019,6 +1189,7 @@ mod tests {
             author: None,
             at: "2026-10-12T07:30:00Z".parse().unwrap(),
             link: "https://docs.google.com/document/d/1aBcD/edit".to_owned(),
+            text: None,
         };
         let m = message(vec![citation]);
         let v = serde_json::to_value(&m).unwrap();
@@ -1055,5 +1226,266 @@ mod tests {
         assert_eq!(v["kind"], "plan");
         assert_eq!(v["removed_step_ids"][0], "s3");
         assert_eq!(serde_json::from_value::<Preview>(v).unwrap(), p);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Answer blocks: one exact-JSON test per kind, the event and `Message.blocks`.
+
+    const TOMATO: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5A";
+    const LETTUCE: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5B";
+    const SCAN: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5S";
+
+    fn day(date: &str, t_min_c: f64, frost_risk: bool) -> ForecastDay {
+        ForecastDay {
+            date: date.parse().unwrap(),
+            t_min_c,
+            t_max_c: 9.5,
+            precip_mm: 0.0,
+            mean_rh_pct: 78.0,
+            hours_rh_over_90: 4,
+            frost_risk,
+        }
+    }
+
+    const DAY: &str = r#"{"date":"2026-10-22","t_min_c":-1.5,"t_max_c":9.5,"precip_mm":0.0,"mean_rh_pct":78.0,"hours_rh_over_90":4,"frost_risk":true}"#;
+
+    fn plant(id: &str, name: &str, height_cm: Option<f64>) -> BlockPlant {
+        BlockPlant {
+            plant_id: id.parse().unwrap(),
+            name: name.to_owned(),
+            status: PlantStatus::Healthy,
+            height_cm,
+        }
+    }
+
+    fn exact(block: &AnswerBlock, json: &str) {
+        assert_eq!(serde_json::to_string(block).unwrap(), json);
+        assert_eq!(&serde_json::from_str::<AnswerBlock>(json).unwrap(), block);
+    }
+
+    #[test]
+    fn a_garden_map_block_carries_the_map_its_plants_and_the_focus() {
+        let tomato: PlantId = TOMATO.parse().unwrap();
+        let lettuce: PlantId = LETTUCE.parse().unwrap();
+        let pin = |plant_id, x_m| crate::garden::map::Pin {
+            plant_id,
+            x_m,
+            y_m: 0.5,
+            canopy_radius_m: None,
+            bed_id: None,
+        };
+        let block = AnswerBlock {
+            call_id: "toolu_map".to_owned(),
+            body: BlockBody::GardenMap {
+                map: GardenMap {
+                    garden_id: "01JAX3K9T6R2B8V0QZ4M7D1E51".parse().unwrap(),
+                    version: 2,
+                    beds: Vec::new(),
+                    pins: vec![pin(tomato, 0.0), pin(lettuce, 0.4)],
+                    north_deg: None,
+                    created_by: None,
+                    created_at: "2026-10-18T10:00:00Z".parse().unwrap(),
+                },
+                neighbours: BTreeMap::from([(tomato, vec![lettuce]), (lettuce, vec![tomato])]),
+                plants: vec![
+                    plant(TOMATO, "Tomato 1", Some(42.0)),
+                    plant(LETTUCE, "Lettuce", None),
+                ],
+                focus_plant_ids: vec![tomato],
+            },
+        };
+        exact(
+            &block,
+            concat!(
+                r#"{"call_id":"toolu_map","kind":"garden_map","map":{"garden_id":"01JAX3K9T6R2B8V0QZ4M7D1E51","version":2,"beds":[],"#,
+                r#""pins":[{"plant_id":"01JAX3K9T6R2B8V0QZ4M7D1E5A","x_m":0.0,"y_m":0.5},{"plant_id":"01JAX3K9T6R2B8V0QZ4M7D1E5B","x_m":0.4,"y_m":0.5}],"#,
+                r#""created_at":"2026-10-18T10:00:00Z"},"#,
+                r#""neighbours":{"01JAX3K9T6R2B8V0QZ4M7D1E5A":["01JAX3K9T6R2B8V0QZ4M7D1E5B"],"01JAX3K9T6R2B8V0QZ4M7D1E5B":["01JAX3K9T6R2B8V0QZ4M7D1E5A"]},"#,
+                r#""plants":[{"plant_id":"01JAX3K9T6R2B8V0QZ4M7D1E5A","name":"Tomato 1","status":"healthy","height_cm":42.0},"#,
+                r#"{"plant_id":"01JAX3K9T6R2B8V0QZ4M7D1E5B","name":"Lettuce","status":"healthy"}],"#,
+                r#""focus_plant_ids":["01JAX3K9T6R2B8V0QZ4M7D1E5A"]}"#
+            ),
+        );
+        assert_eq!(block.kind(), AnswerBlockKind::GardenMap);
+    }
+
+    #[test]
+    fn a_weather_hours_block_names_its_scan_only_when_anchored_on_one() {
+        let forecast = AnswerBlock {
+            call_id: "toolu_fc".to_owned(),
+            body: BlockBody::WeatherHours {
+                days: vec![day("2026-10-22", -1.5, true)],
+                scan_id: None,
+            },
+        };
+        exact(
+            &forecast,
+            &format!(r#"{{"call_id":"toolu_fc","kind":"weather_hours","days":[{DAY}]}}"#),
+        );
+        let snapshot = AnswerBlock {
+            call_id: "toolu_scan".to_owned(),
+            body: BlockBody::WeatherHours {
+                days: vec![day("2026-10-22", -1.5, true)],
+                scan_id: Some(SCAN.parse().unwrap()),
+            },
+        };
+        exact(
+            &snapshot,
+            &format!(
+                r#"{{"call_id":"toolu_scan","kind":"weather_hours","days":[{DAY}],"scan_id":"{SCAN}"}}"#
+            ),
+        );
+    }
+
+    #[test]
+    fn a_frost_planner_marks_tender_hardy_and_leaves_unknown_out() {
+        let frost = |id, name, frost_tender| FrostPlant {
+            plant: plant(id, name, None),
+            frost_tender,
+        };
+        let block = AnswerBlock {
+            call_id: "toolu_fc".to_owned(),
+            body: BlockBody::FrostPlanner {
+                nights: vec![day("2026-10-22", -1.5, true)],
+                plants: vec![
+                    frost(TOMATO, "Tomato 1", Some(true)),
+                    frost(LETTUCE, "Lettuce", Some(false)),
+                    frost(SCAN, "Mystery", None),
+                ],
+            },
+        };
+        exact(
+            &block,
+            &format!(
+                concat!(
+                    r#"{{"call_id":"toolu_fc","kind":"frost_planner","nights":[{}],"plants":["#,
+                    r#"{{"plant_id":"{}","name":"Tomato 1","status":"healthy","frost_tender":true}},"#,
+                    r#"{{"plant_id":"{}","name":"Lettuce","status":"healthy","frost_tender":false}},"#,
+                    r#"{{"plant_id":"{}","name":"Mystery","status":"healthy"}}]}}"#
+                ),
+                DAY, TOMATO, LETTUCE, SCAN
+            ),
+        );
+    }
+
+    #[test]
+    fn a_measurement_trend_carries_the_plant_quantity_and_points() {
+        let block = AnswerBlock {
+            call_id: "toolu_m".to_owned(),
+            body: BlockBody::MeasurementTrend {
+                plant_id: TOMATO.parse().unwrap(),
+                plant_name: "Tomato 1".to_owned(),
+                quantity: GrowthQuantity::PlantHeightCm,
+                points: vec![MeasurementPoint {
+                    scan_id: SCAN.parse().unwrap(),
+                    created_at: "2026-10-11T15:00:00Z".parse().unwrap(),
+                    quantity: GrowthQuantity::PlantHeightCm,
+                    value: 38.5,
+                    confidence_band: crate::wire::ConfidenceBand::High,
+                }],
+            },
+        };
+        exact(
+            &block,
+            &format!(
+                concat!(
+                    r#"{{"call_id":"toolu_m","kind":"measurement_trend","plant_id":"{}","plant_name":"Tomato 1","#,
+                    r#""quantity":"plant_height_cm","points":[{{"scan_id":"{}","created_at":"2026-10-11T15:00:00Z","#,
+                    r#""quantity":"plant_height_cm","value":38.5,"confidence_band":"high"}}]}}"#
+                ),
+                TOMATO, SCAN
+            ),
+        );
+    }
+
+    #[test]
+    fn a_candidates_block_names_the_problem_and_its_lookalikes() {
+        let block = AnswerBlock {
+            call_id: "toolu_l".to_owned(),
+            body: BlockBody::Candidates {
+                disease: ProblemRef {
+                    problem_id: "tomato_early_blight".parse().unwrap(),
+                    name: "Early blight".to_owned(),
+                },
+                lookalikes: vec![Lookalike {
+                    problem_id: "septoria_leaf_spot".parse().unwrap(),
+                    name: "Septoria leaf spot".to_owned(),
+                    how_to_tell: "Smaller spots with grey centres and no rings.".to_owned(),
+                }],
+            },
+        };
+        exact(
+            &block,
+            concat!(
+                r#"{"call_id":"toolu_l","kind":"candidates","disease":{"problem_id":"tomato_early_blight","name":"Early blight"},"#,
+                r#""lookalikes":[{"problem_id":"septoria_leaf_spot","name":"Septoria leaf spot","how_to_tell":"Smaller spots with grey centres and no rings."}]}"#
+            ),
+        );
+    }
+
+    #[test]
+    fn an_unknown_block_kind_does_not_decode() {
+        let json = r#"{"call_id":"toolu_1","kind":"pie_chart","slices":[]}"#;
+        assert!(serde_json::from_str::<AnswerBlock>(json).is_err());
+    }
+
+    #[test]
+    fn the_answer_block_event_writes_v_and_the_block() {
+        let e = ChatEvent::AnswerBlock(AnswerBlockEvent {
+            v: V1,
+            block: AnswerBlock {
+                call_id: "toolu_fc".to_owned(),
+                body: BlockBody::WeatherHours {
+                    days: Vec::new(),
+                    scan_id: None,
+                },
+            },
+        });
+        assert_eq!(e.event_name(), "answer_block");
+        assert_eq!(
+            serde_json::to_string(&e).unwrap(),
+            r#"{"v":1,"block":{"call_id":"toolu_fc","kind":"weather_hours","days":[]}}"#
+        );
+    }
+
+    #[test]
+    fn a_message_carries_its_blocks_and_leaves_the_field_out_without_them() {
+        let block = AnswerBlock {
+            call_id: "toolu_fc".to_owned(),
+            body: BlockBody::WeatherHours {
+                days: vec![day("2026-10-22", -1.5, true)],
+                scan_id: None,
+            },
+        };
+        let mut m = message(Vec::new());
+        assert!(serde_json::to_value(&m).unwrap().get("blocks").is_none());
+        m.blocks = vec![block];
+        let v = serde_json::to_value(&m).unwrap();
+        assert_eq!(
+            v["blocks"],
+            serde_json::from_str::<serde_json::Value>(&format!(
+                r#"[{{"call_id":"toolu_fc","kind":"weather_hours","days":[{DAY}]}}]"#
+            ))
+            .unwrap()
+        );
+        assert_eq!(serde_json::from_value::<Message>(v).unwrap(), m);
+    }
+
+    #[test]
+    fn show_block_is_a_read_tool() {
+        assert_eq!(
+            serde_json::to_value(ToolName::ShowBlock).unwrap(),
+            serde_json::json!("show_block")
+        );
+        assert!(!ToolName::ShowBlock.is_write());
+        for kind in [
+            AnswerBlockKind::GardenMap,
+            AnswerBlockKind::WeatherHours,
+            AnswerBlockKind::FrostPlanner,
+            AnswerBlockKind::MeasurementTrend,
+            AnswerBlockKind::Candidates,
+        ] {
+            assert_eq!(serde_json::to_value(kind).unwrap(), kind.as_str());
+        }
     }
 }

@@ -219,6 +219,16 @@ pub enum LightNeed {
     Shade,
 }
 
+/// `SpeciesSeed.frost`: how a species takes a light frost.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Frost {
+    /// Damaged by a light frost.
+    Tender,
+    /// Stands a light frost.
+    Hardy,
+}
+
 /// `SpeciesSeed.care`: required when `profile` is `full`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -270,6 +280,11 @@ pub struct SpeciesSeed {
     /// Required when `full`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub care: Option<Care>,
+    /// Frost tenderness: `tender` is damaged by a light frost, `hardy` stands one. Absent when
+    /// the sources don't say. Separate from `care.hardiness_zones`, whose `annual` means "grown
+    /// as an annual": lettuce is grown as an annual but stands a light frost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frost: Option<Frost>,
     /// Checked against `classifier_labels.yaml` at ingestion.
     pub classifier_supported: bool,
     /// The text prompt `BioCLIP` scores against.
@@ -646,6 +661,36 @@ mod tests {
         assert!(serde_json::from_str::<ProblemSeed>(&typo).is_err());
     }
 
+    /// `SpeciesSeed.frost` is top-level, `snake_case`, and absent (not `null`) when unknown.
+    #[test]
+    fn species_frost_is_a_top_level_optional_field() {
+        let base = serde_json::json!({
+            "id": "tomato", "scientific_name": "Solanum lycopersicum", "common_names": ["Tomato"],
+            "profile": "label_only", "classifier_supported": false,
+            "bioclip_label": "Solanum lycopersicum", "sources": [], "reviewed_by": "t"
+        });
+        let without: SpeciesSeed = serde_json::from_value(base.clone()).unwrap();
+        assert_eq!(without.frost, None);
+        assert_eq!(serde_json::to_value(&without).unwrap(), base);
+        assert!(
+            serde_json::to_value(&without)
+                .unwrap()
+                .get("frost")
+                .is_none()
+        );
+
+        for (word, frost) in [("tender", Frost::Tender), ("hardy", Frost::Hardy)] {
+            let mut with = base.clone();
+            with["frost"] = serde_json::json!(word);
+            let seed: SpeciesSeed = serde_json::from_value(with.clone()).unwrap();
+            assert_eq!(seed.frost, Some(frost));
+            assert_eq!(serde_json::to_value(&seed).unwrap(), with);
+        }
+        let mut bad = base;
+        bad["frost"] = serde_json::json!("sensitive");
+        assert!(serde_json::from_value::<SpeciesSeed>(bad).is_err());
+    }
+
     #[test]
     fn seed_schema_is_strict() {
         let schema = serde_json::to_value(schemars::schema_for!(ProblemSeed)).unwrap();
@@ -688,8 +733,77 @@ mod tests {
                       the_seed_schema_file_is_current; set UPDATE_SEED_SCHEMA=1 to rewrite it.",
             "measurable_from": measurable_from,
             "schemas": schemas,
+            "soil_values": soil_values(),
         });
         serde_json::to_string_pretty(&sorted(file)).unwrap() + "\n"
+    }
+
+    /// The values each `SoilAspect` can take, for `soil_conditions.yaml` (`value` is a string
+    /// there). `texture` takes the squeeze test's and the jar test's.
+    fn soil_values() -> std::collections::BTreeMap<SoilAspect, Vec<String>> {
+        use std::collections::BTreeMap;
+
+        use schemars::{Schema, schema_for};
+
+        use crate::vlm::{
+            JarTexture, SoilColour, SoilCover, SoilDeposits, SoilErosion, SoilMoisture,
+            SoilStructure, SoilSurface, SoilWeeds, SqueezeResult,
+        };
+
+        // A unit enum's schema lists its values under `oneOf`, one `const` each, or as `enum`.
+        fn values(s: Schema) -> Vec<String> {
+            let v = s.to_value();
+            let consts = v["oneOf"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|b| &b["const"]);
+            consts
+                .chain(v["enum"].as_array().into_iter().flatten())
+                .filter_map(|c| c.as_str().map(str::to_owned))
+                .collect()
+        }
+        let mut texture = values(schema_for!(SqueezeResult));
+        for v in values(schema_for!(JarTexture)) {
+            if !texture.contains(&v) {
+                texture.push(v);
+            }
+        }
+        BTreeMap::from([
+            (SoilAspect::Moisture, values(schema_for!(SoilMoisture))),
+            (SoilAspect::Surface, values(schema_for!(SoilSurface))),
+            (SoilAspect::Structure, values(schema_for!(SoilStructure))),
+            (SoilAspect::Colour, values(schema_for!(SoilColour))),
+            (SoilAspect::Cover, values(schema_for!(SoilCover))),
+            (SoilAspect::Deposits, values(schema_for!(SoilDeposits))),
+            (SoilAspect::Erosion, values(schema_for!(SoilErosion))),
+            (SoilAspect::Weeds, values(schema_for!(SoilWeeds))),
+            (SoilAspect::Texture, texture),
+        ])
+    }
+
+    #[test]
+    fn every_soil_aspect_has_values() {
+        let v = soil_values();
+        assert_eq!(v.len(), 9);
+        assert!(v.values().all(|vs| !vs.is_empty()));
+        assert_eq!(
+            v[&SoilAspect::Deposits],
+            ["none", "salt_crust", "moss", "algae", "mould"]
+        );
+        assert_eq!(
+            v[&SoilAspect::Texture],
+            [
+                "crumbles",
+                "holds_ball",
+                "sticky_ribbon",
+                "unclear",
+                "sandy",
+                "loamy",
+                "silty",
+                "clayey"
+            ]
+        );
     }
 
     /// Object keys in sorted order at every depth. `serde_json` keeps insertion order when another

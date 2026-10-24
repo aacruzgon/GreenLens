@@ -50,6 +50,13 @@ pub struct Question {
     /// Chat (absent) or the plan writer's plan.
     #[serde(default)]
     pub target: Target,
+    /// With `target = "plan"`: the `garden.json` scan whose plan the writer writes.
+    #[serde(default)]
+    pub scan: Option<String>,
+    /// With `target = "plan"`: the vendor id of a synced farm record to plant among the records
+    /// the writer is given (G23), e.g. `C_FIELD/1788216000.009700`.
+    #[serde(default)]
+    pub plant_record: Option<String>,
     /// What kind of fact the answer is.
     pub kind: Kind,
     /// The expected fact; empty for `refusal` and `behaviour`.
@@ -122,7 +129,7 @@ pub enum Target {
     /// A chat answer.
     #[default]
     Chat,
-    /// The plan writer's plan (E5.4).
+    /// The plan writer's plan for the question's `scan` (E5.4, E8.1).
     Plan,
 }
 
@@ -220,6 +227,13 @@ impl Answers {
             answers.format
         );
         regex::Regex::new(&answers.safety.rate_pattern)?;
+        for q in &answers.questions {
+            anyhow::ensure!(
+                q.plant_record.is_none() || q.target == Target::Plan,
+                "{}: plant_record needs target = \"plan\"",
+                q.id
+            );
+        }
         Ok(answers)
     }
 }
@@ -233,8 +247,20 @@ mod tests {
     #[test]
     fn the_fixture_parses() {
         let answers = Answers::parse(FIXTURE).unwrap();
-        assert_eq!(answers.questions.len(), 19);
+        assert_eq!(answers.questions.len(), 20);
         assert_eq!(answers.fixture, "maple-row");
+    }
+
+    #[test]
+    fn plant_record_needs_a_plan_target() {
+        let bad = FIXTURE.replacen("scan = \"SC_BED3\"\nplant_record", "plant_record", 1);
+        let bad = bad.replacen("target = \"plan\"\nplant_record", "plant_record", 1);
+        assert!(bad.contains("plant_record"));
+        let err = Answers::parse(&bad).unwrap_err().to_string();
+        assert!(
+            err.contains("Q18A") && err.contains("plant_record"),
+            "{err}"
+        );
     }
 
     #[test]

@@ -111,6 +111,7 @@ def test_label_set_version_matches_the_formats_vector():
      "'neem oil' is listed 2 times"),
     (lambda s: s.chunks[0].update(id="other_source.1"), "must be <source_id>.<n>"),
     (lambda s: by_id(s.species, 'tomato').update(sources=["nowhere"]), "source 'nowhere' is not a known source"),
+    (lambda s: s.soil_conditions[0].update(value="mold"), "'mold' isn't a"),
 ])
 def test_each_check_fails(seed, break_it, expected):
     break_it(seed)
@@ -184,6 +185,16 @@ def test_the_migration_is_deterministic_and_complete(seed):
     from PIL import Image
     import io
     assert max(Image.open(io.BytesIO(data)).size) == 1024
+
+
+def test_frost_is_written_only_when_the_seed_says_it(seed):
+    seed = copy.deepcopy(seed)
+    by_id(seed.species, "tomato")["frost"] = "tender"
+    lines = build(seed)[0].splitlines()
+    tomato, = [l for l in lines if l.startswith("UPSERT species:`tomato`")]
+    strawberry, = [l for l in lines if l.startswith("UPSERT species:`strawberry`")]
+    assert "frost: 'tender'" in tomato
+    assert "frost" not in strawberry
 
 
 def test_reference_photos_are_turned_upright_and_lose_their_metadata(tmp_path):

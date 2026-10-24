@@ -298,6 +298,15 @@ pub struct PlanStepDraft {
     pub plant_id: Option<PlantId>,
     /// At least one source.
     pub citations: Vec<SourceId>,
+    /// Farm records the step cites, by `record_id` (`<connector_id>.<n>.<vendor_id>`), from those
+    /// given ([connectors 7]); never instead of a source. Strings as the model wrote them:
+    /// validation parses each, so an id that doesn't parse refuses the step, never the whole
+    /// answer.
+    // Plain strings in the schema too: with `FarmRecordId`'s pattern on its items,
+    // `revise_plan`'s strict input schema, which embeds this type, passed Anthropic's limit and
+    // every chat turn got `400 Schema is too complex` (Oct 23; tools' strict budget test).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub farm_citations: Vec<String>,
 }
 
 /// The plan writer's structured output: the fixed shape whose JSON Schema the agent sends to
@@ -400,6 +409,7 @@ mod tests {
             author: Some("Sam".to_owned()),
             at: "2026-10-12T07:30:00Z".parse().unwrap(),
             link: "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100".to_owned(),
+            text: None,
         };
         let p = plan(vec![step(vec![record])], vec![citation]);
         let mut expected = old_plan_json();

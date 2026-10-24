@@ -20,7 +20,7 @@ fn the_registry_has_every_tool_sorted_and_filters_by_role() {
         .into_iter()
         .map(|s| s.name)
         .collect();
-    assert_eq!(all.len(), 20);
+    assert_eq!(all.len(), 21, "twenty tools and show_block");
     let mut sorted = all.clone();
     sorted.sort();
     assert_eq!(all, sorted, "a stable order keeps the prompt cache");
@@ -31,7 +31,7 @@ fn the_registry_has_every_tool_sorted_and_filters_by_role() {
             .into_iter()
             .map(|s| s.name)
             .collect();
-        assert_eq!(names.len(), 17);
+        assert_eq!(names.len(), 18);
         for write in ["create_task", "complete_task", "revise_plan"] {
             assert!(
                 !names.iter().any(|n| n == write),
@@ -42,6 +42,9 @@ fn the_registry_has_every_tool_sorted_and_filters_by_role() {
         assert!(names.iter().any(|n| n == "remember"));
         assert!(names.iter().any(|n| n == "request_rescan"));
         assert!(names.iter().any(|n| n == "search_farm_records"));
+        // A read and UI tool for every role, run by the turn, not found in the registry.
+        assert!(names.iter().any(|n| n == "show_block"));
+        assert!(r.find("show_block", Offer::everything(role)).is_none());
     }
     assert!(
         r.find("revise_plan", Offer::everything(Role::Editor))
@@ -164,6 +167,7 @@ impl Kb {
             neighbours: &self.neighbours,
             beneficials_seen: false,
             known_sources: &self.sources,
+            farm_records: &[],
         }
     }
 }
@@ -722,4 +726,276 @@ fn remember_takes_an_optional_topic() {
     let args: ui::RememberArgs =
         serde_json::from_value(json!({"fact": "x", "topic": "watering"})).unwrap();
     assert_eq!(args.topic, Some(crate::memory::ExtractedTopic::Watering));
+}
+
+/// What one JSON Schema costs against Anthropic's strict-mode budget: regex patterns, optional
+/// properties and union types (`anyOf`, or a `type` array).
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+struct StrictCost {
+    patterns: usize,
+    optional: usize,
+    unions: usize,
+}
+
+fn strict_cost(v: &serde_json::Value, cost: &mut StrictCost) {
+    match v {
+        serde_json::Value::Object(o) => {
+            if o.contains_key("pattern") {
+                cost.patterns += 1;
+            }
+            if o.contains_key("anyOf") || o.get("type").is_some_and(serde_json::Value::is_array) {
+                cost.unions += 1;
+            }
+            if let Some(serde_json::Value::Object(props)) = o.get("properties") {
+                let required = o.get("required").and_then(serde_json::Value::as_array);
+                cost.optional += props
+                    .keys()
+                    .filter(|k| !required.is_some_and(|r| r.iter().any(|x| x == k.as_str())))
+                    .count();
+            }
+            o.values().for_each(|x| strict_cost(x, cost));
+        }
+        serde_json::Value::Array(a) => a.iter().for_each(|x| strict_cost(x, cost)),
+        _ => {}
+    }
+}
+
+/// The strict tools' schemas, sanitised as the Anthropic adapter sends them, stay inside the
+/// budget measured when they last passed the real API. One more pattern (PR #176's on
+/// `PlanStepDraft.farm_citations`) got every chat turn `400 Schema is too complex`. Raise a
+/// limit only after `live_chat_accepts_every_tool_schema_and_streams` passes with the change.
+#[test]
+fn the_strict_tool_schemas_stay_inside_anthropics_budget() {
+    let mut cost = StrictCost::default();
+    for spec in ToolRegistry::standard()
+        .specs_for(Offer::everything(Role::Owner))
+        .into_iter()
+        .filter(|s| s.strict)
+    {
+        strict_cost(
+            &integrations::anthropic::sanitize_schema(&spec.parameters).schema,
+            &mut cost,
+        );
+    }
+    assert!(cost.patterns <= 8, "{cost:?}");
+    assert!(cost.optional <= 12, "{cost:?}");
+    assert!(cost.unions <= 10, "{cost:?}");
+}
+
+/// `show_block`'s kinds the turn tests don't reach: `weather_hours` from a scan's snapshot,
+/// `measurement_trend` and `candidates`, each built from the turn's results and the store.
+mod show_block {
+    use std::sync::Arc;
+
+    use domain::{
+        chat::{Anchor, AnswerBlock, AnswerBlockKind, BlockBody},
+        ports::{MockKnowledgeStore, MockMemoryStore, MockPlantRepo, NoBeliefs},
+    };
+
+    use super::*;
+    use crate::{
+        error::ToolError,
+        testing::{GARDEN, garden_deps, now, owner},
+        tools::blocks::{ShowBlockArgs, build},
+    };
+
+    const PLANT: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5F";
+    const SCAN: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5H";
+
+    fn calls(
+        name: &str,
+        arguments: serde_json::Value,
+        result: serde_json::Value,
+    ) -> Vec<ContentPart> {
+        vec![
+            ContentPart::ToolCall {
+                call_id: "toolu_1".to_owned(),
+                name: name.to_owned(),
+                arguments,
+            },
+            ContentPart::ToolResult {
+                call_id: "toolu_1".to_owned(),
+                content: result,
+                is_error: false,
+            },
+        ]
+    }
+
+    fn point(quantity: &str, value: f64) -> serde_json::Value {
+        json!({"scan_id": SCAN, "created_at": "2026-10-11T15:00:00Z", "quantity": quantity,
+               "value": value, "confidence_band": "high"})
+    }
+
+    async fn show(
+        deps: &AgentDeps,
+        kind: AnswerBlockKind,
+        calls: &[ContentPart],
+    ) -> Result<AnswerBlock, ToolError> {
+        let ctx = ToolCtx {
+            deps,
+            owner: owner(Role::Viewer).await,
+            anchor: Anchor::Garden(GARDEN.parse().unwrap()),
+            plant: None,
+            message_id: "01JAX3K9T6R2B8V0QZ4M7D1E72".parse().unwrap(),
+            now: now(),
+        };
+        let args = ShowBlockArgs {
+            kind,
+            call_id: "toolu_1".to_owned(),
+            focus_plant_ids: None,
+        };
+        build(&ctx, calls, &[], args).await
+    }
+
+    fn deps() -> AgentDeps {
+        let mut deps = garden_deps(MockMemoryStore::new(), Arc::new(NoBeliefs));
+        let mut plants = MockPlantRepo::new();
+        plants.expect_plant().returning(|_, id| {
+            Ok(serde_json::from_value(json!({
+                "id": id, "garden_id": GARDEN, "name": "Tomato 1", "species_status": "unknown",
+                "species_candidates": [], "status": "watch", "created_at": "2026-10-01T00:00:00Z"
+            }))
+            .unwrap())
+        });
+        deps.stores.plants = Arc::new(plants);
+        let mut knowledge = MockKnowledgeStore::new();
+        knowledge
+            .expect_problem()
+            .returning(|_| Ok(fixtures::problems().into_iter().next()));
+        deps.knowledge = Arc::new(knowledge);
+        deps
+    }
+
+    #[tokio::test]
+    async fn weather_hours_from_a_scan_takes_its_snapshot_and_names_the_scan() {
+        let day = json!({"date": "2026-10-11", "t_min_c": 12.0, "t_max_c": 21.0, "precip_mm": 3.0,
+                         "mean_rh_pct": 91.0, "hours_rh_over_90": 14, "frost_risk": false});
+        let deps = deps();
+        let result = json!({"id": SCAN, "status": "planned", "weather": {"forecast": [day]}});
+        let block = show(
+            &deps,
+            AnswerBlockKind::WeatherHours,
+            &calls("get_scan", json!({"scan_id": SCAN}), result),
+        )
+        .await
+        .unwrap();
+        let BlockBody::WeatherHours { days, scan_id } = block.body else {
+            panic!()
+        };
+        assert_eq!(scan_id.map(|s| s.to_string()).as_deref(), Some(SCAN));
+        assert_eq!(days.len(), 1);
+        assert_eq!(days[0].hours_rh_over_90, 14);
+
+        let bare = json!({"id": SCAN, "status": "planned"});
+        let refused = show(
+            &deps,
+            AnswerBlockKind::WeatherHours,
+            &calls("get_scan", json!({"scan_id": SCAN}), bare),
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.for_model().contains("no weather"), "{refused}");
+    }
+
+    #[tokio::test]
+    async fn a_measurement_trend_names_its_plant_and_refuses_mixed_quantities() {
+        let deps = deps();
+        let one = json!([point("plant_height_cm", 38.5)]);
+        let block = show(
+            &deps,
+            AnswerBlockKind::MeasurementTrend,
+            &calls("get_plant_measurements", json!({"plant_id": PLANT}), one),
+        )
+        .await
+        .unwrap();
+        let BlockBody::MeasurementTrend {
+            plant_id,
+            plant_name,
+            quantity,
+            points,
+        } = block.body
+        else {
+            panic!()
+        };
+        assert_eq!(plant_id.to_string(), PLANT);
+        assert_eq!(plant_name, "Tomato 1");
+        assert_eq!(
+            quantity,
+            domain::garden::plants::GrowthQuantity::PlantHeightCm
+        );
+        assert_eq!(points.len(), 1);
+
+        let mixed = json!([
+            point("plant_height_cm", 38.5),
+            point("canopy_width_cm", 30.0)
+        ]);
+        let refused = show(
+            &deps,
+            AnswerBlockKind::MeasurementTrend,
+            &calls("get_plant_measurements", json!({"plant_id": PLANT}), mixed),
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.for_model().contains("mix"), "{refused}");
+        // With the call's quantity, the points are taken as returned.
+        let asked = calls(
+            "get_plant_measurements",
+            json!({"plant_id": PLANT, "quantity": "canopy_width_cm"}),
+            json!([point("canopy_width_cm", 30.0)]),
+        );
+        assert!(
+            show(&deps, AnswerBlockKind::MeasurementTrend, &asked)
+                .await
+                .is_ok()
+        );
+        let none = calls(
+            "get_plant_measurements",
+            json!({"plant_id": PLANT}),
+            json!([]),
+        );
+        assert!(
+            show(&deps, AnswerBlockKind::MeasurementTrend, &none)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn candidates_name_the_problem_from_the_knowledge_base() {
+        let deps = deps();
+        let lookalikes = json!([{"problem_id": "septoria_leaf_spot", "name": "Septoria leaf spot",
+                                 "how_to_tell": "Smaller spots with grey centres."}]);
+        let block = show(
+            &deps,
+            AnswerBlockKind::Candidates,
+            &calls(
+                "compare_lookalikes",
+                json!({"disease": "tomato_early_blight"}),
+                lookalikes,
+            ),
+        )
+        .await
+        .unwrap();
+        let BlockBody::Candidates {
+            disease,
+            lookalikes,
+        } = block.body
+        else {
+            panic!()
+        };
+        assert_eq!(disease.problem_id.to_string(), "tomato_early_blight");
+        assert_eq!(disease.name, "tomato_early_blight", "the fixture's name");
+        assert_eq!(lookalikes.len(), 1);
+
+        let none = calls(
+            "compare_lookalikes",
+            json!({"disease": "tomato_early_blight"}),
+            json!([]),
+        );
+        assert!(
+            show(&deps, AnswerBlockKind::Candidates, &none)
+                .await
+                .is_err()
+        );
+    }
 }

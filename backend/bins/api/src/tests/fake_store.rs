@@ -194,8 +194,8 @@ mod chat_repo {
     use domain::{
         authz::{ConversationOwner, Editor, Membership, Viewer},
         chat::{
-            Anchor, ChatRoute, ConfirmResult, Conversation, ConversationDetail, ConversationQuery,
-            Message, MessageFeedbackRequest, MessageRole, PendingAction,
+            Anchor, AnswerBlock, ChatRoute, ConfirmResult, Conversation, ConversationDetail,
+            ConversationQuery, Message, MessageFeedbackRequest, MessageRole, PendingAction,
         },
         connectors::FarmCitation,
         id::{ChatImageId, ConversationId, MessageId, PendingActionId, UserId},
@@ -743,6 +743,20 @@ mod farm_record_store {
                 .search_records(member, query, filter, k)
                 .await
         }
+        async fn garden_has_records(&self, garden: GardenId) -> Result<bool, StoreError> {
+            self.farm_record_store.garden_has_records(garden).await
+        }
+        async fn search_records_for_plan(
+            &self,
+            garden: GardenId,
+            query: &Embedding,
+            filter: FarmRecordFilter,
+            k: usize,
+        ) -> Result<Vec<FarmRecordMatch>, StoreError> {
+            self.farm_record_store
+                .search_records_for_plan(garden, query, filter, k)
+                .await
+        }
         async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError> {
             self.farm_record_store.delete_records_before(cutoff).await
         }
@@ -1259,6 +1273,7 @@ mod plant_repo {
     #![allow(unused_imports, reason = "copied from the trait's module")]
     use domain::{
         authz::{Editor, Membership, Viewer},
+        chat::BlockPlant,
         garden::plants::{GrowthQuantity, MeasurementPoint, TimelineEntry, UpdatePlantRequest},
         id::{GardenId, PlantId, ScanId, SpeciesId},
         ports::StoreError,
@@ -1358,6 +1373,12 @@ mod plant_repo {
         }
         async fn heights(&self, plant: PlantId) -> Result<Vec<MeasurementPoint>, StoreError> {
             self.plant_repo.heights(plant).await
+        }
+        async fn plant_summaries(
+            &self,
+            member: Membership<Viewer>,
+        ) -> Result<Vec<PlantSummary>, StoreError> {
+            self.plant_repo.plant_summaries(member).await
         }
     }
 }

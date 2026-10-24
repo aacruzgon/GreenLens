@@ -20,8 +20,8 @@ use chrono::{DateTime, Utc};
 use domain::{
     authz::{Membership, Owner, Viewer},
     connectors::{
-        Connector, ConnectorKind, ConnectorSource, ConnectorStatus, FarmCitation, FarmRecordHit,
-        SyncErrorCode,
+        Connector, ConnectorEndpoint, ConnectorKind, ConnectorSource, ConnectorStatus,
+        FarmCitation, FarmRecordHit, SyncErrorCode,
     },
     error::{DomainError, InvalidStateDetails},
     id::{ConnectorId, FarmRecordId, GardenId, UserId},
@@ -311,10 +311,13 @@ COMMIT;";
     /// A garden's records (index `farm_record_garden`), for the 10,000 limit.
     pub const GARDEN_RECORD_COUNT: &str =
         "RETURN count(SELECT VALUE id FROM farm_record WHERE garden = $garden);";
+    /// Whether a garden has a searchable record: the first one (index `farm_record_garden`)
+    /// whose connector isn't being deleted, as `SEARCH` leaves those out.
+    pub const GARDEN_HAS_RECORDS: &str = "RETURN count(SELECT VALUE id FROM farm_record WHERE garden = $garden AND connector.status != 'deleting' LIMIT 1) > 0;";
     /// `search_farm_records` (EON gap G7): `memory`'s exact cosine search without its sharing
     /// filter, within one garden, leaving out a connector being deleted. `$author` comes
     /// lowercased (EON gap G12).
-    pub const SEARCH: &str = "SELECT id, connector.kind AS system, title, author, link, text, at,
+    pub const SEARCH: &str = "SELECT id, connector.kind AS system, connector.endpoint AS endpoint, title, author, link, text, at,
   vector::similarity::cosine(embedding, $query) AS similarity FROM farm_record
 WHERE garden = $garden AND ($kind = NONE OR kind = $kind) AND ($since = NONE OR at >= $since)
   AND ($until = NONE OR at < $until)
@@ -443,6 +446,8 @@ pub struct FarmHitRow {
     pub id: RecordId,
     /// Its connector's kind.
     pub system: ConnectorKindRow,
+    /// Its connector's endpoint: only an `era` record's citation carries its text.
+    pub endpoint: ConnectorEndpointRow,
     /// The channel or document title.
     pub title: String,
     /// The author's display name.
@@ -1112,6 +1117,17 @@ impl FarmRecordStore for SurrealStore {
         Ok(u32::try_from(count.unwrap_or(0)).unwrap_or(u32::MAX))
     }
 
+    async fn garden_has_records(&self, garden: GardenId) -> Result<bool, StoreError> {
+        const WHAT: &str = "garden has farm records";
+        let mut r = run_tx(&self.db, sql::GARDEN_HAS_RECORDS, |q| {
+            q.bind(("garden", rid(&garden)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let found: Option<bool> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
+        Ok(found.unwrap_or(false))
+    }
+
     async fn search_records(
         &self,
         member: Membership<Viewer>,
@@ -1119,9 +1135,43 @@ impl FarmRecordStore for SurrealStore {
         filter: FarmRecordFilter,
         k: usize,
     ) -> Result<Vec<FarmRecordMatch>, StoreError> {
+        self.search_farm(member.garden(), query, filter, k).await
+    }
+
+    async fn search_records_for_plan(
+        &self,
+        garden: GardenId,
+        query: &Embedding,
+        filter: FarmRecordFilter,
+        k: usize,
+    ) -> Result<Vec<FarmRecordMatch>, StoreError> {
+        self.search_farm(garden, query, filter, k).await
+    }
+
+    async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError> {
+        const WHAT: &str = "delete old farm records";
+        let mut r = run_tx(&self.db, sql::DELETE_RECORDS_BEFORE, |q| {
+            q.bind(("cutoff", dt(cutoff)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        deleted(&mut r, 0, WHAT)
+    }
+}
+
+impl SurrealStore {
+    /// The exact search within one garden, for the chat's tool (by the member's proof) and the
+    /// plan writer (by the scan's garden).
+    async fn search_farm(
+        &self,
+        garden: GardenId,
+        query: &Embedding,
+        filter: FarmRecordFilter,
+        k: usize,
+    ) -> Result<Vec<FarmRecordMatch>, StoreError> {
         const WHAT: &str = "search farm records";
         let mut r = run_tx(&self.db, sql::SEARCH, |q| {
-            q.bind(("garden", rid(&member.garden())))
+            q.bind(("garden", rid(&garden)))
                 .bind(("query", query.0.clone()))
                 .bind(("kind", filter.kind.map(FarmRecordKindRow::from)))
                 .bind(("since", filter.since.map(dt)))
@@ -1139,6 +1189,10 @@ impl FarmRecordStore for SurrealStore {
                     reason = "a cosine similarity is in -1..=1"
                 )]
                 let similarity = row.similarity.unwrap_or(0.0) as f32;
+                // Era's data is synthetic, so its citation carries the record as stored; a
+                // vendor record's text reaches the model only (connectors 7).
+                let era = ConnectorEndpoint::from(row.endpoint) == ConnectorEndpoint::Era;
+                let cited_text = era.then(|| row.text.clone());
                 Ok(FarmRecordMatch {
                     hit: FarmRecordHit {
                         text: row.text,
@@ -1149,6 +1203,7 @@ impl FarmRecordStore for SurrealStore {
                             author: row.author,
                             at: ts(row.at),
                             link: row.link,
+                            text: cited_text,
                         },
                     },
                     similarity,
@@ -1156,16 +1211,6 @@ impl FarmRecordStore for SurrealStore {
             })
             .collect::<Result<_, RowError>>()
             .map_err(|e| e.into_store(WHAT))
-    }
-
-    async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError> {
-        const WHAT: &str = "delete old farm records";
-        let mut r = run_tx(&self.db, sql::DELETE_RECORDS_BEFORE, |q| {
-            q.bind(("cutoff", dt(cutoff)))
-        })
-        .await
-        .map_err(|f| f.into_store(WHAT))?;
-        deleted(&mut r, 0, WHAT)
     }
 }
 

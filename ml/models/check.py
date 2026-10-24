@@ -13,6 +13,9 @@ Fails (exit 1) unless:
 - a disease head entry lists its `labels` (`species/problem` by output index), the copy that lets
   `classifier_labels` and the seed comparison run where the model files aren't (CI);
 - NOTICES.md has a `## <entry name>` section for every entry;
+- a manifest with a `leaf_detector` has a `plant_probe`: τ_leaf is chosen with the probe's τ_plant,
+  and without a probe the worker sets τ_plant to infinity, so the leaf score alone would fail most
+  plant photos (docs/vision/models.md §2; Alan's review of #167);
 - for each file present locally: its SHA-256 matches; a label matrix's or head's own version
   equals its entry's; a head's `features` names that manifest's `bioclip` file
   (`<version>+<first 16 hex of its SHA-256>`, ml/models/FORMATS.md), as the worker requires;
@@ -68,6 +71,7 @@ def check(models: Path, files: Path) -> tuple[list[str], list[str]]:
         entries = tomllib.loads((models / name).read_text())["model"]
         bioclip = next((e for e in entries if e["name"] == "bioclip"), None)
         problems += seed_head_problems(name, entries)
+        problems += probe_problems(name, entries)
         for e in entries:
             where = f"{name}: {e['name']}"
             if e["sha256"] not in rows:
@@ -125,6 +129,15 @@ def check(models: Path, files: Path) -> tuple[list[str], list[str]]:
                 if got != want_rows:
                     problems.append(f"{where}: the file's labels differ from the entry's `labels`")
     return problems, notes
+
+
+def probe_problems(manifest: str, entries: list[dict]) -> list[str]:
+    """A leaf detector's τ_leaf is chosen with the plant probe's τ_plant, so one never ships alone."""
+    names = {e["name"] for e in entries}
+    if "leaf_detector" in names and "plant_probe" not in names:
+        return [f"{manifest}: leaf_detector without plant_probe: its tau_leaf is chosen with the probe's "
+                "tau_plant, and without a probe the plant check would fail most plant photos (models.md 2)"]
+    return []
 
 
 def head_rows(entry: dict) -> list[dict]:

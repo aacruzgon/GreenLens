@@ -7,10 +7,15 @@
 # either card; keep the two command blocks in step. The differences: the image, the devices (only
 # /dev/kfd and this card's render node, never all of /dev/dri), and this card's own slots.
 #
-# Settings come from infra/.env (copy infra/.env.example): VLM_API_KEY, WORKER_IMAGE, API_BASE_URL,
-# AMD_RENDER_NODE, HOST_RENDER_GID, HOST_VIDEO_GID, and VLM_MAX_NUM_SEQS and VLM_GPU_MEM_UTIL for
-# this card (1 slot and 0.90 until its own benchmark says otherwise; the example file's 2 and 0.78
-# are the 5070 Ti's). The worker's token is in infra/.env.rig-9070xt-vlm-1.
+# Settings: infra/.env, copied from infra/.env.example. Set VLM_API_KEY, AMD_RENDER_NODE,
+# HOST_RENDER_GID and HOST_VIDEO_GID, and VLM_MAX_NUM_SEQS and VLM_GPU_MEM_UTIL for this card (1 slot
+# and 0.90 until its own benchmark says otherwise; the example file's 2 and 0.78 are the 5070 Ti's).
+# The worker's token is in ${PDM_ENV}/.env.rig-9070xt-vlm-1, and the same token is in api's
+# WORKER_TOKENS on the control plane.
+#
+# As in rig.compose.yml, vllm-amd starts on its own (`up -d vllm-amd`, for the day-1 check and
+# benchmarks): the worker's image defaults to worker:unset and its token file is optional, so only
+# the worker fails, at the image pull, until WORKER_IMAGE is set.
 #
 # If llama.cpp wins the day-1 check: replace vllm-amd with ghcr.io/ggml-org/llama.cpp:server-vulkan
 # at a pinned build and digest (port 8080 inside, -np equal to VLM_SLOTS, --image-max-tokens at least
@@ -19,7 +24,13 @@
 
 x-logging: &logging
   driver: json-file
+  # The live file up to 10 MB, plus four rotated files gzipped (compress): from about 12 MB per container.
   options: { max-size: "10m", max-file: "5", compress: "true" }
+x-hardened: &hardened
+  read_only: true
+  tmpfs: ["/tmp:size=512m"]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
 
 services:
   vllm-amd:
@@ -81,21 +92,20 @@ services:
     logging: *logging
 
   vlm-worker-amd:
-    image: ${WORKER_IMAGE:?set WORKER_IMAGE in infra/.env}
+    image: ${WORKER_IMAGE:-worker:unset}   # ghcr.io/aacruzgon/greenlens/worker@sha256:…
     restart: unless-stopped
-    read_only: true
-    tmpfs: ["/tmp:size=512m"]
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
+    <<: *hardened
     command: ["--caps", "vlm"]
-    env_file:
-      - .env.rig-9070xt-vlm-1   # WORKER_TOKEN, from the control plane's owner; never committed
+    env_file:                       # WORKER_TOKEN; also in api's WORKER_TOKENS
+      - path: ${PDM_ENV:-/srv/pdm/env}/.env.rig-9070xt-vlm-1
+        required: false
     environment:
       WORKER_ID: rig-9070xt-vlm-1
-      API_BASE_URL: ${API_BASE_URL:?set API_BASE_URL in infra/.env}
+      API_BASE_URL: ${API_BASE_URL:-https://pdm-cp.tailb3ce07.ts.net}   # the control plane's public URL
       VLM_BASE_URL: http://vllm-amd:8000
       VLM_API_KEY: ${VLM_API_KEY:?set VLM_API_KEY in infra/.env}
       VLM_ADAPTER: vllm
+      VLM_SERVED_NAME: vlm
       VLM_MODEL: ${VLM_MODEL:-cyankiwi/Qwen3.5-9B-AWQ-4bit}@${VLM_REVISION:-156edc4bbeb8d1910ee7be9196bafaf1bc052156}
       VLM_QUANT: ${VLM_QUANT:-awq_w4a16}
       VLM_SERVER: vllm-rocm@v0.31.0
@@ -103,7 +113,7 @@ services:
       VLM_CELL_PX: "32"
       VLM_MAX_PIXELS: ${VLM_MAX_PIXELS:-1003520}
       VLM_SLOTS: ${VLM_MAX_NUM_SEQS:-1}   # always the sidecar's --max-num-seqs
-    depends_on:
-      vllm-amd: { condition: service_healthy }
-    stop_grace_period: 30s   # DRAIN_SECONDS (20) + 10 s (worker 12)
+    # Claims only once vLLM's /health answers, so no job waits on a model still loading.
+    depends_on: { vllm-amd: { condition: service_healthy } }
+    stop_grace_period: 30s          # DRAIN_SECONDS (20) + 10 s, worker 12
     logging: *logging

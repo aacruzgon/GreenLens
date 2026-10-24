@@ -465,3 +465,50 @@ def test_record_then_replay(start, tmp_path, monkeypatch):
     status, headers, raw = call(replay, "/v1/chat/completions", FINDINGS_BODY)
     assert headers["x-fake-vlm"] == "replay"
     assert content_of(raw) == recorded_findings()
+
+
+# --- the committed recordings -----------------------------------------------------------------
+
+
+COMMITTED = sorted((fv.HERE / "recordings").glob("*.json"))
+
+
+def recording_problems(doc: dict) -> list[str]:
+    """What is wrong with a recordings file: a key that doesn't recompute from its redacted
+    request, a schema name or image count that disagrees, or a 200 answer that isn't valid for
+    its request's schema. `conform` keeps whatever already fits, so a valid answer comes back
+    unchanged."""
+    problems = []
+    for i, r in enumerate(doc["recordings"]):
+        name, schema = fv.json_schema(r["request"])
+        n = fv.image_count(r["request"])
+        if fv.request_key(r["request"]) != r["key"]:
+            problems.append(f"{i}: key")
+        if name != r["schema_name"] or n != r["n_images"]:
+            problems.append(f"{i}: schema name or image count")
+        if r["status"] == 200:
+            content = fv.reply_content(r["response"])
+            if content is None or fv.conform(content, schema, fv.image_ids(n)) != content:
+                problems.append(f"{i}: answer")
+    return problems
+
+
+def test_the_default_recordings_are_committed():
+    assert fv.DEFAULT_RECORDINGS in COMMITTED
+
+
+@pytest.mark.parametrize("path", COMMITTED, ids=lambda p: p.name)
+def test_each_committed_recording_keys_and_validates(path):
+    doc = fv.load_recordings(path)
+    assert doc["recordings"]
+    assert recording_problems(doc) == []
+
+
+def test_recording_problems_catches_a_stale_key_and_an_invalid_answer():
+    doc = fv.load_recordings(fv.DEFAULT_RECORDINGS)
+    first = doc["recordings"][0]
+    first["key"] = "0" * 64
+    answer = fv.reply_content(first["response"])
+    answer.pop(next(iter(answer)))  # drop a required field
+    first["response"]["choices"][0]["message"]["content"] = json.dumps(answer)
+    assert recording_problems(doc) == ["0: key", "0: answer"]

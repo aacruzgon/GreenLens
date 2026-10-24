@@ -17,7 +17,7 @@ Steps, as vision §6 lists them:
 2. Keep a file already present with the right hash. Otherwise download it to DEST/.partial/<sha256>,
    hashing as it streams, and rename it into place. A mismatch deletes the partial file and tries
    once more.
-3. Copy NOTICES.md and licences/ into DEST.
+3. Copy NOTICES.md, licences/ and credits/ into DEST.
 4. Write the manifest as DEST/manifest.toml.new and rename it over DEST/manifest.toml, keeping the
    old one as DEST/manifest.previous.toml. The manifest moves last, so a consumer never reads one
    whose files aren't in place.
@@ -46,6 +46,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 MARKER = ".pdm-models"            # marks a directory fetch.py owns, so step 5 never deletes elsewhere
 KEEP = {MARKER, "manifest.toml", "manifest.previous.toml", "manifest.toml.new", "NOTICES.md"}
+NOTICE_DIRS = ("licences", "credits")   # copied beside NOTICES.md, never cleaned
 
 # The entry names each consumer loads (backend vision.md §5). Change with that list.
 GROUPS = {
@@ -147,10 +148,11 @@ def fetch(manifest: Path, sources: Path, groups: list[str], dest: Path) -> None:
         print(f"ok      {e['file']}")
     shutil.rmtree(partial_dir, ignore_errors=True)
 
-    # 3. The notices travel with the files.
+    # 3. The notices, licence texts and photo credits travel with the files.
     shutil.copyfile(notices, dest / "NOTICES.md")
-    if (manifest.parent / "licences").is_dir():
-        shutil.copytree(manifest.parent / "licences", dest / "licences", dirs_exist_ok=True)
+    for folder in NOTICE_DIRS:
+        if (manifest.parent / folder).is_dir():
+            shutil.copytree(manifest.parent / folder, dest / folder, dirs_exist_ok=True)
 
     # 4. The manifest moves last.
     current = dest / "manifest.toml"
@@ -168,7 +170,7 @@ def fetch(manifest: Path, sources: Path, groups: list[str], dest: Path) -> None:
         named |= {e["file"] for e in tomllib.loads(previous.read_text()).get("model", [])}
     for path in sorted(dest.rglob("*"), reverse=True):
         rel = path.relative_to(dest).as_posix()
-        if rel in KEEP or rel == "licences" or rel.startswith("licences/"):
+        if rel in KEEP or rel.split("/", 1)[0] in NOTICE_DIRS:
             continue
         if path.is_file() and rel not in named:
             path.unlink()

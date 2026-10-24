@@ -1,12 +1,13 @@
 //! The evaluation's bench: an embedded store with the schema, the pinned clock, the farm
 //! synced from Era's simulators through `api`'s real sync, and a [`ChatAgent`] per model.
 //!
+//! The store holds the schema and the migrations `api` applies at start, the knowledge seed
+//! (`knowledge.surql`) among them, so `search_knowledge`, the plants' species, the scans'
+//! problems and the dose check's product catalogue are production's.
+//!
 //! What the bench leaves out of production: Agent Memory (`NoBeliefs`), the weather (always
-//! unavailable, so the context has none; the clock is pinned to the fixture's day), object
-//! storage (in memory, empty: no question has an image) and the knowledge base (the embedded
-//! store has none, so `search_knowledge` finds nothing and plants have no species), and the
-//! product catalogue (empty, so the dose check's rules that depend on a product name in the
-//! sentence, percentages and ratios, behave unlike production's).
+//! unavailable, so the context has none; the clock is pinned to the fixture's day) and object
+//! storage (in memory, empty: no question has an image).
 
 use std::{sync::Arc, time::Duration};
 
@@ -41,7 +42,7 @@ use integrations::{
     http::{self, HttpConfig},
     slack::{SlackClient, SlackConfig, SlackSource},
 };
-use store::{SurrealStore, apply_schema_with};
+use store::{MIGRATIONS, SurrealStore, migrate_with};
 
 use crate::meter::Meter;
 
@@ -92,11 +93,57 @@ fn unavailable() -> ProviderError {
     }
 }
 
-/// A fresh embedded store with the schema.
+/// A fresh embedded store with the schema and every migration, the knowledge seed included,
+/// applied as `api` applies them at start (`SurrealStore::migrate`; the embedded engine is
+/// root).
 pub async fn store() -> anyhow::Result<Arc<SurrealStore>> {
     let db = surrealdb::engine::any::connect("mem://").await?;
-    apply_schema_with(&db).await?;
+    migrate_with(&db, MIGRATIONS)
+        .await
+        .context("the schema and the migrations")?;
     Ok(Arc::new(SurrealStore::from_client(db).await?))
+}
+
+/// Stops when the knowledge seed's chunks were embedded by another model than `embedder`, as
+/// `api` does at start: its query vectors wouldn't match them.
+pub async fn check_embedder(
+    store: &SurrealStore,
+    embedder: &dyn TextEmbedder,
+) -> anyhow::Result<()> {
+    let Some(meta) = store.knowledge_meta().await? else {
+        return Ok(());
+    };
+    let model = embedder.model();
+    anyhow::ensure!(
+        meta.matches_embedder(&model.name, &model.version, model.dimension),
+        "the knowledge seed was embedded with {} ({} dimensions), but MODELS_DIR has {}@{} ({} \
+         dimensions)",
+        meta.embedding_model,
+        meta.embedding_dimension,
+        model.name,
+        model.version,
+        model.dimension,
+    );
+    Ok(())
+}
+
+/// The knowledge index over the store, and the dose check's product catalogue from it, as
+/// `api` builds them.
+pub async fn knowledge(
+    store: &Arc<SurrealStore>,
+) -> anyhow::Result<(
+    Arc<knowledge::SurrealKnowledgeStore>,
+    Arc<agent::safety::ProductCatalogue>,
+)> {
+    let knowledge = Arc::new(
+        knowledge::SurrealKnowledgeStore::load(store.clone())
+            .await
+            .context("knowledge index")?,
+    );
+    let products = Arc::new(agent::safety::ProductCatalogue::new(
+        &knowledge.products().await?,
+    ));
+    Ok((knowledge, products))
 }
 
 /// The text embedder from `{models_dir}/manifest.toml`, on the CPU (`ORT_DYLIB_PATH` names
@@ -298,28 +345,24 @@ pub fn chat_model(
 }
 
 /// The real chat agent over the bench's ports.
-pub async fn chat_agent(
+pub fn chat_agent(
     store: &Arc<SurrealStore>,
     embedder: &Arc<dyn TextEmbedder>,
     clock: &Arc<dyn Clock>,
+    (knowledge, products): (
+        Arc<knowledge::SurrealKnowledgeStore>,
+        Arc<agent::safety::ProductCatalogue>,
+    ),
     model: Arc<dyn ChatModel>,
     tracker: TaskTracker,
-) -> anyhow::Result<agent::ChatAgent> {
+) -> agent::ChatAgent {
     let as_store: Arc<dyn Store> = store.clone();
-    let knowledge = Arc::new(
-        knowledge::SurrealKnowledgeStore::load(store.clone())
-            .await
-            .context("knowledge index")?,
-    );
-    let products = Arc::new(agent::safety::ProductCatalogue::new(
-        &knowledge.products().await?,
-    ));
     let config = agent::AgentConfig {
         // Every question runs on the pinned day; the budget is the evaluation's spend cap.
         daily_chat_tokens: u64::MAX,
         ..agent::AgentConfig::default()
     };
-    Ok(agent::ChatAgent::new(
+    agent::ChatAgent::new(
         agent::AgentDeps {
             stores: agent::AgentStores::from_store(&as_store),
             memory: store.clone(),
@@ -336,7 +379,7 @@ pub async fn chat_agent(
             config,
         },
         tracker,
-    ))
+    )
 }
 
 /// ULIDs, for the loader and the connectors.

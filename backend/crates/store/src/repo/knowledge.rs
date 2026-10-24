@@ -42,7 +42,7 @@ pub mod sql {
     /// `manages`, and `preys_on` on each organism. Statements: 0 species, 1 problems,
     /// 2 look-alikes, 3 organisms, 4 treatments, 5 sources, 6 products, 7 classifier labels,
     /// 8 soil conditions.
-    pub const LOAD_KNOWLEDGE: &str = "SELECT id, scientific_name, common_names, profile, care, classifier_supported, bioclip_label,
+    pub const LOAD_KNOWLEDGE: &str = "SELECT id, scientific_name, common_names, profile, care, frost, classifier_supported, bioclip_label,
        sources, reviewed_by, reference_images FROM species ORDER BY id;
 SELECT id, name, kind, damage_patterns, prevalence, indicators, conditions, sources, reviewed_by, reviewed_at,
        <-susceptible_to<-species AS affects, ->caused_by->organism AS caused_by,

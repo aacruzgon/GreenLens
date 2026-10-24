@@ -182,7 +182,7 @@ pub const OTHER: &str = "other";
 // ---------------------------------------------------------------------------------------------
 
 /// `soil.moisture` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilMoisture {
     /// Dry.
@@ -196,7 +196,7 @@ pub enum SoilMoisture {
 }
 
 /// `soil.surface` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilSurface {
     /// Normal.
@@ -208,7 +208,7 @@ pub enum SoilSurface {
 }
 
 /// `soil.structure` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilStructure {
     /// Crumbly.
@@ -222,7 +222,7 @@ pub enum SoilStructure {
 }
 
 /// `soil.colour` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilColour {
     /// Dark.
@@ -236,7 +236,7 @@ pub enum SoilColour {
 }
 
 /// `soil.cover` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilCover {
     /// Bare.
@@ -250,7 +250,7 @@ pub enum SoilCover {
 }
 
 /// `soil.deposits` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilDeposits {
     /// None.
@@ -266,7 +266,7 @@ pub enum SoilDeposits {
 }
 
 /// `soil.erosion` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilErosion {
     /// None.
@@ -278,7 +278,7 @@ pub enum SoilErosion {
 }
 
 /// `soil.weeds` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilWeeds {
     /// None.
@@ -403,7 +403,9 @@ pub fn indicator_key(n: usize, indicator: &IndicatorId) -> String {
 }
 
 /// `squeeze_test.result`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SqueezeResult {
     /// Sandy.
@@ -417,7 +419,9 @@ pub enum SqueezeResult {
 }
 
 /// `jar_test.texture`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum JarTexture {
     /// Sandy.
