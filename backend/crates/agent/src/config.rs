@@ -59,7 +59,7 @@ impl Default for AgentConfig {
             recent_messages: 12,
             memory_hits: 5,
             knowledge_hits: 4,
-            daily_chat_tokens: 300_000,
+            daily_chat_tokens: 1_000_000,
             chat_max_tokens: 4_096,
             plan_max_tokens: 8_192,
             cheap_max_tokens: 1_024,
