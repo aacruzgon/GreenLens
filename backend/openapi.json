@@ -820,11 +820,16 @@
         },
         "responses": {
           "200": {
-            "description": "`event: name`, `data: ChatEvent`; a replay is `application/json` MessageReplay",
+            "description": "`event: name`, `data: ChatEvent` as SSE; a finished turn's replay is `application/json` MessageReplay",
             "content": {
               "text/event-stream": {
                 "schema": {
                   "$ref": "#/components/schemas/ChatEvent"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageReplay"
                 }
               }
             }
@@ -7929,6 +7934,70 @@
           "other"
         ]
       },
+      "Message": {
+        "type": "object",
+        "description": "`Message` ([contracts 8]). Tool calls and results are stored but never sent to the app.",
+        "required": [
+          "id",
+          "role",
+          "text",
+          "attachments",
+          "citations",
+          "pending_actions",
+          "interrupted",
+          "created_at"
+        ],
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "description": "The user's images."
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "description": "Sources cited."
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp",
+            "description": "When it was stored."
+          },
+          "farm_citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FarmCitation"
+            },
+            "description": "The farm records an assistant message cites ([connectors 7]); absent when it cites none,\nand read as empty from a message stored before connectors."
+          },
+          "id": {
+            "$ref": "#/components/schemas/Id",
+            "description": "The message."
+          },
+          "interrupted": {
+            "type": "boolean",
+            "description": "The stream dropped before `message_completed`."
+          },
+          "pending_actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingAction"
+            },
+            "description": "Confirmation cards."
+          },
+          "role": {
+            "$ref": "#/components/schemas/MessageRole",
+            "description": "Who wrote it."
+          },
+          "text": {
+            "type": "string",
+            "description": "The text, dose-checked when the assistant wrote it."
+          }
+        }
+      },
       "MessageCompleted": {
         "type": "object",
         "description": "`message_completed` data.",
@@ -7969,6 +8038,19 @@
           }
         },
         "additionalProperties": false
+      },
+      "MessageReplay": {
+        "type": "object",
+        "description": "The replay of a finished chat message under its idempotency key: `200 { message }`.",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/Message",
+            "description": "The stored assistant message."
+          }
+        }
       },
       "MessageRole": {
         "type": "string",
