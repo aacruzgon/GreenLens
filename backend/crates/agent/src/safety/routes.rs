@@ -427,9 +427,10 @@ mod tests {
         );
     }
 
-    /// Jev's live scores of 2026-10-23 (`jev-1.14.0`) for the messages its calibration was
-    /// fitted on, at their closest: a task change 0.08 ahead of `care_question`, a farm
-    /// question 0.10 ahead of `off_topic`, and a splash of spray where `off_topic` outscores
+    /// Jev's live scores of 2026-10-23 (`jev-1.14.0`, run 1 of
+    /// `tests/fixtures/jev-calibration-2026-10-23.jsonl`, the top labels only) for the labelled
+    /// messages at their closest: a task change 0.08 ahead of `care_question`, a farm question
+    /// 0.10 ahead of `off_topic`, and a splash of spray in the eyes where `off_topic` outscores
     /// `safety_sensitive`.
     #[test]
     fn jevs_calibration_routes_its_close_calls() {
@@ -448,10 +449,14 @@ mod tests {
                 RouteDecision::Model(ChatRoute::TaskChange),
             ),
             (
-                "Help, the spray got on my skin",
+                "I got some of the spray in my eyes, help",
                 false,
-                &[("off_topic", 0.85), ("safety_sensitive", 0.69)],
-                RouteDecision::Model(ChatRoute::SafetySensitive),
+                &[
+                    ("off_topic", 0.85),
+                    ("safety_sensitive", 0.69),
+                    ("task_change", 0.03),
+                ],
+                RouteDecision::PoisonControl,
             ),
             (
                 "When were target rings first reported on bed 3?",
@@ -488,7 +493,16 @@ mod tests {
                 "{text}"
             );
         }
-        // Without the offsets the skin splash would hang on the off-topic margin alone.
+        // The eye splash's scores on a message without a poisoning keyword route safely with
+        // either calibration. With `safety_sensitive` lowered to 0.60 (invented, not
+        // measured), only Jev's offsets keep it off the off-topic reply.
+        let s = scores(&[("off_topic", 0.85), ("safety_sensitive", 0.69)]);
+        for c in [Calibration::default(), jev.clone()] {
+            assert_eq!(
+                decide("Help, the spray got on my skin", Some(&s), &c, false),
+                RouteDecision::Model(ChatRoute::SafetySensitive)
+            );
+        }
         let s = scores(&[("off_topic", 0.85), ("safety_sensitive", 0.60)]);
         assert_eq!(
             decide(

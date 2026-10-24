@@ -7,7 +7,8 @@
 //! - **Route:** one `noul` (yes/no) question per route label, answered with the probability of
 //!   yes. The labels are judged independently, as `agent`'s LLM classifier scores them, so a
 //!   dose question about the farm records can score high on both `farm_records` and
-//!   `safety_sensitive`, and `FARM_SAFETY_FLOOR` keeps its meaning.
+//!   `safety_sensitive`, rather than split one probability between them; `agent` compares
+//!   that score with `FARM_SAFETY_FLOOR` after its calibration offset.
 //! - **Memory gate:** one `noul` for `remember`; `skip` is its complement.
 //! - **Chunk topic:** one `choice` over the five topics, scored by its probabilities.
 //!

@@ -29,22 +29,30 @@ use integrations::{
 };
 use serde_json::json;
 
-fn jev() -> JevClassifier {
-    let url = std::env::var("JEV_URL").expect("JEV_URL is not set");
-    let key = std::env::var("JEV_API_KEY").expect("JEV_API_KEY is not set");
+/// Jev from the environment, or `None` (with a note) when `JEV_URL` or `JEV_API_KEY` is unset,
+/// so a run without the key skips instead of failing.
+fn jev() -> Option<JevClassifier> {
+    let (Ok(url), Ok(key)) = (std::env::var("JEV_URL"), std::env::var("JEV_API_KEY")) else {
+        eprintln!("skipped: JEV_URL and JEV_API_KEY are not set");
+        return None;
+    };
     let mut config = JevConfig::new(url, key.into());
     config.model = std::env::var("JEV_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
     let http = integrations::http::client(&integrations::http::HttpConfig::default())
         .expect("HTTP client");
-    JevClassifier::new(http, config)
+    Some(JevClassifier::new(http, config))
 }
 
-fn llm() -> LlmClassifier {
-    let key = std::env::var("LLM_API_KEY").expect("LLM_API_KEY is not set");
+/// The LLM classifier, or `None` (with a note) when `LLM_API_KEY` is unset.
+fn llm() -> Option<LlmClassifier> {
+    let Ok(key) = std::env::var("LLM_API_KEY") else {
+        eprintln!("skipped: LLM_API_KEY is not set");
+        return None;
+    };
     let http = integrations::http::client(&integrations::http::HttpConfig::default())
         .expect("HTTP client");
     let chat = AnthropicChat::new(AnthropicClient::new(http, AnthropicConfig::new(key.into())));
-    LlmClassifier::new(Arc::new(chat), 256)
+    Some(LlmClassifier::new(Arc::new(chat), 256))
 }
 
 /// What a message should become.
@@ -259,7 +267,7 @@ fn as_map(scores: &[LabelScore]) -> BTreeMap<&str, f64> {
 #[tokio::test]
 #[ignore = "calls the real Jev API"]
 async fn live_jev_routes_and_gates_a_handful_of_messages() {
-    let jev = jev();
+    let Some(jev) = jev() else { return };
     let calibration = Calibration::jev();
     let mut wrong = Vec::new();
     for i in [0, 7, 13, 18, 23, 24, 28, 38] {
@@ -301,8 +309,9 @@ async fn live_jev_routes_and_gates_a_handful_of_messages() {
 #[tokio::test]
 #[ignore = "calls the real Jev and Anthropic APIs"]
 async fn live_jev_calibration_against_the_llm_classifier() {
-    let jev = jev();
-    let llm = llm();
+    let (Some(jev), Some(llm)) = (jev(), llm()) else {
+        return;
+    };
     let classifiers: [(&str, &dyn TextClassifier, Calibration); 2] = [
         ("jev", &jev, Calibration::jev()),
         ("llm", &llm, Calibration::default()),
