@@ -724,3 +724,57 @@ fn remember_takes_an_optional_topic() {
         serde_json::from_value(json!({"fact": "x", "topic": "watering"})).unwrap();
     assert_eq!(args.topic, Some(crate::memory::ExtractedTopic::Watering));
 }
+
+/// What one JSON Schema costs against Anthropic's strict-mode budget: regex patterns, optional
+/// properties and union types (`anyOf`, or a `type` array).
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+struct StrictCost {
+    patterns: usize,
+    optional: usize,
+    unions: usize,
+}
+
+fn strict_cost(v: &serde_json::Value, cost: &mut StrictCost) {
+    match v {
+        serde_json::Value::Object(o) => {
+            if o.contains_key("pattern") {
+                cost.patterns += 1;
+            }
+            if o.contains_key("anyOf") || o.get("type").is_some_and(serde_json::Value::is_array) {
+                cost.unions += 1;
+            }
+            if let Some(serde_json::Value::Object(props)) = o.get("properties") {
+                let required = o.get("required").and_then(serde_json::Value::as_array);
+                cost.optional += props
+                    .keys()
+                    .filter(|k| !required.is_some_and(|r| r.iter().any(|x| x == k.as_str())))
+                    .count();
+            }
+            o.values().for_each(|x| strict_cost(x, cost));
+        }
+        serde_json::Value::Array(a) => a.iter().for_each(|x| strict_cost(x, cost)),
+        _ => {}
+    }
+}
+
+/// The strict tools' schemas, sanitised as the Anthropic adapter sends them, stay inside the
+/// budget measured when they last passed the real API. One more pattern (PR #176's on
+/// `PlanStepDraft.farm_citations`) got every chat turn `400 Schema is too complex`. Raise a
+/// limit only after `live_chat_accepts_every_tool_schema_and_streams` passes with the change.
+#[test]
+fn the_strict_tool_schemas_stay_inside_anthropics_budget() {
+    let mut cost = StrictCost::default();
+    for spec in ToolRegistry::standard()
+        .specs_for(Offer::everything(Role::Owner))
+        .into_iter()
+        .filter(|s| s.strict)
+    {
+        strict_cost(
+            &integrations::anthropic::sanitize_schema(&spec.parameters).schema,
+            &mut cost,
+        );
+    }
+    assert!(cost.patterns <= 8, "{cost:?}");
+    assert!(cost.optional <= 12, "{cost:?}");
+    assert!(cost.unions <= 10, "{cost:?}");
+}
