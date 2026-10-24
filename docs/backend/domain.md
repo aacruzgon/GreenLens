@@ -1,6 +1,6 @@
 # PDM Backend: `domain` crate
 
-> **Status:** Draft v0.3.25, 2026-10-23. v0.3.25: `ports` also holds the memory gate's labels (`MEMORY_LABELS`: `remember`, `skip`) and the chunk topics (`TOPIC_LABELS`), so `agent`'s classifier and Jev ask the same ones (backend roadmap S5); no wire type changed. v0.3.24: `PlantSummary.confirmed_species`, a plant's species only when confirmed. v0.3.23: answer blocks: `PlantRepo::plant_summaries`, every live plant of the member's garden with its status, species and latest height in one read (`PlantSummary`), `NewMessage.blocks`, and `rules::limits::MESSAGE_MAX_BLOCKS` (3). v0.3.22: `FarmRecordStore::search_records_for_plan`, the farm-record search by the scan's garden for the plan writer, which holds no member's proof, and `garden_has_records`, which it asks first (EON E5.4). v0.3.21: `PlantRepo::adopt_confirmed_species` also rewrites the run's queued `perception` job to name the confirmed species, and writes only while the scan is still `queued`. v0.3.20: `PlantRepo` gains `adopt_confirmed_species`, which gives a `queued` scan's run the plant's newly confirmed species. v0.3.19: `PlantRepo::suggest_species` writes nothing for a scan whose plant or garden is being deleted, not only for a deleted scan. v0.3.18: `PlantRepo::suggest_species` takes the scan and its run instead of the plant, also sets the scan's working species unless the run has one, and returns whether the run was still current. v0.3.17: `LeasedJob` gains `segmentation`, whether a perception job's stages include segmentation, read from the job row; no wire type changed. v0.3.16: `EventRepo` gains `run_stage_events`, a run's `run_started` and stage events for a job's `complete` (backend roadmap gap 9). v0.3.15: `FarmPageRequest::reread_from` says the adapter starts a re-read at the newest item it has seen when that is older, so nothing since is skipped. v0.3.14: `FarmRecordFilter` gains `until` and `author` and is no longer `Copy`, and `NewFarmRecord.text_hash` is the hash of the embedded text (EON gap G12). v0.3.13: `ClassifierTask::Route` carries `farm_records`, whether the garden has farm records, so the router can count a question about them as on topic (gap G10), and `ports` holds the route labels `agent` and Jev share (`ROUTE_LABELS`, `FARM_ROUTE_LABELS`, `FARM_RECORDS_LABEL`); no wire type changed. v0.3.12: `FarmPage::listed` carries every vendor id when an adapter listed the whole source (Drive's listing and resync), so the sync deletes the source's other records, and `FarmSourceError::TooLarge` stops a source past what its adapter follows with `too_large`. v0.3.11: `rules::limits::IDEMPOTENCY_RUNNING_STALE` (10 minutes) lets a retry take over a `running` idempotency key, and `FarmRecordStore::deleting_connectors_of_user` lists a user's `deleting` connectors in any garden for the account deletion; `FarmRecordStore::delete_expired_pending` takes a second cutoff, and `rules::limits::CONNECT_CLAIM_HOLD` (10 minutes) keeps a pending connector whose exchange may still be running. v0.3.10: `FarmRecordStore::deleting_connectors` lists the connectors marked `deleting` with their sealed tokens, for a garden (a cascade or a demotion) or for every garden not being deleted (resume after a restart), so `api` revokes the tokens after the marking transaction and then deletes the records (roadmap E3.6); `connectors_created_by` says which transactions mark them. v0.3.9: `SYNC_STATE_KEY` also holds the sources that had their turn in the round, and `SyncOutcome` sets `synced_at` only at a round's end with every source caught up and keeps `last_error` while a source's last turn failed. The `FarmSource` port gains what the sync needs (E4.2): `reread_window()` (Slack's 7 days, none for Drive), `FarmPageRequest::reread_from` to start the daily re-read, and `FarmPage::kept` for items still at the vendor that weren't sent again. v0.3.8: `FarmRecordStore` is implemented by the store (roadmap E1.6) and changes for the sync: `request_sync` returns `SyncRequest` (accepted, or too soon with the instant the next is allowed, for `retry_after_s`), and `delete_chunks_from` and `source_vendor_ids_since` cover a re-chunked document and the daily 7-day re-read; `NewMessage` carries `farm_citations`; `rules::limits` gains the connector limits (`MAX_CONNECTORS_PER_GARDEN`, `MAX_FARM_RECORDS_PER_GARDEN`, `SYNC_NOW_INTERVAL`, `FARM_RECORD_KEEP`, `PENDING_CONNECT_TTL`). v0.3.7: the farm connectors' ports (roadmap E1.2): `FarmSource` for the Slack and Drive adapters with `FarmSourceError`, and `FarmRecordStore` for the `connector` and `farm_record` tables, part of `Store`; `GardenResource::Connector`; the garden cascade's `FarmRecordsAndConnectors` step before `Garden`; a new `connectors` module of wire types. v0.3.6: `AnalysisRepo::finish_guided_check` takes `now`, like `complete_job`, so the lease check and the `score` claim follow the `Clock` port instead of the database clock. v0.3.5: the `BeliefStore` port records shared memories in Agent Memory, and `MemoryStore` gains the belief sweep's four methods (`unsynced_shared`, `mark_synced`, `belief_forgets`, `finish_belief_forget`). v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
+> **Status:** Draft v0.3.27, 2026-10-24. v0.3.27: `PriorExchange`, the conversation's last exchange, and `TextClassifier::classify_with_context`, whose default ignores it, so the router can give the route classifier the exchange a follow-up continues; no wire type changed. v0.3.26: `ports::CallUsage` carries a call's cache split beside its `Usage`, and `budget_tokens()` weighs it in input-token prices for the daily chat budget (reads 0.1, writes 1.25, output 5); `UsageTotals.chat_budget` and `UsageRepo::add_chat_usage`'s budget weight. v0.3.25: `ports` also holds the memory gate's labels (`MEMORY_LABELS`: `remember`, `skip`) and the chunk topics (`TOPIC_LABELS`), so `agent`'s classifier and Jev ask the same ones (backend roadmap S5); no wire type changed. v0.3.24: `PlantSummary.confirmed_species`, a plant's species only when confirmed. v0.3.23: answer blocks: `PlantRepo::plant_summaries`, every live plant of the member's garden with its status, species and latest height in one read (`PlantSummary`), `NewMessage.blocks`, and `rules::limits::MESSAGE_MAX_BLOCKS` (3). v0.3.22: `FarmRecordStore::search_records_for_plan`, the farm-record search by the scan's garden for the plan writer, which holds no member's proof, and `garden_has_records`, which it asks first (EON E5.4). v0.3.21: `PlantRepo::adopt_confirmed_species` also rewrites the run's queued `perception` job to name the confirmed species, and writes only while the scan is still `queued`. v0.3.20: `PlantRepo` gains `adopt_confirmed_species`, which gives a `queued` scan's run the plant's newly confirmed species. v0.3.19: `PlantRepo::suggest_species` writes nothing for a scan whose plant or garden is being deleted, not only for a deleted scan. v0.3.18: `PlantRepo::suggest_species` takes the scan and its run instead of the plant, also sets the scan's working species unless the run has one, and returns whether the run was still current. v0.3.17: `LeasedJob` gains `segmentation`, whether a perception job's stages include segmentation, read from the job row; no wire type changed. v0.3.16: `EventRepo` gains `run_stage_events`, a run's `run_started` and stage events for a job's `complete` (backend roadmap gap 9). v0.3.15: `FarmPageRequest::reread_from` says the adapter starts a re-read at the newest item it has seen when that is older, so nothing since is skipped. v0.3.14: `FarmRecordFilter` gains `until` and `author` and is no longer `Copy`, and `NewFarmRecord.text_hash` is the hash of the embedded text (EON gap G12). v0.3.13: `ClassifierTask::Route` carries `farm_records`, whether the garden has farm records, so the router can count a question about them as on topic (gap G10), and `ports` holds the route labels `agent` and Jev share (`ROUTE_LABELS`, `FARM_ROUTE_LABELS`, `FARM_RECORDS_LABEL`); no wire type changed. v0.3.12: `FarmPage::listed` carries every vendor id when an adapter listed the whole source (Drive's listing and resync), so the sync deletes the source's other records, and `FarmSourceError::TooLarge` stops a source past what its adapter follows with `too_large`. v0.3.11: `rules::limits::IDEMPOTENCY_RUNNING_STALE` (10 minutes) lets a retry take over a `running` idempotency key, and `FarmRecordStore::deleting_connectors_of_user` lists a user's `deleting` connectors in any garden for the account deletion; `FarmRecordStore::delete_expired_pending` takes a second cutoff, and `rules::limits::CONNECT_CLAIM_HOLD` (10 minutes) keeps a pending connector whose exchange may still be running. v0.3.10: `FarmRecordStore::deleting_connectors` lists the connectors marked `deleting` with their sealed tokens, for a garden (a cascade or a demotion) or for every garden not being deleted (resume after a restart), so `api` revokes the tokens after the marking transaction and then deletes the records (roadmap E3.6); `connectors_created_by` says which transactions mark them. v0.3.9: `SYNC_STATE_KEY` also holds the sources that had their turn in the round, and `SyncOutcome` sets `synced_at` only at a round's end with every source caught up and keeps `last_error` while a source's last turn failed. The `FarmSource` port gains what the sync needs (E4.2): `reread_window()` (Slack's 7 days, none for Drive), `FarmPageRequest::reread_from` to start the daily re-read, and `FarmPage::kept` for items still at the vendor that weren't sent again. v0.3.8: `FarmRecordStore` is implemented by the store (roadmap E1.6) and changes for the sync: `request_sync` returns `SyncRequest` (accepted, or too soon with the instant the next is allowed, for `retry_after_s`), and `delete_chunks_from` and `source_vendor_ids_since` cover a re-chunked document and the daily 7-day re-read; `NewMessage` carries `farm_citations`; `rules::limits` gains the connector limits (`MAX_CONNECTORS_PER_GARDEN`, `MAX_FARM_RECORDS_PER_GARDEN`, `SYNC_NOW_INTERVAL`, `FARM_RECORD_KEEP`, `PENDING_CONNECT_TTL`). v0.3.7: the farm connectors' ports (roadmap E1.2): `FarmSource` for the Slack and Drive adapters with `FarmSourceError`, and `FarmRecordStore` for the `connector` and `farm_record` tables, part of `Store`; `GardenResource::Connector`; the garden cascade's `FarmRecordsAndConnectors` step before `Garden`; a new `connectors` module of wire types. v0.3.6: `AnalysisRepo::finish_guided_check` takes `now`, like `complete_job`, so the lease check and the `score` claim follow the `Clock` port instead of the database clock. v0.3.5: the `BeliefStore` port records shared memories in Agent Memory, and `MemoryStore` gains the belief sweep's four methods (`unsynced_shared`, `mark_synced`, `belief_forgets`, `finish_belief_forget`). v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
 
 Companion to the [backend architecture](README.md). The contract shapes themselves, section by section, are in [domain-types](domain-types.md). Every listing here is copied from the compiled source of `crates/domain`: `cargo check -p domain`, `cargo test -p domain` (112 unit tests, 5 compile-fail doc tests) and `cargo clippy -p domain --all-targets` pass, with and without the `mock` and `test-util` features.
 
@@ -3454,6 +3454,25 @@ pub struct LabelScore {
     pub score: f64,
 }
 
+/// The conversation's last exchange before the message being routed: context for
+/// [`ClassifierTask::Route`], so a follow-up such as "what did you just tell me about the
+/// forecast?" is routed with what it refers to, not on its own words. The caller cuts each text
+/// to its limit; both are absent in a conversation's first message.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PriorExchange {
+    /// The gardener's previous message.
+    pub user: Option<String>,
+    /// The assistant's previous reply.
+    pub assistant: Option<String>,
+}
+
+impl PriorExchange {
+    /// Whether there is nothing to give.
+    pub const fn is_empty(&self) -> bool {
+        self.user.is_none() && self.assistant.is_none()
+    }
+}
+
 /// The fast text classifier: Jev, or the cheapest LLM with structured output.
 #[cfg_attr(feature = "mock", mockall::automock)]
 #[async_trait::async_trait]
@@ -3464,6 +3483,19 @@ pub trait TextClassifier: Send + Sync {
         task: ClassifierTask,
         text: &str,
     ) -> Result<Vec<LabelScore>, ModelError>;
+
+    /// [`classify`](Self::classify) with the conversation's last exchange as context, which only
+    /// the route reads: the router calls this. An empty exchange asks exactly as `classify`
+    /// does; the default ignores the context.
+    async fn classify_with_context(
+        &self,
+        task: ClassifierTask,
+        text: &str,
+        prior: &PriorExchange,
+    ) -> Result<Vec<LabelScore>, ModelError> {
+        let _ = prior;
+        self.classify(task, text).await
+    }
 }
 
 /// The pinned text-embedding model (architecture 10): its name, version and dimension, which
@@ -3671,6 +3703,62 @@ pub enum StopReason {
     Refusal,
 }
 
+/// One call's token counts as the provider bills them: [`Usage`] (every input token, cached or
+/// not, as `message_completed` and the stored message carry it) with the part of the input
+/// read from and written to the prompt cache. Only the daily chat budget reads the split
+/// ([`CallUsage::budget_tokens`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CallUsage {
+    /// All input and output tokens.
+    pub usage: Usage,
+    /// Of `usage.tokens_in`, the tokens read from the prompt cache.
+    pub cache_read: u32,
+    /// Of `usage.tokens_in`, the tokens written to the prompt cache.
+    pub cache_write: u32,
+}
+
+impl CallUsage {
+    /// A cache read counts as this fraction of an input token in the budget: Anthropic's
+    /// usual ratio (0.1×; Opus 5.5 bills 0.05×, so the budget errs high).
+    pub const CACHE_READ_WEIGHT: (u64, u64) = (1, 10);
+    /// A cache write counts as 1.25 input tokens: Anthropic's price for the 5-minute cache,
+    /// the one the agent uses.
+    pub const CACHE_WRITE_WEIGHT: (u64, u64) = (5, 4);
+    /// An output token (thinking included) counts as 5 input tokens: Opus 5.5's $20 to $4 per
+    /// million, so a budget token costs about an input token's price (US$4 per million).
+    pub const OUTPUT_WEIGHT: u64 = 5;
+
+    /// Counts that carry no cache split (a provider that reports none, a test).
+    #[must_use]
+    pub const fn plain(usage: Usage) -> Self {
+        Self {
+            usage,
+            cache_read: 0,
+            cache_write: 0,
+        }
+    }
+
+    /// The call's weight in the daily chat budget, in input-token prices: uncached input at 1,
+    /// cache reads at 0.1, cache writes at 1.25 (each rounded up) and output at 5. Anthropic's
+    /// prices, from the claude-api skill (cache reads 0.1× the input price, 5-minute writes
+    /// 1.25×, Opus 5.5 output 5×), so the budget is a cost cap: most of a tool turn's input is
+    /// the cached prefix read again on each call.
+    #[must_use]
+    pub fn budget_tokens(&self) -> u64 {
+        let read = u64::from(self.cache_read);
+        let write = u64::from(self.cache_write);
+        let uncached = u64::from(self.usage.tokens_in)
+            .saturating_sub(read)
+            .saturating_sub(write);
+        let (rn, rd) = Self::CACHE_READ_WEIGHT;
+        let (wn, wd) = Self::CACHE_WRITE_WEIGHT;
+        uncached
+            + (read * rn).div_ceil(rd)
+            + (write * wn).div_ceil(wd)
+            + u64::from(self.usage.tokens_out) * Self::OUTPUT_WEIGHT
+    }
+}
+
 /// One piece of a streamed answer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatChunk {
@@ -3690,7 +3778,7 @@ pub enum ChatChunk {
     /// Token counts, once known. The counts are cumulative for the call: a later `Usage`
     /// replaces an earlier one (it is not added to it), and the last one before `Done` is the
     /// call's total.
-    Usage(Usage),
+    Usage(CallUsage),
     /// The end.
     Done(StopReason),
 }
@@ -6950,6 +7038,9 @@ pub struct UsageTotals {
     pub tokens_in: u64,
     /// Chat tokens out.
     pub tokens_out: u64,
+    /// Chat tokens as the daily budget counts them, cache reads and writes weighted by price
+    /// ([`CallUsage::budget_tokens`](crate::ports::CallUsage::budget_tokens)).
+    pub chat_budget: u64,
 }
 
 /// The `usage_daily` table. The scan count is incremented inside `ScanRepo::create_scan`'s
@@ -6960,12 +7051,14 @@ pub trait UsageRepo: Send + Sync {
     /// The day's totals, for the budget check before a chat turn.
     async fn usage(&self, user: UserId, day: chrono::NaiveDate) -> Result<UsageTotals, StoreError>;
 
-    /// `UPSERT … SET tokens_in += …, tokens_out += …` after a chat turn.
+    /// `UPSERT … SET tokens_in += …, tokens_out += …, chat_budget += …` after a chat turn:
+    /// the raw counts, and the turn's weight in the budget.
     async fn add_chat_usage(
         &self,
         user: UserId,
         day: chrono::NaiveDate,
         usage: Usage,
+        budget_tokens: u64,
     ) -> Result<UsageTotals, StoreError>;
 }
 ```

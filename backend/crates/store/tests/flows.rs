@@ -2732,3 +2732,36 @@ async fn live_lease_and_requeue_wake() {
         "a late event after complete"
     );
 }
+
+/// The daily usage row: chat tokens add up raw, with the budget's weighted count beside them;
+/// before any chat they are zero.
+#[tokio::test]
+async fn chat_usage_adds_raw_counts_and_the_budget_weight() {
+    use domain::{chat::Usage, ports::UsageRepo};
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let day = t0().utc_day();
+    let before = store.usage(f.user, day).await.unwrap();
+    assert_eq!(
+        (before.tokens_in, before.tokens_out, before.chat_budget),
+        (0, 0, 0),
+        "the fixture's scan counted, no chat yet"
+    );
+    let usage = Usage {
+        tokens_in: 70_000,
+        tokens_out: 2_000,
+    };
+    store
+        .add_chat_usage(f.user, day, usage, 38_000)
+        .await
+        .unwrap();
+    let after = store
+        .add_chat_usage(f.user, day, usage, 26_000)
+        .await
+        .unwrap();
+    assert_eq!(
+        (after.tokens_in, after.tokens_out, after.chat_budget),
+        (140_000, 4_000, 64_000)
+    );
+    assert_eq!(store.usage(f.user, day).await.unwrap(), after);
+}
