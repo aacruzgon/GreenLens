@@ -5,7 +5,25 @@
 // Only mock mode sends them today; the live API never does, and every reader treats them as optional. The answer
 // blocks follow the backend's version in PR #191 (S5 work 8: `AnswerBlock`, `FrostPlant`, `Lookalike`,
 // `ProblemRef`), `FarmCitation.text` follows PR #189, and `Message` with `MessageReplay` PR #186.
-import type { FarmCitation, ForecastDay, GardenMap, GrowthQuantity, Id, MeasurementPoint, Message, PlantStatus, Slug } from "./types";
+import type {
+  FarmCitation,
+  ForecastDay,
+  GardenMap,
+  GrowthQuantity,
+  Id,
+  ImageKind,
+  MeasureQuantity,
+  MeasurementPoint,
+  Message,
+  OrganismRole,
+  PastWeather,
+  Plant,
+  PlantStatus,
+  ProblemKind,
+  Slug,
+  TimelineEntry,
+  WeatherFit,
+} from "./types";
 
 /** A plant as a block shows it: the records' name, status and latest height, never the model's words. */
 export interface BlockPlant {
@@ -91,3 +109,56 @@ export type ChatMessage = Omit<Message, "farm_citations"> & {
  * (they are synthetic, so nothing private leaves the server), or `GET /farm-records/{id}`.
  */
 export type FarmCitationWithText = FarmCitation & { text?: string };
+
+/**
+ * A timeline entry with the plant's status after that scan (roadmap F7: the garden's date scrubber and Insights'
+ * status strip). `TimelineEntry` has the scan's status and its primary problem, not the plant's, so the app can
+ * only guess a past status from them (`statusOfEntry`). Proposed: `plant_status` on the entry, as the plant's
+ * status was set by that scan's diagnosis.
+ */
+export type TimelineEntryWithStatus = TimelineEntry & { plant_status?: PlantStatus };
+
+/** `SpeciesSeed.frost` (PR #188), as the backend keeps it: `tender` is damaged by a light frost, `hardy` stands one. */
+export type Frost = "tender" | "hardy";
+
+/**
+ * A plant whose species carries its `frost` (roadmap F7: Frost mode covers the tender plants). PR #188 adds
+ * `frost` to the species seed, which the agent reads; the app has no route that returns it. Proposed: `frost` on
+ * `Plant.species`, absent when the species is unknown or its sources don't say.
+ */
+export type PlantWithFrost = Omit<Plant, "species"> & { species?: NonNullable<Plant["species"]> & { frost?: Frost } };
+
+// ---- Insights (roadmap F7 item 3; design 8; analytics 5)
+
+/**
+ * A measurement point of any quantity, with its spread (analytics 2, P3). `GET /plants/{id}/measurements` takes
+ * only the growth quantities and sends a value per scan. Proposed: `?quantity=` takes every `MeasureQuantity`,
+ * and each point carries the measurement's `min`, `max` and `n` over the measured items and the `image_kind` it
+ * came from (the data is in `observation` already). `noise_cm`, for height and width, is the repeat-scan noise
+ * once vision measures it (vision evaluation.md); until then the app draws ±2 cm or
+ * 5% and says the band is provisional. All optional: the live API sends none of them yet.
+ */
+export type RangePoint = Omit<MeasurementPoint, "quantity"> & {
+  quantity: MeasureQuantity;
+  min?: number;
+  max?: number;
+  n?: number;
+  image_kind?: ImageKind;
+  noise_cm?: number;
+};
+
+/** `TimelineEntry.weather_7d`: the scan's weather snapshot, its past 7 days (analytics 5, G4). */
+export type Weather7d = Pick<PastWeather, "hours_rh_over_90" | "longest_humid_run_days" | "precip_mm">;
+
+/**
+ * A timeline entry with what Insights reads off each scan (design 8): `low_evidence` (a "Not sure" with nothing
+ * pointing to a problem draws grey, not amber; P1), the primary problem's `kind` and `weather_fit`, the scan's
+ * `weather_7d` (G4), and its organisms of medium confidence or more (G6). Without them, one `GET /scans/{id}` per
+ * scan; the app hides what needs them instead.
+ */
+export type InsightTimelineEntry = Omit<TimelineEntryWithStatus, "primary"> & {
+  primary?: NonNullable<TimelineEntry["primary"]> & { kind?: ProblemKind; weather_fit?: WeatherFit };
+  low_evidence?: boolean;
+  weather_7d?: Weather7d;
+  organisms?: { name: string; role: OrganismRole }[];
+};

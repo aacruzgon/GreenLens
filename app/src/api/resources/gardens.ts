@@ -1,7 +1,7 @@
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
-import type { CreateGardenRequest, Garden, GardenMap, GardenMapInput, GardenWeather, Page } from "@/domain/types";
+import type { CreateGardenRequest, Garden, GardenMap, GardenMapInput, GardenWeather, Page, UpdateGardenRequest } from "@/domain/types";
 import { useIdempotentMutation, type IdempotencyKey } from "../idempotency";
 import { nextCursor } from "../pages";
 import { STALE } from "../queryClient";
@@ -15,6 +15,13 @@ export const gardens = {
   get: async (id: string): Promise<Garden> => ok(await client().GET("/gardens/{id}", { params: { path: { id } } })),
   create: async (body: CreateGardenRequest, key: IdempotencyKey): Promise<Garden> =>
     ok(await client().POST("/gardens", { body, params: { header: { "Idempotency-Key": key } } })),
+  /** Owner: a new name or location; the location is geocoded again (contracts 9). */
+  update: async (id: string, body: UpdateGardenRequest): Promise<Garden> =>
+    ok(await client().PATCH("/gardens/{id}", { params: { path: { id } }, body })),
+  /** Owner: `202`; the cascade runs in the background (contracts 9, deletion cascades). */
+  remove: async (id: string): Promise<void> => {
+    await client().DELETE("/gardens/{id}", { params: { path: { id } } });
+  },
   weather: async (id: string): Promise<GardenWeather> =>
     ok(await client().GET("/gardens/{id}/weather", { params: { path: { id } } })),
   map: async (id: string): Promise<GardenMap | null> =>
@@ -69,6 +76,31 @@ export function useCreateGarden() {
     mutationFn: (body: CreateGardenRequest, key) => gardens.create(body, key),
     onSuccess: (garden) => {
       qc.setQueryData(qk.garden(garden.id), garden);
+      return qc.invalidateQueries({ queryKey: qk.gardens() });
+    },
+  });
+}
+
+export function useUpdateGarden(gardenId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateGardenRequest) => gardens.update(gardenId, body),
+    onSuccess: (garden) => {
+      qc.setQueryData(qk.garden(garden.id), garden);
+      // A new location means new weather (contracts 7, the weather cache is per location).
+      void qc.invalidateQueries({ queryKey: qk.weather(garden.id) });
+      return qc.invalidateQueries({ queryKey: qk.gardens() });
+    },
+  });
+}
+
+/** Deletes a garden. The caller moves off it first; the list refetches without it. */
+export function useDeleteGarden() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (gardenId: string) => gardens.remove(gardenId),
+    onSuccess: (_void, gardenId) => {
+      qc.removeQueries({ queryKey: qk.garden(gardenId), exact: true });
       return qc.invalidateQueries({ queryKey: qk.gardens() });
     },
   });

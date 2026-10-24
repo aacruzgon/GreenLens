@@ -1,4 +1,4 @@
-import { clerkErrorCode, clerkErrorMessage, isEmailTaken } from "./clerkErrors";
+import { clerkErrorCode, clerkErrorMessage, isEmailTaken, isStrategyOff } from "./clerkErrors";
 
 describe("clerkErrorMessage", () => {
   it("prefers the long message", () => {
@@ -37,5 +37,13 @@ describe("clerkErrorCode", () => {
     expect(clerkErrorCode({ code: "factor_not_found" })).toBe("factor_not_found");
     expect(clerkErrorCode({ errors: [{ code: "form_code_incorrect" }] })).toBe("form_code_incorrect");
     expect(clerkErrorCode({ message: "no code" })).toBeUndefined();
+  });
+});
+
+describe("isStrategyOff", () => {
+  it("knows a sign-in method the instance hasn't turned on", () => {
+    expect(isStrategyOff({ errors: [{ code: "form_param_value_invalid", message: "x", meta: { paramName: "strategy" } }] })).toBe(true);
+    expect(isStrategyOff(new Error("oauth_apple does not match one of the allowed values for parameter strategy"))).toBe(true);
+    expect(isStrategyOff({ errors: [{ code: "form_password_incorrect", meta: { paramName: "password" } }] })).toBe(false);
   });
 });

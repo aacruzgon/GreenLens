@@ -1,6 +1,7 @@
 // Mock mode (docs/frontend/README.md 15). Wire `mockTransport` where the live transport goes
 // when EXPO_PUBLIC_API_MODE=mock. The debug menu drives `scenario`; tests call `resetMock()`.
 
+import { becomeGuest } from "./members";
 import { scenario, type DemoAccount } from "./scenario";
 import { mockStore } from "./store";
 
@@ -8,7 +9,9 @@ export { mockTransport } from "./transport";
 export { useScenario, scenario } from "./scenario";
 export type { NextScan, UploadFault, CallFault, ChatFault, DemoAccount, ScenarioState } from "./scenario";
 export { mockStore } from "./store";
+export { mockAuthSession, mockConnectors, type MockConsent } from "./connectors";
 export { IDS } from "./fixtures";
+export { DEMO_INVITE_CODE, GUEST, guestInviteCode } from "./members";
 export type { PlantKey } from "./fixtures";
 export {
   isMockImageUrl,
@@ -29,11 +32,14 @@ export function resetMock(now: Date = new Date()): void {
 
 /**
  * Switches the demo controls' account. "new" empties the account so onboarding shows; "demo" re-seeds the demo
- * story, since a new account's first garden cleared it (POST /gardens). Choosing the account already in use
+ * story, since a new account's first garden cleared it (POST /gardens). "guest" is a second person on the same
+ * store, so the invites the owner made are still there to accept (members.ts). Choosing the account already in use
  * changes nothing, so scans made in the demo survive a stray tap. The caller refetches every query after.
  */
 export function chooseAccount(account: DemoAccount, now: Date = new Date()): void {
   if (scenario.get().account === account) return;
   if (account === "demo") mockStore.reset(now);
-  scenario.set({ account, emptyAccount: account === "new" });
+  if (account === "guest") becomeGuest(mockStore);
+  // The demo garden's role chip starts as owner again; the second account's role comes from its invite.
+  scenario.set({ account, emptyAccount: account === "new", ...(account === "new" ? {} : { role: "owner" as const }) });
 }

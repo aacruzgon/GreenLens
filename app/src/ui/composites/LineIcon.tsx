@@ -31,6 +31,8 @@ const PATHS = {
   ruler: ["M3.5 15.5l12-12 5 5-12 12z", "M7.5 11.5l2 2M10.5 8.5l2 2M13.5 5.5l2 2"],
   external: ["M14 4.5h5.5V10M19.5 4.5L11 13", "M17 14v5.5H4.5V7H10"],
   leaf: ["M5 19c0-8.5 5.5-13.5 14-14 0 9-5.5 14-14 14z", "M5 19l7.5-7.5"],
+  chart: ["M4 19.5h16M7 16v-4M12 16V7M17 16v-6"],
+  cube: ["M12 3l8 4.5v9L12 21l-8-4.5v-9z", "M4 7.5l8 4.5 8-4.5M12 12v9"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type LineIconName = keyof typeof PATHS;

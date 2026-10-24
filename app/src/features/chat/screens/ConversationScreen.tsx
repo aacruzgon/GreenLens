@@ -62,6 +62,8 @@ export function ConversationScreen() {
     plantName,
     onPrefill: (text) => s.composer.setText(text),
     onOpenPlant: (plantId) => router.push({ pathname: "/plants/[plantId]", params: { plantId } }),
+    onOpenGarden: (plantIds) => router.push({ pathname: "/garden", params: plantIds.length ? { focus: plantIds.join(",") } : {} }),
+    onOpenInsights: (plantId) => router.push({ pathname: "/plants/[plantId]/insights", params: { plantId } }),
     onRescan: (plantId, photoKind) => {
       setRescanError(undefined);
       capture.start({ plantId, photoKind }, { push: true }).catch(() => setRescanError("The scan couldn't start. Check your network."));

@@ -2,6 +2,8 @@
 // primary: the one green action per screen; with an icon, the icon sits in a white disc at the left end.
 // secondary: a pale surface pill. ghost: the surface at 80% over a tinted fill, no shadow (.btn-ghost under
 // data-buttons="pill", as on the frost banner). plain: text only, in the text colour, since controls are neutral.
+// destructive: the secondary pill with its text in `danger` (HIG Buttons, Role: "a destructive button uses the system
+// red color"), for deleting or leaving; check:contrast covers danger on surface.
 // small is .btn-sm: 15 pt text and 14 pt sides at the same 44 pt height.
 import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
@@ -10,7 +12,7 @@ import { useTheme } from "../theme";
 import { elevation, minTouch, radii, type ColorRole } from "../tokens";
 import { Text } from "./Text";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "plain";
+export type ButtonVariant = "primary" | "secondary" | "destructive" | "ghost" | "plain";
 export type ButtonSize = "small" | "regular" | "large";
 
 export interface IconRenderProps {
@@ -30,7 +32,7 @@ export interface ButtonProps extends Omit<PressableProps, "children" | "style"> 
   style?: StyleProp<ViewStyle>;
 }
 
-const FG: Record<ButtonVariant, ColorRole> = { primary: "accentText", secondary: "text", ghost: "text", plain: "text" };
+const FG: Record<ButtonVariant, ColorRole> = { primary: "accentText", secondary: "text", destructive: "danger", ghost: "text", plain: "text" };
 
 export function Button({
   label,
@@ -59,7 +61,7 @@ export function Button({
   const fill: ViewStyle =
     variant === "primary"
       ? { backgroundColor: colors.accent, boxShadow: large && !dark ? elevation.pillPrimary : undefined }
-      : variant === "secondary"
+      : variant === "secondary" || variant === "destructive"
         ? { backgroundColor: colors.surface, boxShadow: dark ? undefined : elevation.pillSecondary }
         : variant === "ghost"
           ? { backgroundColor: `${colors.surface}CC` }

@@ -2,6 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { Pressable, Text } from "react-native";
 
 import { SessionProvider, useSession } from "@/features/auth";
+import { useActiveGardenStore, usePendingInviteStore } from "@/features/gardens";
+
+import { clearSignedOutState } from "../AppProviders";
 
 function Probe() {
   const session = useSession();
@@ -35,4 +38,13 @@ it("runs the sign-out cleanup when a session ends, and not before one starts", a
   await fireEvent.press(screen.getByText("sign out"));
   expect(await screen.findByText("out")).toBeTruthy();
   expect(onSignedOut).toHaveBeenCalledTimes(1);
+});
+
+// The review of #205: an invite kept while signed out is for the next account only, never one after a sign-out.
+it("drops a kept invite code and the active garden at sign-out", () => {
+  usePendingInviteStore.setState({ code: "ABCDEFGHIJKLMNOPQRSTUVWXYZ" });
+  useActiveGardenStore.setState({ gardenId: "g1" });
+  clearSignedOutState();
+  expect(usePendingInviteStore.getState().code).toBeNull();
+  expect(useActiveGardenStore.getState().gardenId).toBeNull();
 });
