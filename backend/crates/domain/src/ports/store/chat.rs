@@ -3,8 +3,8 @@
 use crate::{
     authz::{ConversationOwner, Editor, Membership, Viewer},
     chat::{
-        Anchor, ChatRoute, ConfirmResult, Conversation, ConversationDetail, ConversationQuery,
-        Message, MessageFeedbackRequest, MessageRole, PendingAction,
+        Anchor, AnswerBlock, ChatRoute, ConfirmResult, Conversation, ConversationDetail,
+        ConversationQuery, Message, MessageFeedbackRequest, MessageRole, PendingAction,
     },
     connectors::FarmCitation,
     id::{ChatImageId, ConversationId, MessageId, PendingActionId, UserId},
@@ -59,6 +59,9 @@ pub struct NewMessage {
     ///
     /// [connectors 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#7-the-agent
     pub farm_citations: Vec<FarmCitation>,
+    /// The answer blocks an assistant message sent, in order ([contracts 8], answer blocks);
+    /// empty for a user message.
+    pub blocks: Vec<AnswerBlock>,
     /// Tool calls and results, in order.
     pub tool_calls: Vec<ContentPart>,
     /// The classifier's route.

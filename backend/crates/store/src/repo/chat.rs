@@ -43,7 +43,7 @@ pub mod sql {
     /// The projection of a `message` into `Message`, with its cards.
     macro_rules! message_fields {
         () => {
-            "id, role, text, attachments, citations, farm_citations, interrupted, created_at, tool_calls,
+            "id, role, text, attachments, citations, farm_citations, blocks, interrupted, created_at, tool_calls,
   (SELECT id, conversation AS conversation_id, tool, status, card, preview, expires_at FROM pending_action
      WHERE message = $parent.id ORDER BY id) AS pending_actions"
         };
@@ -185,6 +185,10 @@ pub struct MessageRow {
     /// [connectors 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#7-the-agent
     #[surreal(default)]
     pub farm_citations: Vec<Json>,
+    /// `AnswerBlock[]` ([contracts 8], answer blocks). A message stored before answer blocks
+    /// has none and reads as empty, like `farm_citations`.
+    #[surreal(default)]
+    pub blocks: Vec<Json>,
     /// Text, tool-call and tool-result parts, in order; never sent to the app.
     pub tool_calls: Vec<Json>,
     /// The classifier's route.
@@ -530,6 +534,11 @@ impl ChatRepo for SurrealStore {
                     .farm_citations
                     .iter()
                     .map(|c| to_json("farm_citations", c))
+                    .collect::<Result<_, _>>()?,
+                blocks: message
+                    .blocks
+                    .iter()
+                    .map(|b| to_json("blocks", b))
                     .collect::<Result<_, _>>()?,
                 tool_calls: message
                     .tool_calls

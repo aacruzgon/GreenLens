@@ -1271,6 +1271,25 @@ export interface components {
          * @enum {string}
          */
         Answer: "yes" | "no" | "unsure";
+        /**
+         * @description `AnswerBlock` ([contracts 8], answer blocks): a native component the app draws in an answer.
+         *     The API builds it from one tool result of the turn (its anchor, `call_id`) and the store, so
+         *     it holds records and ids only, never text the model wrote.
+         */
+        AnswerBlock: components["schemas"]["BlockBody"] & {
+            /** @description The anchor: the tool call of the same turn whose result the block shows. */
+            call_id: string;
+        };
+        /**
+         * @description `answer_block` data: sent when `show_block` succeeds, so always after its anchor's
+         *     `tool_finished`.
+         */
+        AnswerBlockEvent: {
+            /** @description The block, as stored in `Message.blocks`. */
+            block: components["schemas"]["AnswerBlock"];
+            /** @description `1`. */
+            v: components["schemas"]["V1"];
+        };
         /** @description `POST /scans/{id}/answers` ([contracts 3]). */
         AnswerRequest: {
             /** @description The answer. */
@@ -1335,6 +1354,73 @@ export interface components {
             superseded_at?: components["schemas"]["Timestamp"];
             /** @description The memory's text. */
             value: string;
+        };
+        /** @description `AnswerBlock`'s kinds, tagged by `kind`. */
+        BlockBody: {
+            /**
+             * @description The plants the answer is about, from the `show_block` call, once each: each is one of
+             *     `plants`. May be empty.
+             */
+            focus_plant_ids: components["schemas"]["Id"][];
+            /** @enum {string} */
+            kind: "garden_map";
+            /** @description The map, from the result. */
+            map: components["schemas"]["GardenMap"];
+            /** @description Plant → plants within `NEIGHBOUR_RADIUS_M`, from the result. */
+            neighbours: {
+                [key: string]: components["schemas"]["Id"][];
+            };
+            /** @description Every live plant pinned on the map, from the store. */
+            plants: components["schemas"]["BlockPlant"][];
+        } | {
+            /** @description Daily rows: the forecast, or the scan's snapshot of it at scan time. */
+            days: components["schemas"]["ForecastDay"][];
+            /** @enum {string} */
+            kind: "weather_hours";
+            /** @description Set when the anchor is `get_scan`. */
+            scan_id?: components["schemas"]["Id"];
+        } | {
+            /** @enum {string} */
+            kind: "frost_planner";
+            /** @description The result's days with `frost_risk`, first first. */
+            nights: components["schemas"]["ForecastDay"][];
+            /**
+             * @description The garden's live plants that aren't dead, from the store, with their confirmed
+             *     species' frost tenderness.
+             */
+            plants: components["schemas"]["FrostPlant"][];
+        } | {
+            /** @enum {string} */
+            kind: "measurement_trend";
+            /** @description The plant, from the call's arguments. */
+            plant_id: components["schemas"]["Id"];
+            /** @description Its name, from the store. */
+            plant_name: string;
+            /** @description As returned, oldest first. */
+            points: components["schemas"]["MeasurementPoint"][];
+            /** @description The quantity the points measure. */
+            quantity: components["schemas"]["GrowthQuantity"];
+        } | {
+            /** @description The problem asked about: its id from the call, its name from the knowledge base. */
+            disease: components["schemas"]["ProblemRef"];
+            /** @enum {string} */
+            kind: "candidates";
+            /** @description The look-alikes, from the result. */
+            lookalikes: components["schemas"]["Lookalike"][];
+        };
+        /** @description `BlockPlant`: a plant as a block shows it, filled in from the store. */
+        BlockPlant: {
+            /**
+             * Format: double
+             * @description cm: its latest `plant_height_cm` point; absent when it has none.
+             */
+            height_cm?: number;
+            /** @description Its name. */
+            name: string;
+            /** @description The plant. */
+            plant_id: components["schemas"]["Id"];
+            /** @description Its health status. */
+            status: components["schemas"]["PlantStatus"];
         };
         /**
          * @description `details.budget` of `budget_exceeded`.
@@ -1413,7 +1499,7 @@ export interface components {
          *     not resumable, so events have no `id:`. Serialize only: the API writes these and the app
          *     reads them.
          */
-        ChatEvent: components["schemas"]["MessageStarted"] | components["schemas"]["TextDelta"] | components["schemas"]["ToolStarted"] | components["schemas"]["ToolFinished"] | components["schemas"]["CitationEvent"] | components["schemas"]["PendingActionEvent"] | components["schemas"]["MemorySaved"] | components["schemas"]["RescanRequested"] | components["schemas"]["MessageCompleted"] | components["schemas"]["ChatErrorEvent"];
+        ChatEvent: components["schemas"]["MessageStarted"] | components["schemas"]["TextDelta"] | components["schemas"]["ToolStarted"] | components["schemas"]["ToolFinished"] | components["schemas"]["CitationEvent"] | components["schemas"]["PendingActionEvent"] | components["schemas"]["MemorySaved"] | components["schemas"]["RescanRequested"] | components["schemas"]["AnswerBlockEvent"] | components["schemas"]["MessageCompleted"] | components["schemas"]["ChatErrorEvent"];
         /** @description `201` of `POST /conversations/{id}/images`: `{ image_id, url }`. */
         ChatImageUploaded: {
             /** @description The new chat image. */
@@ -2058,6 +2144,12 @@ export interface components {
             record_id: components["schemas"]["FarmRecordId"];
             /** @description Slack or Google Drive. */
             system: components["schemas"]["ConnectorKind"];
+            /**
+             * @description The record as the farm wrote it, rates included: one stored chunk, at most 2,000
+             *     characters. Set only for a record of an `era` connector, whose data is synthetic; the app
+             *     shows it in a sheet, labelled as Era's demo data. A vendor record's citation never has it.
+             */
+            text?: string;
             /** @description `"#field-reports"`, `"Spray log 2026"`. */
             title: string;
         };
@@ -2109,6 +2201,15 @@ export interface components {
              * @description °C.
              */
             t_min_c: number;
+        };
+        /** @description `FrostPlant = BlockPlant & { frost_tender?: boolean }`. */
+        FrostPlant: components["schemas"]["BlockPlant"] & {
+            /**
+             * @description `true` for a confirmed species with `frost: tender`, `false` for `hardy`; absent when the
+             *     species is only suggested or unknown, or its sources don't say. Never `false` for "don't
+             *     know".
+             */
+            frost_tender?: boolean;
         };
         /** @description `Garden` ([contracts 9]). Raw coordinates are never returned. */
         Garden: {
@@ -2533,6 +2634,15 @@ export interface components {
          * @enum {string}
          */
         LocationPrecision: "exact" | "about_1_km" | "about_10_km" | "postal_code" | "city";
+        /** @description `compare_lookalikes` items, and `candidates.lookalikes`. */
+        Lookalike: {
+            /** @description How to tell them apart. */
+            how_to_tell: string;
+            /** @description Its name. */
+            name: string;
+            /** @description The look-alike. */
+            problem_id: components["schemas"]["Slug"];
+        };
         /** @description `200` of `GET /gardens/{id}/map`: `{ map: GardenMap | null }`. */
         MapResponse: {
             map: components["schemas"]["GardenMap"] | null;
@@ -2667,6 +2777,30 @@ export interface components {
          * @enum {string}
          */
         MemoryTopic: "watering" | "feeding" | "treatment" | "pruning" | "planting" | "location" | "container" | "soil" | "light" | "health" | "harvest" | "other";
+        /** @description `Message` ([contracts 8]). Tool calls and results are stored but never sent to the app. */
+        Message: {
+            /** @description The user's images. */
+            attachments: components["schemas"]["Attachment"][];
+            /** @description Sources cited. */
+            citations: components["schemas"]["Citation"][];
+            /** @description When it was stored. */
+            created_at: components["schemas"]["Timestamp"];
+            /**
+             * @description The farm records an assistant message cites ([connectors 7]); absent when it cites none,
+             *     and read as empty from a message stored before connectors.
+             */
+            farm_citations?: components["schemas"]["FarmCitation"][];
+            /** @description The message. */
+            id: components["schemas"]["Id"];
+            /** @description The stream dropped before `message_completed`. */
+            interrupted: boolean;
+            /** @description Confirmation cards. */
+            pending_actions: components["schemas"]["PendingAction"][];
+            /** @description Who wrote it. */
+            role: components["schemas"]["MessageRole"];
+            /** @description The text, dose-checked when the assistant wrote it. */
+            text: string;
+        };
         /** @description `message_completed` data. */
         MessageCompleted: {
             /** @description The stored message. */
@@ -2682,6 +2816,11 @@ export interface components {
             notes?: string;
             /** @description The rating. */
             rating: components["schemas"]["Rating"];
+        };
+        /** @description The replay of a finished chat message under its idempotency key: `200 { message }`. */
+        MessageReplay: {
+            /** @description The stored assistant message. */
+            message: components["schemas"]["Message"];
         };
         /**
          * @description `Message.role`.
@@ -2962,6 +3101,11 @@ export interface components {
             items: {
                 /** @description The user's images. */
                 attachments: components["schemas"]["Attachment"][];
+                /**
+                 * @description The answer blocks an assistant message sent, in order, at most 3 ([contracts 8], answer
+                 *     blocks); absent when it sent none, and read as empty from a message stored before them.
+                 */
+                blocks?: components["schemas"]["AnswerBlock"][];
                 /** @description Sources cited. */
                 citations: components["schemas"]["Citation"][];
                 /** @description When it was stored. */
@@ -5035,13 +5179,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description `event: name`, `data: ChatEvent`; a replay is `application/json` MessageReplay */
+            /** @description `event: name`, `data: ChatEvent` as SSE; a finished turn's replay is `application/json` MessageReplay */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "text/event-stream": components["schemas"]["ChatEvent"];
+                    "application/json": components["schemas"]["MessageReplay"];
                 };
             };
             400: {

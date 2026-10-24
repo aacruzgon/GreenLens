@@ -10,9 +10,9 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use domain::{
     authz::{Editor, Owner, Viewer, check_conversation, check_membership_of},
     chat::{
-        Anchor, Card, ConfirmResult, ConversationQuery, MemoryKind, MemoryQuery, MemoryTopic,
-        MessageFeedbackRequest, MessageRole, PendingAction, PendingStatus, Preview, Rating,
-        WriteTool,
+        Anchor, AnswerBlock, BlockBody, Card, ConfirmResult, ConversationQuery, MemoryKind,
+        MemoryQuery, MemoryTopic, MessageFeedbackRequest, MessageRole, PendingAction,
+        PendingStatus, Preview, Rating, WriteTool,
     },
     events::{RunReason, Stage},
     id::{
@@ -33,6 +33,7 @@ use domain::{
         diagnosis::{EvidenceSource, IndicatorEvidence, Weight},
         observation::{Observation, ObservationSource, ObservationStage},
         task::TaskSource,
+        weather::ForecastDay,
     },
     rules::{jobs::claim_policy, steps::PipelineStep},
     scan::{
@@ -1512,6 +1513,10 @@ async fn plants_tasks_and_growth() {
         .unwrap();
     assert_eq!(timeline.items.len(), 1);
     assert!(timeline.items[0].measurements.is_none());
+    let summaries = store.plant_summaries(viewer).await.unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].plant.plant_id, f.plant);
+    assert_eq!(summaries[0].plant.height_cm, None, "no height measured yet");
 
     let t: TaskId = f.ids.id();
     let task = store
@@ -1591,6 +1596,58 @@ async fn plants_tasks_and_growth() {
         .unwrap();
     assert_eq!(series.items.len(), 1);
     assert_eq!(store.heights(f.plant).await.unwrap().len(), 1);
+    // An answer block's plants. The newest scan's height counts, not a later low-confidence
+    // one nor a newer canopy width; a plant being deleted and another garden's plant are left
+    // out; a species counts only when confirmed.
+    let suggested: PlantId = f.ids.id();
+    let deleting: PlantId = f.ids.id();
+    let other_garden: GardenId = f.ids.id();
+    let elsewhere: PlantId = f.ids.id();
+    exec(
+        &store,
+        &format!(
+            "CREATE observation SET scan = {s}, run = 1, stage = 'measurement', pipeline_stage = 'measurement', label = 'Height',
+               confidence = 0.3, source = 'measurement', model_version = 'm1', plant = {p}, quantity = 'plant_height_cm',
+               measured_value = 99.0, taken_at = <datetime> '2026-10-19T14:00:00Z';
+             CREATE observation SET scan = {s}, run = 1, stage = 'measurement', pipeline_stage = 'measurement', label = 'Width',
+               confidence = 0.9, source = 'measurement', model_version = 'm1', plant = {p}, quantity = 'canopy_width_cm',
+               measured_value = 77.0, taken_at = <datetime> '2026-10-20T14:00:00Z';
+             UPDATE {p} SET species = species:tomato, species_status = 'confirmed';
+             CREATE {sp} SET garden = {g}, name = 'Lettuce', species = species:lettuce, species_status = 'suggested';
+             CREATE {dp} SET garden = {g}, name = 'Bean', deleting_at = <datetime> '2026-10-18T14:00:00Z';
+             CREATE {og} CONTENT (SELECT * OMIT id FROM ONLY {g});
+             CREATE {ep} SET garden = {og}, name = 'Apple';",
+            s = rec("scan", f.scan),
+            p = rec("plant", f.plant),
+            g = rec("garden", f.garden),
+            sp = rec("plant", suggested),
+            dp = rec("plant", deleting),
+            og = rec("garden", other_garden),
+            ep = rec("plant", elsewhere),
+        ),
+    )
+    .await;
+    let summaries = store.plant_summaries(viewer).await.unwrap();
+    let ids: Vec<PlantId> = summaries.iter().map(|s| s.plant.plant_id).collect();
+    assert_eq!(
+        ids,
+        [suggested, f.plant],
+        "by name, live plants of this garden only"
+    );
+    let tomato = &summaries[1];
+    assert_eq!(tomato.plant.height_cm, Some(42.0));
+    assert_eq!(tomato.plant.name, plants.items[0].name);
+    assert_eq!(tomato.plant.status, plants.items[0].status);
+    assert_eq!(
+        tomato.confirmed_species,
+        Some("tomato".parse().unwrap()),
+        "a confirmed species"
+    );
+    assert_eq!(
+        summaries[0].confirmed_species, None,
+        "a suggested species is not given"
+    );
+    assert_eq!(summaries[0].plant.height_cm, None);
     let timeline = store
         .timeline(viewer, f.plant, PageRequest::default())
         .await
@@ -1662,6 +1719,7 @@ async fn chat_flow() {
         attachments: Vec::new(),
         citations: Vec::new(),
         farm_citations: Vec::new(),
+        blocks: Vec::new(),
         tool_calls: parts,
         route: None,
         interrupted: false,
@@ -1677,22 +1735,38 @@ async fn chat_flow() {
         .store_message(owner.at_least(), first)
         .await
         .expect("user message");
+    // The answer sent an answer block, stored with it and read back as sent.
+    let block = AnswerBlock {
+        call_id: "c1".into(),
+        body: BlockBody::WeatherHours {
+            days: vec![ForecastDay {
+                date: "2026-10-22".parse().unwrap(),
+                t_min_c: -1.5,
+                t_max_c: 9.0,
+                precip_mm: 0.0,
+                mean_rh_pct: 80.0,
+                hours_rh_over_90: 6,
+                frost_risk: true,
+            }],
+            scan_id: Some(f.scan),
+        },
+    };
+    let mut answered = msg(
+        MessageRole::Assistant,
+        "Likely early blight.",
+        2,
+        vec![ContentPart::ToolCall {
+            call_id: "c1".into(),
+            name: "get_scan".into(),
+            arguments: serde_json::json!({}),
+        }],
+    );
+    answered.blocks = vec![block.clone()];
     let answer = store
-        .store_message(
-            owner.at_least(),
-            msg(
-                MessageRole::Assistant,
-                "Likely early blight.",
-                2,
-                vec![ContentPart::ToolCall {
-                    call_id: "c1".into(),
-                    name: "get_scan".into(),
-                    arguments: serde_json::json!({}),
-                }],
-            ),
-        )
+        .store_message(owner.at_least(), answered)
         .await
         .unwrap();
+    assert_eq!(answer.blocks, vec![block.clone()]);
     let card = PendingAction {
         id: f.ids.id(),
         conversation_id: conv.id,
@@ -1786,6 +1860,23 @@ async fn chat_flow() {
         .unwrap();
     assert_eq!(detail.messages.items.len(), 2);
     assert_eq!(detail.messages.items[0].pending_actions.len(), 1);
+    assert_eq!(detail.messages.items[0].blocks, vec![block.clone()]);
+    assert_eq!(detail.messages.items[1].blocks, Vec::new());
+    assert_eq!(context[1].message.blocks, vec![block]);
+
+    // A message stored before answer blocks has none: drop the field, unset it, define it
+    // again (`DEFAULT []` doesn't backfill), and read it as empty.
+    exec(&store, "REMOVE FIELD blocks ON message;").await;
+    let mut r = store
+        .db()
+        .query("UPDATE $message UNSET blocks;")
+        .bind(("message", store::ids::rid(&answer.id)))
+        .await
+        .unwrap();
+    assert!(r.take_errors().is_empty());
+    store::apply_schema_with(store.db()).await.unwrap();
+    let (_, context) = store.context(owner.at_least(), 10).await.unwrap();
+    assert!(context.iter().all(|m| m.message.blocks.is_empty()));
     store
         .rate_message(
             owner.at_least(),
@@ -2236,6 +2327,36 @@ async fn knowledge_loads() {
     assert_eq!(ladybug.preys_on.as_ref().map(Vec::len), Some(1));
     assert_eq!(kb.vlm_options.species.len(), 1);
     assert_eq!(kb.vlm_options.label_set_version.len(), 16);
+}
+
+/// A species' `frost` round-trips through the knowledge load, and a species without it reads as none.
+#[tokio::test]
+async fn species_frost_round_trips() {
+    use domain::knowledge::Frost;
+    let store = support::store().await;
+    exec(
+        &store,
+        "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'label_only',
+           bioclip_label = 'tomato', reviewed_by = 'ada', frost = 'tender';
+         CREATE species:lettuce SET scientific_name = 'Lactuca sativa', common_names = ['Lettuce'], profile = 'label_only',
+           bioclip_label = 'lettuce', reviewed_by = 'ada', frost = 'hardy';
+         CREATE species:kale SET scientific_name = 'Brassica oleracea', common_names = ['Kale'], profile = 'label_only',
+           bioclip_label = 'kale', reviewed_by = 'ada';",
+    )
+    .await;
+    let kb = store.load_knowledge().await.expect("loaded");
+    let frost = |id: &str| {
+        kb.species
+            .iter()
+            .find(|s| s.id.as_str() == id)
+            .unwrap()
+            .frost
+    };
+    assert_eq!(frost("tomato"), Some(Frost::Tender));
+    assert_eq!(frost("lettuce"), Some(Frost::Hardy));
+    assert_eq!(frost("kale"), None);
+    let kale = kb.species.iter().find(|s| s.id.as_str() == "kale").unwrap();
+    assert!(serde_json::to_value(kale).unwrap().get("frost").is_none());
 }
 
 #[allow(dead_code, reason = "keeps the shared imports used across tests")]
