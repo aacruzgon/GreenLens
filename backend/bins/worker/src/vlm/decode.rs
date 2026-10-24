@@ -277,8 +277,135 @@ fn organism_findings(
     Ok(organism_findings)
 }
 
-/// The damage of a findings answer, at most `max_items`. A finding that repeats an earlier one
-/// (pattern, image, box and description) is dropped: a model in a loop can fill the list with one.
+/// Words that say what follows is absent: a clause with one names no trace ("no insect seen").
+const NEGATIONS: [&str; 7] = ["no", "not", "none", "nothing", "without", "absent", "never"];
+
+/// Roots of the words that name an animal, or something only an animal leaves (task P11): a
+/// trace names one of them in a clause that isn't negated. A word matches a root it starts or
+/// ends with (a plural `s` aside), so "hornworm" matches `worm`, "whiteflies" `whitefl` and
+/// "chewed" `chew`, while "limited" holds `mite` in its middle and doesn't. An allow-list,
+/// because a disease described in any words ("brown spots on the tomato leaf", "long tan lesions
+/// on the corn leaf") must fail, and the words a lesion can be described in have no end.
+const TRACE_ROOTS: [&str; 52] = [
+    // Animals and their stages.
+    "insect",
+    "larva",
+    "caterpillar",
+    "worm",
+    "grub",
+    "maggot",
+    "beetle",
+    "weevil",
+    "aphid",
+    "mite",
+    "thrip",
+    "whitefl",
+    "butterfl",
+    "sawfl",
+    "bug",
+    "hopper",
+    "psyllid",
+    "earwig",
+    "cricket",
+    "borer",
+    "leafmin",
+    "wasp",
+    "nymph",
+    "pupa",
+    "cocoon",
+    "snail",
+    "bird",
+    "deer",
+    "rabbit",
+    "rodent",
+    "mouse",
+    "mice",
+    "vole",
+    "squirrel",
+    "chipmunk",
+    "groundhog",
+    "raccoon",
+    // What an animal leaves.
+    "frass",
+    "excrement",
+    "honeydew",
+    "web",
+    "silk",
+    "tunnel",
+    "burrow",
+    "slime",
+    "bite",
+    "bitten",
+    "chew",
+    "gnaw",
+    "nibbl",
+    "footprint",
+    "molehill",
+];
+
+/// Animal and trace words matched whole, since as roots they would match other words: "ant" in
+/// "plant", "egg" in "eggplant", "fly" in "flyspeck", "miner" in "mineral", "moth" in "mother",
+/// "droppings" in "leaf dropping".
+const TRACE_WORDS: [&str; 26] = [
+    "ant",
+    "ants",
+    "bee",
+    "bees",
+    "egg",
+    "eggs",
+    "fly",
+    "flies",
+    "moth",
+    "moths",
+    "slug",
+    "slugs",
+    "miner",
+    "miners",
+    "mole",
+    "moles",
+    "droppings",
+    "cut",
+    "cuts",
+    "teeth",
+    "tooth",
+    "track",
+    "tracks",
+    "trail",
+    "trails",
+    "mounds",
+];
+
+/// Whether one lower-case word names an animal or its trace.
+fn trace_word(word: &str) -> bool {
+    let singular = word.strip_suffix('s').unwrap_or(word);
+    TRACE_WORDS.contains(&word)
+        || TRACE_ROOTS
+            .iter()
+            .any(|root| word.starts_with(root) || singular.ends_with(root))
+}
+
+/// Whether a damage finding's `trace` names an animal or something an animal left: some clause
+/// of it, not negated, holds a word of [`TRACE_ROOTS`] or [`TRACE_WORDS`]. Clauses split at
+/// punctuation and at "but", so "frass, but no larva seen" keeps its frass while "no insect
+/// visible" names nothing.
+fn names_a_trace(trace: &str) -> bool {
+    let lower = trace.to_lowercase();
+    lower
+        .split([',', ';', '.', ':', '(', ')'])
+        .flat_map(|part| part.split(" but "))
+        .any(|clause| {
+            let words: Vec<&str> = clause
+                .split(|c: char| !c.is_alphabetic())
+                .filter(|w| !w.is_empty())
+                .collect();
+            !words.iter().any(|w| NEGATIONS.contains(w)) && words.iter().any(|w| trace_word(w))
+        })
+}
+
+/// The damage of a findings answer, at most `max_items`. A finding whose `trace` names no animal
+/// and nothing an animal left is dropped, so a disease lesion reported as damage never reaches the
+/// API (task P11). A finding that repeats an earlier one (pattern, image, box and description) is
+/// dropped too: a model in a loop can fill the list with one.
 fn damage_findings(
     raw: Vec<DamageRaw>,
     images: &CallImages<'_>,
@@ -287,7 +414,14 @@ fn damage_findings(
     limits: Limits,
 ) -> Result<Vec<DamageFinding>, Invalid> {
     let mut damage_findings = Vec::new();
-    for d in raw.into_iter().take(limits.max_items) {
+    let traced = raw.into_iter().filter(|d| {
+        let keep = names_a_trace(&d.trace);
+        if !keep {
+            tracing::debug!(pattern = ?d.pattern, trace = %d.trace, "damage finding without a trace dropped");
+        }
+        keep
+    });
+    for d in traced.take(limits.max_items) {
         let image = images.get(d.image)?;
         let region = d
             .bbox_2d
@@ -480,7 +614,7 @@ mod tests {
               "surface":null,"structure":null,"colour":null,"cover":null,"deposits":null,"erosion":null,"weeds":null}},
             "organisms":[{{"label":"other","other_name":"{}","count":"few","image":"img1",
               "bbox_2d":{organism_box},"certainty":"low"}}],
-            "damage":[{{"pattern":"shot_holes","other_description":null,"image":"img2","bbox_2d":[0,0,0,0],"certainty":"high"}}],
+            "damage":[{{"trace":"flea beetles on the leaf","pattern":"shot_holes","other_description":null,"image":"img2","bbox_2d":[0,0,0,0],"certainty":"high"}}],
             "notes":"ok"}}"#,
             "x".repeat(80)
         )
@@ -563,9 +697,9 @@ mod tests {
     fn only_other_damage_keeps_its_description() {
         let a = prepared(IMG1, 100, 100);
         let json = findings_json("[0,0,10,10]").replace(
-            r#""damage":[{"pattern":"shot_holes","other_description":null,"#,
-            r#""damage":[{"pattern":"leaf_mines","other_description":"brown spots","image":"img1","bbox_2d":null,"certainty":"medium"},
-              {"pattern":"other","other_description":"bark stripped","#,
+            r#""damage":[{"trace":"flea beetles on the leaf","pattern":"shot_holes","other_description":null,"#,
+            r#""damage":[{"trace":"larva in the tunnel","pattern":"leaf_mines","other_description":"pale tunnel","image":"img1","bbox_2d":null,"certainty":"medium"},
+              {"trace":"gnawed by teeth","pattern":"other","other_description":"bark stripped","#,
         );
         let b = prepared(IMG2, 100, 100);
         let f = findings(
@@ -678,7 +812,7 @@ mod tests {
         let b = prepared(IMG2, 100, 100);
         // Like Qwen3.5's corn answer with `findings@3`, one finding repeated up to the cap of 10.
         // The same pattern in another box, or in no box, is a finding of its own.
-        let mine = r#"{"pattern":"leaf_mines","other_description":"pale tunnels","image":"img2","bbox_2d":[138,333,422,422],"certainty":"high"}"#;
+        let mine = r#"{"trace":"larva in the tunnel","pattern":"leaf_mines","other_description":"pale tunnels","image":"img2","bbox_2d":[138,333,422,422],"certainty":"high"}"#;
         let other_box = mine.replace("[138,333,422,422]", "[500,500,600,600]");
         let no_box = mine.replace("[138,333,422,422]", "null");
         let damage = [mine; 7]
@@ -686,11 +820,46 @@ mod tests {
             .chain([other_box.as_str(), no_box.as_str(), no_box.as_str()])
             .collect::<Vec<_>>()
             .join(",");
+        let f = findings_with_damage(&damage, &a, &b);
+        assert_eq!(f.damage.len(), 3);
+        assert!(
+            f.damage
+                .iter()
+                .all(|d| d.pattern == DamagePattern::LeafMines)
+        );
+        assert!(f.damage[0].region.is_some() && f.damage[1].region.is_some());
+        assert_ne!(f.damage[0].region, f.damage[1].region);
+        assert!(f.damage[2].region.is_none());
+    }
+
+    /// `findings_json` with its damage list replaced by `damage` (items joined by commas).
+    fn findings_with_damage(damage: &str, a: &PreparedImage, b: &PreparedImage) -> VlmFindings {
         let json = findings_json("[0,0,10,10]").replace(
-            r#""damage":[{"pattern":"shot_holes","other_description":null,"image":"img2","bbox_2d":[0,0,0,0],"certainty":"high"}]"#,
+            r#""damage":[{"trace":"flea beetles on the leaf","pattern":"shot_holes","other_description":null,"image":"img2","bbox_2d":[0,0,0,0],"certainty":"high"}]"#,
             &format!(r#""damage":[{damage}]"#),
         );
-        let f = findings(
+        findings(
+            &json,
+            &CallImages::new(vec![a, b]),
+            &[SpeciesOption {
+                id: "tomato".parse().unwrap(),
+                name: "Tomato".to_owned(),
+            }],
+            &[],
+            BoxFormat::Norm1000,
+            &CertaintyMap::default(),
+            Limits::CONTRACT,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_damage_finding_without_its_trace_field_is_invalid_output() {
+        let a = prepared(IMG1, 100, 100);
+        let b = prepared(IMG2, 100, 100);
+        let json =
+            findings_json("[0,0,10,10]").replace(r#""trace":"flea beetles on the leaf","#, "");
+        let decoded = findings(
             &json,
             &CallImages::new(vec![&a, &b]),
             &[SpeciesOption {
@@ -701,17 +870,96 @@ mod tests {
             BoxFormat::Norm1000,
             &CertaintyMap::default(),
             Limits::CONTRACT,
-        )
-        .unwrap();
-        assert_eq!(f.damage.len(), 3);
-        assert!(
-            f.damage
-                .iter()
-                .all(|d| d.pattern == DamagePattern::LeafMines)
         );
-        assert!(f.damage[0].region.is_some() && f.damage[1].region.is_some());
-        assert_ne!(f.damage[0].region, f.damage[1].region);
-        assert!(f.damage[2].region.is_none());
+        assert!(matches!(decoded, Err(Invalid::Json(_))), "{decoded:?}");
+    }
+
+    #[test]
+    fn damage_without_a_trace_is_dropped() {
+        let a = prepared(IMG1, 100, 100);
+        let b = prepared(IMG2, 100, 100);
+        let item = |trace: &str, pattern: &str| {
+            format!(
+                r#"{{"trace":"{trace}","pattern":"{pattern}","other_description":null,"image":"img2","bbox_2d":null,"certainty":"high"}}"#
+            )
+        };
+        let damage = [
+            // Kept: an animal, or something an animal left.
+            item("larva visible inside the tunnel", "leaf_mines"),
+            item("frass", "frass"),
+            item("bite marks along the chewed edge", "chewed_margins"),
+            // Dropped: no trace, a negated one, or a disease sign only. The first two are
+            // Qwen3.5's early-blight spots as `leaf_mines` and FP8's corn blight as
+            // `chewed_margins` (vision vlm.md 4), as they would read with a trace field.
+            item("brown spots with a yellow halo", "leaf_mines"),
+            item("long tan lesions along the leaf", "chewed_margins"),
+            item("concentric rings on the lower leaves", "other"),
+            item("no insect visible", "shot_holes"),
+            item("", "leaf_mines"),
+            item("  ", "webbing"),
+        ]
+        .join(",");
+        let f = findings_with_damage(&damage, &a, &b);
+        let patterns: Vec<DamagePattern> = f.damage.iter().map(|d| d.pattern).collect();
+        assert_eq!(
+            patterns,
+            [
+                DamagePattern::LeafMines,
+                DamagePattern::Frass,
+                DamagePattern::ChewedMargins
+            ]
+        );
+    }
+
+    #[test]
+    fn a_trace_names_an_animal_or_what_it_left() {
+        for kept in [
+            "aphids",
+            "Caterpillar on the leaf",
+            "fine silk webbing",
+            "dried slime",
+            "dark frass line inside the mine",
+            "holes chewed by beetles",
+            "deer footprints",
+            "Tomato hornworm",
+            "whiteflies under the leaf",
+            "frass, but no larva seen",
+            "larva tunnels, no adult visible",
+            "unknown insect",
+            "clean cut stem at the soil line",
+            "eggs on the underside",
+            "sticky honeydew",
+        ] {
+            assert!(names_a_trace(kept), "{kept}");
+        }
+        for dropped in [
+            "",
+            "none",
+            "N/A",
+            "not visible",
+            "no animal seen",
+            "without any insect",
+            "Brown spots",
+            "dark brown lesions with concentric rings",
+            "yellowing leaf margins",
+            "grey powdery mould on the upper leaves",
+            "necrotic tissue",
+            // P11's two cases, with the crop named: no word on the lists.
+            "brown spots on the tomato leaf",
+            "long tan lesions on the corn leaf",
+            "early blight lesions",
+            "septoria leaf spot",
+            "water-soaked lesions on the eggplant",
+            "spots on the plant's leaves",
+            "2 brown spots/lesions",
+            "small round spots with a yellow halo ar",
+            "angular spots limited by veins",
+            "mineral deficiency between the veins",
+            "flyspeck on the fruit",
+            "leaf dropping from the lower stem",
+        ] {
+            assert!(!names_a_trace(dropped), "{dropped}");
+        }
     }
 
     #[test]

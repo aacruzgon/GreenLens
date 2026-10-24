@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.11.4, 2026-10-24. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.11.5, 2026-10-24. Companion to the [architecture document](README.md).
+> **v0.11.5**: each damage finding of the VLM's findings call names, first, the animal seen or the trace it left (`VlmFindingsRaw.damage[].trace`), and the worker drops one that names none, so a disease lesion reported as damage never reaches the API (section 6, task P11 of the vision dev-roadmap); `vlm_prompts` names `findings@6` (section 5). `VlmFindings` and the OpenAPI document are unchanged.
 > **v0.11.4**: the disease classifier's call counts in a candidate's score as `CandidateScore.classifier_weight` (3 at high confidence, 2 at medium), and `confirmed` needs at least one matched indicator, so the classifier ranks but never confirms alone; on the fallback the hosted LLM's disease call is an observation of source `llm_fallback`, which picks candidates but adds no weight, since the same model answers the indicators; a run whose classifier named a candidate asks the user an indicator rather than for another close-up (section 7); open questions 3 (the margin stays 2) and 29 (a plan-writer outage on a first plan fails the scan) are settled in backend roadmap S4.
 > **v0.11.3**: answer blocks: each tool result's `data` element carries its `call_id`, the id `show_block` names, and `call_id` may name the tool when it ran once with success in the turn (section 8, answer blocks); live, the model never saw an id and named the tool, so no block ever showed; no wire change.
 > **v0.11.2**: the write tools (`create_task`, `complete_task`, `revise_plan`) are sent to the model under strict tool use with every argument required, so `null`, or `[]` for a list, means none (section 8, tool return shapes); the live S5 checks found the hosted model never filled an optional argument; no wire change.
@@ -981,7 +982,7 @@ type JobErrorCode =
 | `vlm_server` | `vllm@v0.31.0`, `vllm-rocm@v0.31.0`, `llama.cpp@b7123`, `anthropic` | VLM and fallback workers |
 | `vlm_box_format` | `norm_1000` (VLM workers), `abs_px_prepared` (fallback) | VLM and fallback workers (section 6) |
 | `vlm_max_pixels` | `1003520` | VLM and fallback workers |
-| `vlm_prompts` | `system@2,findings@5,indicators@3,verify@3,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
+| `vlm_prompts` | `system@2,findings@6,indicators@3,verify@3,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
 | `vlm_certainty` | `0.4/0.65/0.85`: the low, medium and high values, slash-separated | VLM and fallback workers |
 | `label_set_version` | the job's own in `complete`; every loaded one, comma-separated, in the heartbeat | Perception and fallback workers |
 | `classifier_labels_version` | as `label_set_version` | Perception and fallback workers |
@@ -1127,6 +1128,7 @@ interface VlmFindingsRaw {
     certainty: Certainty;
   }[];
   damage: {                     // maxItems 10
+    trace: string;              // maxLength 60; written first: the animal seen or the trace it left
     pattern: DamagePattern;
     other_description: string | null;  // with "other", maxLength 100
     image: ImageAlias;
@@ -1213,6 +1215,7 @@ type GuidedTexture =
 - **Boxes with no area.** A box that has no area after clamping drops an organism, which needs one, and leaves a damage finding without its `region` ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
 - **Text at its limit.** A string that reaches its `maxLength` was most likely stopped there mid-word, sometimes in another language ([vision vlm.md 4](../vision/vlm.md#4-serving)), so the worker takes it back to its last full sentence, or failing that its last full word. This applies to `notes`, `reason`, `other_name` and `other_description`; a shorter string is kept as it is ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
 - **`other` naming a listed option.** A species or organism answered `other` whose `other_name` is a listed option's id or name (case, surrounding spaces and `_` for a space don't matter) takes that option's id, and its `other_name` goes ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
+- **Damage needs a trace.** Damage is made by an animal, so each damage finding first names, in `trace`, the animal seen or the trace it left (a larva in the mine, frass, webbing, slime, bite marks, footprints). A finding whose `trace` names none is dropped: the worker keeps it only when a clause of the trace that isn't negated holds a word from its list of animals and animal traces (an allow-list, since a lesion can be described in any words: "brown spots on the tomato leaf" names no trace, and "frass, but no larva seen" does). `trace` is required: a reply without it is invalid output, retried once. Qwen3.5 reports early-blight spots as `leaf_mines` and FP8 a corn's blight as `chewed_margins` whatever the prompt's wording ([vision vlm.md 4](../vision/vlm.md#p5s-prompt-changes-on-qwen35-2026-10-21--ran)), and a damage finding outside the candidate set adds a candidate and a `verify` job, and any damage finding at medium or more rules out `healthy` (`pest_or_damage` in the status rule). `trace` is not stored: `VlmFindings.damage` is unchanged ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
 - **Repeated damage.** A damage finding with the same `pattern`, image, `region` and `other_description` as an earlier one is dropped, so a model that repeats one finding up to the 10-item cap stores it once.
 - A jar test with `settled: false` produces no texture observation; the app keeps the task to photograph the jar again later.
 - The fallback worker sends the same per-call schema to the LLM API's structured-output feature. That feature compiles the schema to a grammar and **rejects with a `400`** the keywords it can't enforce: `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minLength`, `maxLength`, `maxItems`, `minItems` above 1, `minProperties` and `maxProperties`, and it needs `additionalProperties: false` on every object. So the fallback adapter (and the plan writer, which uses the same feature) strips those keywords and adds `additionalProperties: false` before sending, then truncates strings and arrays and clamps numbers and boxes after decoding ([backend integrations 5](../backend/integrations.md#5-anthropic-messages-api)). Its boxes are `abs_px_prepared` (above). A reply cut off at its token limit, or a refusal, is a validation failure.
@@ -2584,6 +2587,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.11.2: the write tools' strict schemas require every argument, `null` or `[]` meaning none | none (7 doesn't describe the tools' schemas) |
 | v0.11.3: a tool result's `data` element carries its `call_id`; `show_block` may name a tool that ran once | none (7 doesn't describe the framing or the anchor rule) |
 | v0.11.4: `CandidateScore.classifier_weight`, the disease classifier's call counted in a candidate's score; `confirmed` needs a matched indicator; a classifier-named candidate gets an indicator question, not a photo request; open questions 3 and 29 settled | 6.3 (step 3); 15 (open decision 14) |
+| v0.11.5: a VLM damage finding names its `trace`, and one with none is dropped; `vlm_prompts` names `findings@6` | 6.5 (the damage patterns row) |
 
 ---
 
