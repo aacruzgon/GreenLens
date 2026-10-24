@@ -183,6 +183,7 @@ fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
 ///   adapter (`abs_px_prepared`, 1,150,000 pixels and 1568 on the long side, the hosted
 ///   budgets) and `LLM_API_KEY`. With neither set, the test returns at once.
 /// - `VLM_API_KEY`: the server's `--api-key`, if it has one.
+/// - `VLM_ADAPTER`: `llamacpp` for llama.cpp's `llama-server`; `vllm` when unset.
 /// - `VLM_BENCH_MAX_PIXELS`: the adapter's `max_pixels` (default 1,003,520); the server's own
 ///   limit must be at least this, or it shrinks the images again.
 /// - `VLM_BENCH_CONCURRENCY`: jobs in flight at once, as a worker with that many `VLM_SLOTS`
