@@ -41,14 +41,41 @@ pub struct ObsContext<'a> {
     pub now: Timestamp,
 }
 
-/// Lookups the conversion needs, borrowed for the call: problem names, and organism names and
-/// roles.
+/// Lookups the conversion needs, borrowed for the call: problem and species names, and
+/// organism names and roles.
 #[derive(Debug, Clone, Copy)]
 pub struct Lookups<'a> {
     /// Problem names, for classifier labels.
     pub problem_names: &'a BTreeMap<String, String>,
+    /// Species' common names, for `BioCLIP`'s labels: the worker sends the label matrix's
+    /// text ("Solanum lycopersicum with common name tomato"), and an observation's `label` is
+    /// display text ([contracts 7], observation).
+    pub species_names: &'a BTreeMap<String, String>,
     /// Organism profiles, for names and roles.
     pub organisms: &'a [OrganismSeed],
+}
+
+/// The knowledge a result's observations are named from, owned, so a partial result and the
+/// job's `complete` build their observations from the same names ([`keep_partial_ids`]).
+#[derive(Debug, Clone, Default)]
+pub struct Names {
+    /// Problem names by id.
+    pub problems: BTreeMap<String, String>,
+    /// Species' common names by id.
+    pub species: BTreeMap<String, String>,
+    /// The organisms the VLM named.
+    pub organisms: Vec<OrganismSeed>,
+}
+
+impl Names {
+    /// The names as the conversion borrows them.
+    pub fn lookups(&self) -> Lookups<'_> {
+        Lookups {
+            problem_names: &self.problems,
+            species_names: &self.species,
+            organisms: &self.organisms,
+        }
+    }
 }
 
 fn obs(
@@ -121,7 +148,7 @@ pub fn perception_writes(
     if let Some(species) = &result.species {
         writes.push(write(
             Stage::Species,
-            species_obs(ctx, species, &mut new_id),
+            species_obs(ctx, species, lookups, &mut new_id),
         ));
     }
     if let Some(disease) = &result.disease {
@@ -179,6 +206,45 @@ pub fn attach_masks(writes: &mut [ObservationWrite], masks: Vec<NewMask>) {
     }
 }
 
+/// Keeps the ids of the findings a partial result stored ([contracts 5], partial results: "if
+/// `complete` matches the partial result, nothing changes"). An observation of `writes` equal to
+/// one in `stored` that the write replaces (same pipeline stage, on one of the write's images or
+/// imageless when it replaces those), apart from its id, model version and time, takes that
+/// one's id, so the store's diff neither retracts it nor sends it again. A finding that changed,
+/// such as a region that gained its mask, keeps its new id and is replaced.
+pub fn keep_partial_ids(writes: &mut [ObservationWrite], stored: &[Observation<Stored>]) {
+    let mut taken: Vec<ObservationId> = Vec::new();
+    for write in writes.iter_mut() {
+        let replaced = |s: &&Observation<Stored>| {
+            s.pipeline_stage == write.stage
+                && match &s.region {
+                    Some(r) => write.images.contains(&r.image_id),
+                    None => write.replace_imageless,
+                }
+        };
+        let candidates: Vec<&Observation<Stored>> = stored.iter().filter(replaced).collect();
+        for o in &mut write.observations {
+            let same = candidates
+                .iter()
+                .find(|s| !taken.contains(&s.id) && same_finding(s, o));
+            if let Some(s) = same {
+                taken.push(s.id);
+                o.id = s.id;
+            }
+        }
+    }
+}
+
+/// `a` and `b` are the same finding: equal but for the id, the model version (a partial
+/// result's is `partial`) and the time.
+fn same_finding(a: &Observation<Stored>, b: &Observation<Stored>) -> bool {
+    let mut b = b.clone();
+    b.id = a.id;
+    b.model_version.clone_from(&a.model_version);
+    b.created_at = a.created_at;
+    *a == b
+}
+
 fn region_obs(
     ctx: &ObsContext<'_>,
     r: &PerceptionRegion,
@@ -210,19 +276,26 @@ fn region_obs(
 fn species_obs(
     ctx: &ObsContext<'_>,
     species: &SpeciesResult,
+    lookups: &Lookups<'_>,
     new_id: &mut impl FnMut() -> ObservationId,
 ) -> Vec<Observation<Stored>> {
     species
         .candidates
         .iter()
         .map(|c| {
+            let label = c
+                .species_id
+                .as_ref()
+                .and_then(|id| lookups.species_names.get(id.as_str()))
+                .cloned()
+                .unwrap_or_else(|| c.label.clone());
             let mut o = obs(
                 ctx,
                 new_id(),
                 ObservationStage::Species,
                 Stage::Species,
                 ObservationSource::Bioclip,
-                c.label.clone(),
+                label,
                 c.score,
             );
             o.knowledge_ref = c.species_id.clone().map(KnowledgeRef::Species);
@@ -233,6 +306,23 @@ fn species_obs(
 
 /// The VLM findings' observations (`pipeline_stage: vlm_findings`): the species guess, soil,
 /// organisms (role from the knowledge base, `unknown` for "other") and damage.
+/// The VLM's species guess as display text: the name it gave a species outside the list, or the
+/// listed species' common name.
+fn guess_label(g: &domain::vlm::SpeciesGuess, lookups: &Lookups<'_>) -> String {
+    g.other_name
+        .clone()
+        .or_else(|| {
+            g.species_id.as_ref().map(|id| {
+                lookups
+                    .species_names
+                    .get(id.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| id.to_string())
+            })
+        })
+        .unwrap_or_default()
+}
+
 pub fn findings_write(
     ctx: &ObsContext<'_>,
     findings: &VlmFindings,
@@ -249,10 +339,7 @@ pub fn findings_write(
         ObservationStage::Species,
         Stage::VlmFindings,
         src,
-        g.other_name
-            .clone()
-            .or_else(|| g.species_id.as_ref().map(ToString::to_string))
-            .unwrap_or_default(),
+        guess_label(g, lookups),
         g.confidence,
     );
     guess.knowledge_ref = g.species_id.clone().map(KnowledgeRef::Species);
@@ -462,6 +549,148 @@ mod tests {
         let ev = vlm_evidence(&answers, &[&ind]);
         assert_eq!(ev.len(), 1);
         assert_eq!(ev[0].weight.get(), 3);
+    }
+
+    fn ctx(model_version: &str) -> ObsContext<'_> {
+        ObsContext {
+            scan: "01JAX3K9T6R2B8V0QZ4M7D1E50".parse().unwrap(),
+            run: Run(1),
+            vlm_source: ObservationSource::Vlm,
+            model_version,
+            now: "2026-10-18T14:00:00Z".parse().unwrap(),
+        }
+    }
+
+    /// A segmentation region on the plant photo, the species top 2 and one disease top.
+    fn result() -> PerceptionResult {
+        serde_json::from_value(serde_json::json!({
+            "plant_present": true,
+            "regions": [{
+                "region_id": "01JAX3K9T6R2B8V0QZ4M7D1E5A.1",
+                "image_id": "01JAX3K9T6R2B8V0QZ4M7D1E5A",
+                "class": "leaf",
+                "bbox": [0.1, 0.1, 0.5, 0.5],
+                "confidence": 0.9
+            }],
+            "species": {"candidates": [
+                {"species_id": "tomato", "label": "Solanum lycopersicum with common name tomato", "score": 0.6},
+                {"species_id": null, "label": "a weed", "score": 0.1}
+            ]},
+            "disease": [{
+                "image_id": "01JAX3K9T6R2B8V0QZ4M7D1E5A",
+                "region_id": "01JAX3K9T6R2B8V0QZ4M7D1E5A.1",
+                "top": [{"problem_id": "tomato_late_blight", "confidence": 0.32}]
+            }]
+        }))
+        .unwrap()
+    }
+
+    fn names() -> Names {
+        Names {
+            problems: BTreeMap::from([("tomato_late_blight".into(), "Late blight".into())]),
+            species: BTreeMap::from([("tomato".into(), "Tomato".into())]),
+            organisms: Vec::new(),
+        }
+    }
+
+    fn writes(model_version: &str, first: u32) -> Vec<ObservationWrite> {
+        let image: ImageId = "01JAX3K9T6R2B8V0QZ4M7D1E5A".parse().unwrap();
+        let mut n = first;
+        perception_writes(
+            &ctx(model_version),
+            &result(),
+            &[image],
+            &names().lookups(),
+            || {
+                n += 1;
+                format!("01JAX3K9T6R2B8V0QZ4M7D1E{n:02}").parse().unwrap()
+            },
+        )
+    }
+
+    #[test]
+    fn findings_are_named_from_the_knowledge_base() {
+        let all: Vec<_> = writes("v1", 0)
+            .into_iter()
+            .flat_map(|w| w.observations)
+            .collect();
+        let labels: Vec<&str> = all
+            .iter()
+            .filter(|o| {
+                matches!(
+                    o.stage,
+                    ObservationStage::Species | ObservationStage::Disease
+                )
+            })
+            .map(|o| o.label.as_str())
+            .collect();
+        // A species the knowledge base doesn't hold keeps the worker's label.
+        assert_eq!(labels, ["Tomato", "a weed", "Late blight"]);
+    }
+
+    #[test]
+    fn complete_keeps_the_ids_of_unchanged_partial_findings() {
+        let stored: Vec<Observation<Stored>> = writes("partial", 0)
+            .into_iter()
+            .flat_map(|w| w.observations)
+            .collect();
+        let mut complete = writes("v1", 50);
+        // The region gained its mask in `complete`: it changed, so it is replaced.
+        attach_masks(
+            &mut complete,
+            vec![NewMask {
+                id: "01JAX3K9T6R2B8V0QZ4M7D1E99".parse().unwrap(),
+                image: "01JAX3K9T6R2B8V0QZ4M7D1E5A".parse().unwrap(),
+                region_id: "01JAX3K9T6R2B8V0QZ4M7D1E5A.1".parse().unwrap(),
+                storage_key: domain::ports::ObjectKey::mask(
+                    "01JAX3K9T6R2B8V0QZ4M7D1E5G".parse().unwrap(),
+                    "01JAX3K9T6R2B8V0QZ4M7D1E50".parse().unwrap(),
+                    "01JAX3K9T6R2B8V0QZ4M7D1E99".parse().unwrap(),
+                ),
+                rle: domain::jobs::RleMask {
+                    size: [10, 10],
+                    counts: "0".into(),
+                },
+            }],
+        );
+        keep_partial_ids(&mut complete, &stored);
+        let id_of = |stage: Stage| -> Vec<ObservationId> {
+            complete
+                .iter()
+                .filter(|w| w.stage == stage)
+                .flat_map(|w| w.observations.iter().map(|o| o.id))
+                .collect()
+        };
+        let stored_of = |stage: Stage| -> Vec<ObservationId> {
+            stored
+                .iter()
+                .filter(|o| o.pipeline_stage == stage)
+                .map(|o| o.id)
+                .collect()
+        };
+        for stage in [Stage::PlantCheck, Stage::Species, Stage::Disease] {
+            assert_eq!(id_of(stage), stored_of(stage), "{stage:?} keeps its ids");
+        }
+        assert!(
+            id_of(Stage::Segmentation)
+                .iter()
+                .all(|id| !stored_of(Stage::Segmentation).contains(id)),
+            "the masked region is new"
+        );
+        // Nothing is matched twice, and a finding on a photo the write doesn't cover is never
+        // taken: its record isn't replaced.
+        let mut other = writes("v1", 70);
+        for w in &mut other {
+            w.images = vec!["01JAX3K9T6R2B8V0QZ4M7D1E5B".parse().unwrap()];
+            w.replace_imageless = false;
+        }
+        keep_partial_ids(&mut other, &stored);
+        let kept = other
+            .iter()
+            .flat_map(|w| &w.observations)
+            .filter(|o| stored.iter().any(|s| s.id == o.id))
+            .count();
+        assert_eq!(kept, 0);
     }
 
     #[test]

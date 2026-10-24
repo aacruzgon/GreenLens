@@ -119,6 +119,7 @@ fn pipeline_with_blobs(
 ) -> Pipeline {
     let mut knowledge = MockKnowledgeStore::new();
     knowledge.expect_problems().returning(|_| Ok(Vec::new()));
+    knowledge.expect_species().returning(|_| Ok(None));
     knowledge.expect_vlm_options().returning(|| {
         Ok(VlmOptions {
             label_set_version: "labels-1".into(),
