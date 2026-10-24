@@ -221,6 +221,21 @@ The SHA-256 of the two files are in `ml/models/dev-vlm.sha256`. If your laptop h
 
 **Running one job without the API.** The worker only takes jobs from the API (`worker` claims, then `complete`s), so a test job needs either the whole local stack (API, SurrealDB, RustFS in Docker, a worker token and a queued scan) or a harness that hands one job payload and its image files to the worker's own model. Two ignored worker tests are those harnesses: `perceive_job` (`bins/worker/src/harness.rs`, P2) runs a `perception` job through `run_job` with the model `build_model` loads, and `bench_cases` (`bins/worker/src/vlm/tests/bench.rs`, P3 and J2) runs `vlm` jobs through `VlmAdapter` against a server. Both are the quicker route; the full stack comes with J4.
 
+**Running a whole scan without Docker.** The ignored `api` test `scan_harness` (`bins/api/src/tests/scan_harness.rs`, P8) serves `api`'s own router on localhost over the embedded SurrealDB, with the schema and the committed `knowledge.surql`, and starts the release `worker` binary twice, `perception` and `vlm`, which claim their jobs over HTTP as on the rig. It uploads the photos through the upload route, submits the scan and waits for a diagnosis, a question or a failure, then prints the scan's events and indicator evidence and writes them with the scan to `SCAN_HARNESS_OUT`. Clerk, RustFS, the geocoder, SoilGrids and push are stand-ins (the garden is at `SCAN_HARNESS_AT`, Toronto by default); the weather is Open-Meteo's. With `LLM_API_KEY` it writes the plan too; without it the scan rests at `diagnosed`. The workers take everything else from the same environment, so set the perception and VLM variables as for the two harnesses above:
+
+```bash
+cd backend
+cargo build -p worker --release
+cargo test -p api --no-run      # debug: a release build of the embedded engine needs more than 7 GB of RAM
+MODEL_MANIFEST=$HOME/.cache/pdm-models-cpu/manifest.toml ORT_EP=cpu \
+SAM_ENCODER_MAX_BATCH=1 DETECTOR_MAX_BATCH=4 BIOCLIP_MAX_BATCH=8 \
+VLM_BASE_URL=http://127.0.0.1:8001 VLM_ADAPTER=vllm VLM_SERVED_NAME=vlm \
+SCAN_HARNESS_PHOTOS='whole_plant=/p/plant.jpg,leaf_closeup=/p/leaf.jpg' SCAN_HARNESS_OUT=/tmp/scan.json \
+  cargo test -p api scan_harness -- --ignored --nocapture
+```
+
+`api` loads the text embedder and YuNet from the same manifest, so fetch them with `--for api` into the perception set's folder (`fetch --for api --cpu --dest ~/.cache/pdm-models-cpu`, no token: both are public). `SCAN_HARNESS_SPECIES` gives the new plant a species, `SCAN_HARNESS_SPAWN` names the workers to start (default `perception,vlm`; the ones left out print the variables to start them by hand), and `SCAN_HARNESS_TIMEOUT` is in seconds (default 900). Each worker logs to `scan-harness-<cap>.log` beside the report.
+
 ### Real jobs on the rig
 
 Anything that needs the real models at full size runs on Sam's machine, and Sam runs it: the perception worker on a GPU, the VLM worker against Qwen3.5-9B AWQ, the day-2 benchmark, the end-to-end scans. Push a branch and say what to run; Sam runs it and posts the output in the pull request. The 3070 that runs the perception worker is in Alan's host (`acruzdebian`), which Sam can't reach, so a perception run on it is Alan's. In deployment the workers need no access from outside either: they claim jobs from the API over outbound HTTPS and reach vLLM inside the same compose network ([worker 1](../backend/worker.md#1-purpose-and-boundaries)).
