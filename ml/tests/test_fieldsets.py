@@ -234,7 +234,8 @@ def test_the_copy_check_skips_sources_the_leakage_check_skips(tmp_path, monkeypa
     (tmp_path / "raw/plantdoc_cls/a/1.jpg").write_bytes(b"x")
     sources = tmp_path / "sources.yaml"
     sources.write_text(yaml.safe_dump({"datasets": [{"name": "plantdoc_cls"}, {"name": "coco_val2017"},
-                                                    {"name": "plantseg", "leakage": False}]}))
+                                                    {"name": "plantseg", "leakage": False},
+                                                    {"name": "openimages_v7_faces"}]}))
     monkeypatch.setattr(fs, "SOURCES", sources)
     monkeypatch.setattr(fs, "RAW", tmp_path / "raw")
-    assert fs.training_images() == [tmp_path / "raw/plantdoc_cls/a/1.jpg"]  # plantseg isn't on disk, and isn't needed
+    assert fs.training_images() == [tmp_path / "raw/plantdoc_cls/a/1.jpg"]  # plantseg and the face tables aren't on disk, and aren't needed

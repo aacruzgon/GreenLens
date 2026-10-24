@@ -134,11 +134,12 @@ def select(groups: list[list[int]], emb: np.ndarray, train: np.ndarray, per_clas
 
 
 def training_images() -> list[Path]:
-    """Every image in our training sources (sources.yaml), whatever its split or mapping, less the
-    sources marked `leakage: false` (PlantSeg, which only fits the spot thresholds), as
-    check_leakage skips them."""
-    names = [d["name"] for d in yaml.safe_load(SOURCES.read_text())["datasets"]
-             if not d["name"].startswith("coco") and d.get("leakage") is not False]
+    """Every image in our training sources (sources.yaml), whatever its split or mapping: the
+    folders check_leakage requires (no annotation-only tables, no `leakage: false` source such as
+    PlantSeg), less COCO, which shows no crop."""
+    from ml.training.eval.check_leakage import required_folders
+
+    names = [n for n in required_folders(SOURCES) if not n.startswith("coco")]
     files = []
     for name in names:
         root = RAW / name
