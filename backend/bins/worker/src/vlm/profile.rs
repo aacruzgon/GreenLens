@@ -13,7 +13,7 @@ use domain::{
 /// The prompt versions ([vision vlm 7]), in the contract's `name@n` form.
 ///
 /// [vision vlm 7]: ../../../docs/vision/vlm.md#7-prompts
-pub const PROMPTS: &str = "system@2,findings@5,indicators@3,verify@3,guided@1";
+pub const PROMPTS: &str = "system@2,findings@6,indicators@3,verify@3,guided@1";
 
 /// Certainty words to confidences ([contracts 6], after decoding): 0.4 / 0.65 / 0.85 until
 /// calibration moves each value within its band, never above 0.85.
