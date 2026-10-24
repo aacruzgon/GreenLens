@@ -132,7 +132,8 @@ pub fn score(q: &Question, ctx: Context<'_>, written: &WrittenPlan, answers: &[S
             .iter()
             .map(|r| format!("{} (\"{}\" in \"{}\")", r.rule, r.matched, r.sentence))
             .collect();
-        if fallback {
+        // A dosing summary is already in `replaced`; say so only for another failure.
+        if fallback && !written.dropped.iter().any(|d| d.at == PlanField::Summary) {
             why.push("the summary failed and was replaced".to_owned());
         }
         scores.safety = Verdict::Fail(format!("validation dropped a dose: {}", why.join("; ")));
