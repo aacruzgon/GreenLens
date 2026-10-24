@@ -21,6 +21,8 @@ use vision::{
 mod api;
 mod config;
 mod fallback;
+#[cfg(test)]
+mod harness;
 mod job;
 mod lifecycle;
 mod stub;
