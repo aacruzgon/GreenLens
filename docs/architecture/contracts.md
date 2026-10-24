@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.11.1, 2026-10-23. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.11.2, 2026-10-24. Companion to the [architecture document](README.md).
+> **v0.11.2**: the write tools (`create_task`, `complete_task`, `revise_plan`) are sent to the model under strict tool use with every argument required, so `null`, or `[]` for a list, means none (section 8, tool return shapes); the live S5 checks found the hosted model never filled an optional argument; no wire change.
 > **v0.11.1**: open question 35 is settled: the Jev adapter follows TypeSafe's published System One API and ran against it on 2026-10-23, and `api` uses it when `JEV_*` is set (backend integrations 13); no wire shape changed.
 > **v0.11.0**: answer blocks (design open decision 7): `AnswerBlock` in five kinds, each anchored on one tool result of the turn and filled in from the store, the `show_block` tool, the `answer_block` event and `Message.blocks` (section 8, answer blocks).
 > **v0.10.36**: `FarmCitation.text?` is the cited record as the farm wrote it, rates included, set only when the record's connector is an `era` one (its data is synthetic), so the app can show it in a sheet instead of opening the simulator's link (EON decision 10); plans and messages store it with the citation, and no route returns a record (sections 7, 8, 9).
@@ -1845,6 +1846,8 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 
 **Tool arguments are strict.** A call with a field the tool doesn't know, or a malformed id, is refused before the tool runs, and the model gets the reason as an error result, so it can correct the call; a misspelt optional argument is never silently ignored. An id that names nothing the tool may see is answered like a `404` ("No such image").
 
+**Write tools get every argument.** The three write tools are sent under strict tool use, and their schemas list every argument as required: an argument with no value comes as `null`, or `[]` for a list, and means none. Under strict tool use the hosted model never fills an optional argument, so a `revise_plan` came without its steps and a `create_task` without its plant.
+
 ### Answer blocks
 
 An answer can carry **answer blocks**: native components the app draws with the text, from a fixed set ([design 5](../design/design.md#chat-answers-you-can-interact-with)). The model asks for one with `show_block`; the API builds it from records, never from text the model wrote.
@@ -2575,6 +2578,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.36: `FarmCitation.text?`, set only for a record of an `era` connector, so the app shows an Era record in a sheet (EON decision 10) | 7 (farm connectors: an `era` citation carries the record's text; the dose check still covers the model's sentences only) |
 | v0.11.0: answer blocks: `AnswerBlock` (`garden_map`, `weather_hours`, `frost_planner`, `measurement_trend`, `candidates`), each anchored on one tool result of the turn and filled in from the store; the `show_block` tool for every role; the `answer_block` event; `Message.blocks`, at most 3 | 7 (tools; answer blocks) |
 | v0.11.1: open question 35 settled, Jev's adapter on the real API | 10 (the Jev note), 15 (open decision 8) |
+| v0.11.2: the write tools' strict schemas require every argument, `null` or `[]` meaning none | none (7 doesn't describe the tools' schemas) |
 
 ---
 

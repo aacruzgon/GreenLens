@@ -274,6 +274,176 @@ fn only_the_tools_that_propose_changes_are_strict() {
     assert_eq!(strict, ["complete_task", "create_task", "revise_plan"]);
 }
 
+/// The properties of every object in a schema that aren't in its `required`, with their schemas.
+fn optional_properties(v: &serde_json::Value, path: &str) -> Vec<(String, serde_json::Value)> {
+    let mut out = Vec::new();
+    match v {
+        serde_json::Value::Object(o) => {
+            if let Some(serde_json::Value::Object(props)) = o.get("properties") {
+                let required: Vec<&str> = o
+                    .get("required")
+                    .and_then(|r| r.as_array())
+                    .map(|r| r.iter().filter_map(|x| x.as_str()).collect())
+                    .unwrap_or_default();
+                out.extend(
+                    props
+                        .iter()
+                        .filter(|(k, _)| !required.contains(&k.as_str()))
+                        .map(|(k, s)| (format!("{path}.{k}"), s.clone())),
+                );
+            }
+            for (k, x) in o {
+                out.extend(optional_properties(x, &format!("{path}/{k}")));
+            }
+        }
+        serde_json::Value::Array(a) => a
+            .iter()
+            .for_each(|x| out.extend(optional_properties(x, path))),
+        _ => {}
+    }
+    out
+}
+
+/// Every object property in a strict tool's schema, as sent, is in its `required`: under strict
+/// tool use the hosted model never fills an optional property, so `revise_plan` came with only
+/// its summary and `create_task` never with a plant or a date (live S5 checks, 2026-10-23).
+#[test]
+fn strict_tool_schemas_require_every_property() {
+    let specs = ToolRegistry::standard().specs_for(Offer::everything(Role::Owner));
+    let mut optional = Vec::new();
+    for spec in specs.iter().filter(|s| s.strict) {
+        let sent = integrations::anthropic::sanitize_schema(&spec.parameters).schema;
+        optional.extend(optional_properties(&sent, &spec.name));
+    }
+    assert!(
+        optional.is_empty(),
+        "optional in strict schemas: {optional:?}"
+    );
+    let revise = specs.iter().find(|s| s.name == "revise_plan").unwrap();
+    for field in ["changed_steps", "removed_step_ids", "constraints"] {
+        assert!(
+            revise.parameters["required"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(field))
+        );
+    }
+    // Not the read tools: their optional arguments stay optional.
+    let remember = specs.iter().find(|s| s.name == "remember").unwrap();
+    assert_eq!(remember.parameters["required"], json!(["fact"]));
+}
+
+/// What `require_every_property` makes required was optional in the arguments, so the model
+/// must be able to say "none": each such property of every write tool (from the registry, so a
+/// new write tool or field is covered) is nullable or a list (sent empty). And the arguments
+/// still parse with those values, or with them missing.
+#[test]
+fn strict_tools_optional_arguments_are_nullable_or_lists() {
+    let registry = ToolRegistry::standard();
+    let raw: Vec<(String, serde_json::Value)> = registry
+        .offered(Offer::everything(Role::Owner))
+        .filter(|t| t.kind() == ToolKind::Write)
+        .map(|t| (t.spec().name.clone(), t.args_schema()))
+        .collect();
+    assert_eq!(raw.len(), 3, "every write tool");
+    let nullable = |s: &serde_json::Value| {
+        s["type"] == "array"
+            || s["type"]
+                .as_array()
+                .is_some_and(|t| t.contains(&json!("null")))
+            || s["anyOf"]
+                .as_array()
+                .is_some_and(|a| a.iter().any(|x| x["type"] == "null"))
+    };
+    let bad: Vec<String> = raw
+        .iter()
+        .flat_map(|(name, s)| optional_properties(s, name))
+        .filter(|(_, s)| !nullable(s))
+        .map(|(p, _)| p)
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "optional and neither nullable nor a list: {bad:?}"
+    );
+
+    let task: write::CreateTaskArgs = serde_json::from_value(json!({
+        "title": "Water the tomato", "detail": null, "plant_id": null, "due": null,
+        "repeat_every_days": null
+    }))
+    .unwrap();
+    assert!(task.plant_id.is_none() && task.due.is_none());
+    let revise: revise::RevisePlanArgs = serde_json::from_value(json!({
+        "scan_id": "01JAX3K9T6R2B8V0QZ4M7D1E50", "summary": "Same plan.",
+        "changed_steps": [], "removed_step_ids": [], "constraints": []
+    }))
+    .unwrap();
+    assert_eq!(revise.changed_steps.len(), 0);
+    let revise: revise::RevisePlanArgs = serde_json::from_value(json!({
+        "scan_id": "01JAX3K9T6R2B8V0QZ4M7D1E50", "summary": "Same plan."
+    }))
+    .unwrap();
+    assert_eq!(revise.constraints, Vec::<String>::new());
+}
+
+/// `require_every_property` changes schema positions only: a `default` (or `const`) value that
+/// holds a `properties` key is left as it was.
+#[test]
+fn require_every_property_walks_schema_positions_only() {
+    let mut schema = json!({
+        "type": "object",
+        "properties": {
+            "a": {"type": "string"},
+            "b": {"type": "object", "properties": {"c": {"type": "integer"}},
+                  "default": {"properties": {"x": 1}}}
+        },
+        "$defs": {"D": {"type": "object", "properties": {"e": {"type": "string"}}}}
+    });
+    require_every_property(&mut schema);
+    assert_eq!(schema["required"], json!(["a", "b"]));
+    assert_eq!(schema["properties"]["b"]["required"], json!(["c"]));
+    assert_eq!(schema["$defs"]["D"]["required"], json!(["e"]));
+    assert_eq!(
+        schema["properties"]["b"]["default"],
+        json!({"properties": {"x": 1}})
+    );
+}
+
+/// A required `detail` invites `""` for none: `create_task` stores a blank detail as none.
+#[tokio::test]
+async fn create_task_stores_a_blank_detail_as_none() {
+    use crate::testing::{GARDEN, garden_deps, now, owner};
+    let mut deps = garden_deps(
+        domain::ports::MockMemoryStore::new(),
+        std::sync::Arc::new(domain::ports::NoBeliefs),
+    );
+    let mut chats = domain::ports::MockChatRepo::new();
+    chats
+        .expect_create_pending_action()
+        .returning(|_, a| Ok(a.action));
+    deps.stores.chats = std::sync::Arc::new(chats);
+    let ctx = ToolCtx {
+        deps: &deps,
+        owner: owner(Role::Editor).await,
+        anchor: domain::chat::Anchor::Garden(GARDEN.parse().unwrap()),
+        plant: None,
+        message_id: "01JAX3K9T6R2B8V0QZ4M7D1E72".parse().unwrap(),
+        now: now(),
+    };
+    let args: write::CreateTaskArgs = serde_json::from_value(json!({
+        "title": "Water the tomato", "detail": "  ", "plant_id": null, "due": null,
+        "repeat_every_days": null
+    }))
+    .unwrap();
+    let out = write::CreateTask.run(&ctx, args).await.unwrap();
+    let Some(ToolEffect::PendingAction(card)) = out.effects.first() else {
+        panic!("a card")
+    };
+    let Preview::Task { task } = &card.preview else {
+        panic!("a task card")
+    };
+    assert_eq!(task.detail, None);
+}
+
 mod search_memory {
     use std::{sync::Arc, time::Duration};
 
@@ -778,7 +948,7 @@ fn the_strict_tool_schemas_stay_inside_anthropics_budget() {
         );
     }
     assert!(cost.patterns <= 8, "{cost:?}");
-    assert!(cost.optional <= 12, "{cost:?}");
+    assert_eq!(cost.optional, 0, "{cost:?}");
     assert!(cost.unions <= 10, "{cost:?}");
 }
 

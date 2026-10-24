@@ -69,7 +69,7 @@ pub struct CreateTaskArgs {
     /// More detail. Dose-checked.
     #[serde(default)]
     pub detail: Option<String>,
-    /// The plant; omit for a garden task.
+    /// The plant; null for a garden task.
     #[serde(default)]
     pub plant_id: Option<PlantId>,
     /// The due date.
@@ -112,7 +112,8 @@ impl Tool for CreateTask {
             plan_step_id: None,
             scan_id: None,
             title: args.title.clone(),
-            detail: args.detail,
+            // A required field invites "" for none: store it as no detail.
+            detail: args.detail.filter(|d| !d.trim().is_empty()),
             due: args.due,
             repeat: args.repeat_every_days.map(|every_days| Repeat {
                 every_days,
