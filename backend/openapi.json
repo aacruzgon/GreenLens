@@ -6579,6 +6579,10 @@
             "$ref": "#/components/schemas/ConnectorKind",
             "description": "Slack or Google Drive."
           },
+          "text": {
+            "type": "string",
+            "description": "The record as the farm wrote it, rates included: one stored chunk, at most 2,000\ncharacters. Set only for a record of an `era` connector, whose data is synthetic; the app\nshows it in a sheet, labelled as Era's demo data. A vendor record's citation never has it."
+          },
           "title": {
             "type": "string",
             "description": "`\"#field-reports\"`, `\"Spray log 2026\"`."

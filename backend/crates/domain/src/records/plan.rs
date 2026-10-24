@@ -409,6 +409,7 @@ mod tests {
             author: Some("Sam".to_owned()),
             at: "2026-10-12T07:30:00Z".parse().unwrap(),
             link: "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100".to_owned(),
+            text: None,
         };
         let p = plan(vec![step(vec![record])], vec![citation]);
         let mut expected = old_plan_json();

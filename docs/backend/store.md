@@ -2880,7 +2880,7 @@ COMMIT;";
 /// `search_farm_records` (EON gap G7): `memory`'s exact cosine search without its sharing
 /// filter, within one garden, leaving out a connector being deleted. `$author` comes
 /// lowercased (EON gap G12).
-pub const SEARCH: &str = "SELECT id, connector.kind AS system, title, author, link, text, at,
+pub const SEARCH: &str = "SELECT id, connector.kind AS system, connector.endpoint AS endpoint, title, author, link, text, at,
   vector::similarity::cosine(embedding, $query) AS similarity FROM farm_record
 WHERE garden = $garden AND ($kind = NONE OR kind = $kind) AND ($since = NONE OR at >= $since)
   AND ($until = NONE OR at < $until)

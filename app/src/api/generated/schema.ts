@@ -2058,6 +2058,12 @@ export interface components {
             record_id: components["schemas"]["FarmRecordId"];
             /** @description Slack or Google Drive. */
             system: components["schemas"]["ConnectorKind"];
+            /**
+             * @description The record as the farm wrote it, rates included: one stored chunk, at most 2,000
+             *     characters. Set only for a record of an `era` connector, whose data is synthetic; the app
+             *     shows it in a sheet, labelled as Era's demo data. A vendor record's citation never has it.
+             */
+            text?: string;
             /** @description `"#field-reports"`, `"Spray log 2026"`. */
             title: string;
         };
