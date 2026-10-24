@@ -4,8 +4,10 @@
 
 Reads data/raw/plantseg/plantseg/Metadata.csv (fetched with `python -m ml.training.data.fetch
 plantseg`, only the spot-type leaf diseases of the head's crops) and writes
-data/splits/spots_plantseg.tsv: one row per photo with its lesion mask, crop, disease, half and
-credit. Fitting only: these photos are never training data and never committed.
+data/splits/spots_plantseg.tsv: one row per photo with its lesion mask, crop, disease, kind, half
+and size. Fitting only: these photos are never training data and never committed. The file keeps
+only PlantSeg's file names, sizes and labels; each photo's licence statement and web page stay in
+PlantSeg's own Metadata.csv.
 
 - **Halves:** PlantSeg's own training split is the `fit` half; its validation and test splits
   are the `holdout` half, which only scores the defaults and the fitted values.
@@ -42,7 +44,7 @@ CROPS = {"Tomato": "tomato", "Corn": "corn", "Apple": "apple", "Grape": "grape",
 SPOTS = {"apple black rot", "apple rust", "apple scab", "bell pepper bacterial spot",
          "bell pepper frogeye leaf spot", "corn gray leaf spot", "corn rust", "grape black rot",
          "grape leaf spot", "tomato bacterial leaf spot", "tomato early blight", "tomato septoria leaf spot"}
-COLUMNS = ("image", "mask", "crop", "disease", "kind", "half", "width", "height", "licence", "credit")
+COLUMNS = ("image", "mask", "crop", "disease", "kind", "half", "width", "height")
 
 
 def order(name: str) -> str:
@@ -66,7 +68,7 @@ def select(rows: list[dict], root: Path = ROOT) -> list[dict]:
         row = {"image": f"plantseg/plantseg/{image.as_posix()}", "mask": f"plantseg/plantseg/{mask.as_posix()}",
                "crop": CROPS[r["Plant"]], "disease": r["Disease"],
                "kind": "spots" if r["Disease"] in SPOTS else "areas", "half": HALF[r["Split"]],
-               "width": w, "height": h, "licence": r["License"], "credit": r["URL"]}
+               "width": w, "height": h}
         groups.setdefault((row["disease"], row["half"]), []).append(row)
     out = []
     for key in sorted(groups):
