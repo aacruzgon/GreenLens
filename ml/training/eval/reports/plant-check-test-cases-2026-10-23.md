@@ -10,3 +10,5 @@ Made with `python -m ml.training.eval.plant_check --cases ml/training/eval/manif
 | plant-probe-v2-2026-10-23, highest τ_plant keeping 99% of cases | 0.98 | 100.0% | | – | – | – |
 
 Failing at plant-probe-v2-2026-10-23 0.94 / 0.31: none.
+
+Added by hand after Alan's review of #192: `plant_check` prints the "highest τ_plant keeping 99% of cases" row on every run. On the test split nothing reads it, and the shipped `τ_plant` stays 0.31 (chosen on dev and the hold-out, M17).
