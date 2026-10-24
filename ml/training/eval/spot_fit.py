@@ -30,7 +30,9 @@ together its `affected_pct`. The thresholds were starting values. This script:
    depth's stored size (data/splits/spots_clean.tsv: healthy dev cases and PlantDoc leaves, and the dev cases
    with spot diseases) only score it.
 4. **parity:** runs the real segmenter (the `spot_mask` example) with the fitted values on
-   hold-out leaves and requires the same class on at least 99.99% of their pixels.
+   hold-out leaves, a few of every disease, requires the same class on every pixel, and adds
+   the result to the report (`--share` runs it with a larger speck share, to exercise the
+   filter).
 
 PlantSeg labels lesions without telling a halo apart, so the halo fields are fitted only through
 the affected pixels, never on their own.
@@ -64,7 +66,9 @@ RUNS = ROOT / "ml/training/runs/spots"
 BACKEND = ROOT / "backend"
 MANIFEST = Path.home() / ".cache/pdm-models-cpu/manifest.toml"
 
-# SpotThresholds::default() in spots.rs, in its field order.
+# colour-1's thresholds, `SpotThresholds::default()` before M15, in spots.rs' field order: the
+# fit's starting point and the report's `defaults` column. spots.rs now ships the report's
+# `fitted` values, which test_spot_fit checks against it.
 DEFAULTS = {
     "dark_value": 0.45,
     "brown_hue_min": 10.0,
@@ -485,7 +489,27 @@ def report_md(r: dict) -> str:
         return "\n".join(out)
 
     sel = r["selected"]
-    return head(r, h, groups, sel, rows_, th, table) + specks_md(r)
+    return head(r, h, groups, sel, rows_, th, table) + specks_md(r) + parity_md(r)
+
+
+def parity_md(r: dict) -> str:
+    """The parity runs, once `spot_fit parity` has run."""
+    runs = r.get("parity")
+    if not runs:
+        return ""
+    lines = [f"| {k} | {v['date']} | {v['leaves']} | {len(v['leaves_by_disease'])} | {v['pixels']:,} | {v['different']} | "
+             f"{v['speck_pixels_turned_to_leaf']:,} |" for k, v in sorted(runs.items(), key=lambda kv: float(kv[0]))]
+    return f"""
+## Parity with `spots.rs`
+
+`python -m ml.training.eval.spot_fit parity` (and `--leaves 20 --share 0.005`, a larger share that exercises the speck
+filter): the real segmenter (the `vision` crate's `spot_mask` example) and this script's copy, with the fitted values, on
+hold-out leaves taken from each disease in turn, the pixels sent as PNG. Every pixel must get the same class.
+
+| `min_spot_share` | Ran | Leaves | Diseases | Pixels | Different | Speck pixels turned to leaf |
+|---|---|---|---|---|---|---|
+{chr(10).join(lines)}
+"""
 
 
 def specks_md(r: dict) -> str:
@@ -513,16 +537,24 @@ def specks_md(r: dict) -> str:
         f"{ho['photos_with_no_hole_if_smaller_ignored']['0.0001']} if holes under 0.01% of their leaf were ignored, "
         f"{ho['photos_with_no_hole_if_smaller_ignored']['0.001']} under 0.1%. Holes count at any size in the contract, so "
         f"this is left to a change of the contract or of SAM's post-processing (filling small holes, as its own mask generator does).")
-    src = "; ".join(f"{k} {v['0.0']['clean_pct']}% → {v[str(sp['chosen'])]['clean_pct']}% ({v['0.0']['photos']} photos)"
+    src = "; ".join(f"{k} {v['0.0']['clean_pct']}% → {v[str(sp['chosen'])]['clean_pct']}% "
+                    f"({v['0.0']['clean_with_holes_pct']}% → {v[str(sp['chosen'])]['clean_with_holes_pct']}%; {v['0.0']['photos']} photos)"
                     for k, v in sp["healthy_by_source"].items())
+    em = sp["check_photos"].get("eval_manifest")
+    manifest_line = "" if not em else (
+        f"The dev photos are those of `{em['path']}` (SHA-256 `{em['sha256'][:16]}…`, {em['dev_cases']} dev cases, "
+        f"{em['dev_cases_used']} of them healthy or with a spot or area disease), run on {sp['date']}.")
     return f"""
 ## Specks and clean photos (`min_spot_share`)
 
 `python -m ml.training.eval.spot_fit clean-masks` then `clean`. The measurement counts a photo as evidence of health only
-when no measured leaf has a spot or a hole ([contracts 7](../../../../docs/architecture/contracts.md#7-observations-measurements-and-records),
+when no measured leaf has a spot or a hole ([contracts 7](../../../../docs/architecture/contracts.md#7-pipeline-records),
 `clean_images`), and every necrotic patch counts as a spot, one pixel or more. So a speck of glare or grain on a healthy leaf
 keeps a photo from reading clean. The segmenter now turns a necrotic patch (4-connected) smaller than `min_spot_share` of
-its leaf's pixels into leaf; a share rather than a pixel count, so it holds at any resolution.
+its leaf's pixels into leaf; a share rather than a pixel count, so it holds at any resolution. It works per patch, as the
+spot count does, so a lesion broken into pieces can lose its small pieces; at the chosen share it removes nothing on a
+leaf under {1 / sp['chosen']:,.0f} px, where the share is a pixel or less. Yellow pixels around a dropped speck stay halo and
+still count toward `affected_pct`.
 
 - **Choice:** the largest share on the grid at which PlantSeg's fit-half `spots` photos read clean at most
   {100 * sp['tolerance']:g} point more often than with no filter. Every other column only scores it.
@@ -531,9 +563,11 @@ its leaf's pixels into leaf; a share rather than a pixel count, so it holds at a
   photos of `ml/training/data/splits/spots_clean.tsv` at the stored size of a photo with depth (long side 2,048 px), through the same leaf
   masks: {n.get('healthy', 0)} healthy (the dev cases' healthy photos and PlantDoc's healthy apple, pepper, grape and tomato
   leaves), {n.get('dev spots', 0)} dev photos with a spot disease and {n.get('dev areas', 0)} with an area disease.
+  {manifest_line}
 - **Clean %** is the share of photos whose every leaf has no spot; for diseased photos it is wrong, for healthy ones right.
-  *With holes* also needs no hole in any leaf, as the rule does. The IoU is the hold-out two-class IoU with the filter.
-- Healthy photos clean, no filter → chosen share: {src}.
+  *With holes* also needs no hole in any leaf, as the contract's rule does, so it is the share that would count as
+  evidence of health. The IoU is the hold-out two-class IoU with the filter.
+- Healthy photos with no spot, no filter → chosen share (with no hole either, as the rule needs): {src}.
 - **Holes now keep more healthy photos from reading clean than spots do.** {holes_line}
 
 | `min_spot_share` | PlantSeg fit spots clean % | hold-out spots clean % | hold-out areas clean % | dev spots clean % | dev areas clean % | healthy clean % | healthy clean with holes % | healthy spots per leaf (median) | hold-out spots two-class IoU |
@@ -548,7 +582,11 @@ def head(r: dict, h: dict, groups: tuple, sel: dict, rows_: list, th: str, table
 `python -m ml.training.eval.spot_fit fit` (M15; [evaluation 6](../../../../docs/vision/evaluation.md#6-thresholds-set-from-the-evaluation-set)).
 The spot segmenter (`ColourSpotSegmenter`, `backend/crates/vision/src/measure/spots.rs`) inside the leaf masks the
 perception worker's own models cut ({', '.join(f'{k} `{v}`' for k, v in r['manifest_versions'].items())}, fp32 on the CPU),
-scored against PlantSeg's lesion masks. Fit: PlantSeg's training split; hold-out: its validation and test splits, scored once.
+scored against PlantSeg's lesion masks. Fit: PlantSeg's training split; hold-out: its validation and test splits. No value
+was chosen on the hold-out: it scores the defaults, the fitted values and each speck share below. It did shape one choice of
+method: the lesion-IoU objective's score on it (0.432, below) is why the objective counts the healthy leaf too. Nothing
+checks PlantSeg's splits for near-duplicates of each other (`leakage: false` in `sources.yaml`), so the hold-out may share
+photos with the fit half (*unverified*).
 
 - **Photos** (`ml/training/data/splits/spots_plantseg.tsv`): {', '.join(f"{g} {n}" for g, n in sel.items())}. A photo is scored
   when one of its leaf masks holds a lesion pixel: {', '.join(f"{g} {h[g]['scored']}" for g in groups)}. No leaf was found on
@@ -567,6 +605,13 @@ scored against PlantSeg's lesion masks. Fit: PlantSeg's training split; hold-out
   in its halo, and `dark_value` is searched from 0.2, so a black pixel stays necrotic. Free, the fit turns the dark rule
   off (shadows in field photos) and a black pixel with a yellow tint becomes halo; the floor cost 0.001 of the
   two-class IoU.
+- **Five fields end at the edge of their range** (below): `brown_hue_min` 0, `brown_saturation` 0, `pale_value` 0 and
+  `halo_saturation` 0 are the ends of their scales, so those conditions are off, and `brown_value` 2.5 is off once the
+  leaf's median value is at least 0.4. So every hue of 0–45° darker than 2.5 × the leaf's median value is necrotic, greys
+  included (their hue is 0); every pixel under 0.08 saturation is necrotic, white glare included, and a large patch of
+  glare outlasts the speck filter; and every hue of 45–66° with 0.08 saturation or more is halo, yellow-green leaf
+  included. A wider range can't move the four at the end of their scale; `brown_value` above 2.5 would matter only on
+  leaves darker than 0.4, and reds past 0° need a range that wraps, which `SpotThresholds` can't express. Not tried.
 
 ## Results
 
@@ -828,11 +873,16 @@ def clean(args) -> int:
                      str(s): sum(all((lf["hole_sizes"] >= s * lf["px"]).sum() == 0 for lf in ph) for ph in groups["healthy"])
                      for s in (0.0, 1e-4, 1e-3)}}
     chosen = choose_share({s: table["plantseg fit spots"][str(s)]["clean_pct"] for s in SHARES})
+    manifest = ROOT / "ml/training/eval/manifest.jsonl"
+    cases = [json.loads(line) for line in manifest.read_text().splitlines() if line.strip()]
     check_counts = {"rows": len(check), "with_leaf": sum(len(v) for g, v in groups.items() if not g.startswith("plantseg")),
-                    "by_group": {g: len(v) for g, v in groups.items()}}
+                    "by_group": {g: len(v) for g, v in groups.items()},
+                    "eval_manifest": {"path": "ml/training/eval/manifest.jsonl", "sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                                      "dev_cases": sum(c["split"] == "dev" for c in cases),
+                                      "dev_cases_used": len({row["source"] for row in check if row["source"].startswith("dev:")})}}
     r["defaults"]["min_spot_share"] = 0.0
     r["fitted"] = {**fitted, "min_spot_share": chosen}
-    r["specks"] = {"shares": SHARES, "tolerance": TOLERANCE, "chosen": chosen, "groups": table, "check_photos": check_counts,
+    r["specks"] = {"date": date.today().isoformat(), "shares": SHARES, "tolerance": TOLERANCE, "chosen": chosen, "groups": table, "check_photos": check_counts,
                    "healthy_holes": hole_note, "healthy_by_source": {src: {str(s): at_share(ph, s) for s in (0.0, chosen)} for src, ph in by_source.items()}}
     path.write_text(json.dumps(r, indent=2) + "\n")
     path.with_suffix(".md").write_text(report_md(r))
@@ -840,28 +890,49 @@ def clean(args) -> int:
     return 0
 
 
+def parity_leaves(rows_: list[dict], regions: dict[str, dict], n: int) -> list[tuple[dict, dict]]:
+    """`n` hold-out leaves, taken from each disease in turn (its photos in path order), so every
+    disease is checked rather than the first few in path order."""
+    by_disease: dict[str, list[tuple[dict, dict]]] = {}
+    for r in rows_:
+        if r["half"] != "holdout":
+            continue
+        for g in regions.get(r["image"], {}).get("regions", []):
+            if g["class"] == "leaf" and g.get("mask"):
+                by_disease.setdefault(r["disease"], []).append((r, g))
+    queues = [by_disease[d] for d in sorted(by_disease)]
+    out: list[tuple[dict, dict]] = []
+    for i in range(max((len(q) for q in queues), default=0)):
+        out += [q[i] for q in queues if i < len(q)]
+    return out[:n]
+
+
 def parity(args) -> int:
-    """The Rust segmenter against `segment`, with the report's fitted values, on hold-out leaves."""
+    """The Rust segmenter against `segment`, with the report's fitted values (or `--share`'s
+    speck share), on hold-out leaves. Every pixel must get the same class; the run is added to the
+    report's `parity`, keyed by the share."""
+    path = REPORTS / f"spots-{args.date}.json"
+    report = json.loads(path.read_text())
     regions = read_regions(args.manifest)
-    t = json.loads((REPORTS / f"spots-{args.date}.json").read_text())["fitted"] if not args.defaults else DEFAULTS
+    t = dict(DEFAULTS if args.defaults else report["fitted"])
     if args.share is not None:
-        t = {**t, "min_spot_share": args.share}
+        t["min_spot_share"] = args.share
     work = RUNS / "parity"
     work.mkdir(parents=True, exist_ok=True)
-    jobs, expected = [], {}
-    for r in [r for r in rows() if r["half"] == "holdout"]:
-        for k, g in enumerate(regions.get(r["image"], {}).get("regions", [])):
-            if g["class"] != "leaf" or not g.get("mask") or len(jobs) >= args.leaves:
-                continue
-            m = rle_decode(g["mask"])
-            stem = work / f"{len(jobs):03d}"
-            # The pixels go over as PNG: the two JPEG decoders differ by a level here and there,
-            # and this checks the segmenter, not the decoders.
-            rgb = np.asarray(Image.open(RAW / r["image"]).convert("RGB"))
-            Image.fromarray(rgb).save(f"{stem}.rgb.png")
-            Image.fromarray((m * 255).astype(np.uint8)).save(f"{stem}.leaf.png")
-            jobs.append({"image": f"{stem}.rgb.png", "mask": f"{stem}.leaf.png", "out": f"{stem}.rust.png", "thresholds": t})
-            expected[f"{stem}.rust.png"] = segment(rgb, m, t)
+    jobs, expected, diseases = [], {}, {}
+    specks = 0
+    for r, g in parity_leaves(rows(), regions, args.leaves):
+        m = rle_decode(g["mask"])
+        stem = work / f"{len(jobs):03d}"
+        # The pixels go over as PNG: the two JPEG decoders differ by a level here and there,
+        # and this checks the segmenter, not the decoders.
+        rgb = np.asarray(Image.open(RAW / r["image"]).convert("RGB"))
+        Image.fromarray(rgb).save(f"{stem}.rgb.png")
+        Image.fromarray((m * 255).astype(np.uint8)).save(f"{stem}.leaf.png")
+        jobs.append({"image": f"{stem}.rgb.png", "mask": f"{stem}.leaf.png", "out": f"{stem}.rust.png", "thresholds": t})
+        expected[f"{stem}.rust.png"] = segment(rgb, m, t)
+        specks += int((segment(rgb, m, {**t, "min_spot_share": 0.0}) == NECROTIC).sum() - (expected[f"{stem}.rust.png"] == NECROTIC).sum())
+        diseases[r["disease"]] = diseases.get(r["disease"], 0) + 1
     p = cargo_example("spot_mask", "".join(json.dumps(j) + "\n" for j in jobs))
     assert p.stdout is not None
     same = total = 0
@@ -874,9 +945,16 @@ def parity(args) -> int:
         same += int((rust == py).sum())
         total += py.size
     p.wait()
-    share = same / total if total else 0.0
-    print(f"{len(jobs)} leaves, {total} pixels: {total - same} with another class ({100 * share:.4f}% the same)", file=sys.stderr)
-    return 0 if share >= 0.9999 else 1
+    run = {"date": date.today().isoformat(), "thresholds": "defaults" if args.defaults else "fitted",
+           "min_spot_share": t["min_spot_share"], "leaves": len(jobs), "pixels": total, "different": total - same,
+           "speck_pixels_turned_to_leaf": specks, "leaves_by_disease": dict(sorted(diseases.items()))}
+    print(f"{len(jobs)} leaves of {len(diseases)} diseases, {total} pixels: {total - same} with another class; "
+          f"{specks} speck pixels turned to leaf", file=sys.stderr)
+    if not args.defaults:
+        report.setdefault("parity", {})[f"{t['min_spot_share']:g}"] = run
+        path.write_text(json.dumps(report, indent=2) + "\n")
+        path.with_suffix(".md").write_text(report_md(report))
+    return 0 if total and same == total else 1
 
 
 def main(argv=None) -> int:
@@ -899,7 +977,7 @@ def main(argv=None) -> int:
     q.add_argument("--manifest", type=Path, default=MANIFEST)
     q.add_argument("--date", default=date.today().isoformat(), help="the report whose fitted values to use")
     q.add_argument("--defaults", action="store_true", help="use the defaults instead")
-    q.add_argument("--leaves", type=int, default=20)
+    q.add_argument("--leaves", type=int, default=40)
     q.add_argument("--share", type=float, help="min_spot_share to check instead (a larger one exercises the speck filter)")
     args = ap.parse_args(argv)
     return {"masks": masks, "fit": fit, "clean-masks": clean_masks, "clean": clean, "parity": parity}[args.cmd](args)

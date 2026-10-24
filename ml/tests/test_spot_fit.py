@@ -1,5 +1,8 @@
 """The spot segmenter's NumPy copy (spot_fit) and PlantSeg's selection (data/plantseg)."""
 
+import json
+import re
+
 import numpy as np
 from PIL import Image
 
@@ -7,6 +10,28 @@ from ml.training.data import plantseg
 from ml.training.eval import spot_fit as sf
 
 GREEN = [60, 140, 50]
+SPOTS_RS = sf.BACKEND / "crates/vision/src/measure/spots.rs"
+
+
+def shipped():
+    """`SpotThresholds::default()` as spots.rs writes it, and the report its doc comment links."""
+    src = SPOTS_RS.read_text()
+    body = re.search(r"impl Default for SpotThresholds \{.*?Self \{(.*?)\}", src, re.S).group(1)
+    consts = {k: float(v) for k, v in re.findall(r"pub const (\w+): f64 = ([\d.e+-]+);", src)}
+    fields = {k: consts[v] if v in consts else float(v) for k, v in re.findall(r"(\w+): ([\w.+-]+),", body)}
+    report = re.search(r"\[report\]: \.\./\.\./\.\./(ml/training/eval/reports/spots-[\d-]+)\.md", src).group(1)
+    return fields, json.loads((sf.ROOT / f"{report}.json").read_text())
+
+
+def fitted():
+    return shipped()[1]["fitted"]
+
+
+def test_spots_rs_ships_the_reports_fitted_values():
+    fields, report = shipped()
+    assert list(fields) == list(sf.DEFAULTS)   # every field, in spots.rs' order
+    assert fields == report["fitted"]
+    assert fields != sf.DEFAULTS               # colour-1's values are the report's `defaults`
 
 
 def classes(pixels, lv, t=None):
@@ -15,16 +40,26 @@ def classes(pixels, lv, t=None):
 
 
 def test_the_rust_unit_tests_pixels_classify_the_same():
-    # spots.rs, brown_black_and_yellow_against_green
+    # spots.rs, brown_black_and_yellow_against_green, at the shipped values and at colour-1's
     lv = float(sf.hsv(np.array([GREEN], dtype=np.uint8))[2][0])
-    assert classes([GREEN, [110, 70, 30], [15, 15, 10], [200, 190, 40]], lv) == [sf.LEAF, sf.NECROTIC, sf.NECROTIC, sf.HALO]
+    px = [GREEN, [110, 70, 30], [15, 15, 10], [200, 190, 40]]
+    assert classes(px, lv, fitted()) == [sf.LEAF, sf.NECROTIC, sf.NECROTIC, sf.HALO]
+    assert classes(px, lv, sf.DEFAULTS) == [sf.LEAF, sf.NECROTIC, sf.NECROTIC, sf.HALO]
+
+
+def test_the_fitted_values_move_these_pixels():
+    # spots.rs, the_fitted_values_move_these_pixels
+    lv = float(sf.hsv(np.array([GREEN], dtype=np.uint8))[2][0])
+    px = [[120, 110, 100], [50, 60, 40], [180, 200, 40], [235, 235, 235]]
+    assert classes(px, lv, fitted()) == [sf.NECROTIC, sf.LEAF, sf.LEAF, sf.NECROTIC]
+    assert classes(px, lv, sf.DEFAULTS) == [sf.LEAF, sf.NECROTIC, sf.HALO, sf.NECROTIC]
 
 
 def test_only_pixels_inside_the_leaf_are_classified():
     # spots.rs, only_pixels_inside_the_leaf_are_classified
     rgb = np.array([[GREEN, [110, 70, 30]], [GREEN, GREEN]], dtype=np.uint8)
     leaf = np.array([[255, 255], [0, 255]], dtype=np.uint8)
-    assert sf.segment(rgb, leaf, sf.DEFAULTS).tolist() == [[sf.LEAF, sf.NECROTIC], [sf.OUTSIDE, sf.LEAF]]
+    assert sf.segment(rgb, leaf, fitted()).tolist() == [[sf.LEAF, sf.NECROTIC], [sf.OUTSIDE, sf.LEAF]]
 
 
 def test_hue_follows_the_rust_formula_on_every_branch():
@@ -110,7 +145,7 @@ def test_patches_under_the_share_of_the_leaf_are_leaf():
     rgb[1, 1] = [110, 70, 30]
     rgb[5:8, 5:8] = [110, 70, 30]
     leaf = np.full((10, 10), 255, dtype=np.uint8)
-    necrotic = lambda share: np.flatnonzero(sf.segment(rgb, leaf, {**sf.DEFAULTS, "min_spot_share": share}) == sf.NECROTIC).tolist()
+    necrotic = lambda share: np.flatnonzero(sf.segment(rgb, leaf, {**fitted(), "min_spot_share": share}) == sf.NECROTIC).tolist()
     assert len(necrotic(0.0)) == 10
     assert necrotic(0.05) == [55, 56, 57, 65, 66, 67, 75, 76, 77]
 
@@ -140,3 +175,12 @@ def test_the_share_is_the_largest_within_the_tolerance():
     rates = {0.0: 2.0, 1e-4: 2.5, 2e-4: 3.0, 5e-4: 3.5, 1e-3: 2.9}
     assert sf.choose_share(rates, 0.01) == 1e-3   # the largest share at most 1 point above 2.0
     assert sf.choose_share(rates, 0.0) == 0.0
+
+
+def test_parity_takes_leaves_from_each_disease_in_turn():
+    rows_ = [{"image": f"{d}{i}", "disease": d, "half": h} for d in ("b", "a") for i in range(3) for h in ("holdout",)]
+    rows_.append({"image": "fit0", "disease": "a", "half": "fit"})
+    leaf = {"class": "leaf", "mask": {"size": [1, 1], "counts": "01"}}
+    regions = {r["image"]: {"regions": [leaf]} for r in rows_}
+    picked = [r["image"] for r, _ in sf.parity_leaves(rows_, regions, 4)]
+    assert picked == ["a0", "b0", "a1", "b1"]

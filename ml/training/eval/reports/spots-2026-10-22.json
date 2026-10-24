@@ -536,6 +536,7 @@
   "with_results": 1172,
   "errors": 0,
   "specks": {
+    "date": "2026-10-23",
     "shares": [
       0.0,
       1e-05,
@@ -870,282 +871,288 @@
       },
       "dev spots": {
         "0.0": {
-          "photos": 79,
+          "photos": 82,
           "clean_pct": 0.0,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 66.5,
-          "mean_iou": 0.35
+          "median_spots_per_leaf": 70.5,
+          "mean_iou": 0.356
         },
         "1e-05": {
-          "photos": 79,
+          "photos": 82,
           "clean_pct": 0.0,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 36.5,
-          "mean_iou": 0.351
+          "median_spots_per_leaf": 43.5,
+          "mean_iou": 0.356
         },
         "2e-05": {
-          "photos": 79,
+          "photos": 82,
           "clean_pct": 0.0,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 29.5,
-          "mean_iou": 0.351
-        },
-        "5e-05": {
-          "photos": 79,
-          "clean_pct": 0.0,
-          "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 22.0,
-          "mean_iou": 0.351
-        },
-        "0.0001": {
-          "photos": 79,
-          "clean_pct": 0.0,
-          "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 14.0,
-          "mean_iou": 0.352
-        },
-        "0.0002": {
-          "photos": 79,
-          "clean_pct": 0.0,
-          "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 10.0,
-          "mean_iou": 0.352
-        },
-        "0.0005": {
-          "photos": 79,
-          "clean_pct": 1.3,
-          "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 6.0,
-          "mean_iou": 0.354
-        },
-        "0.001": {
-          "photos": 79,
-          "clean_pct": 5.1,
-          "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 5.0,
-          "mean_iou": 0.355
-        },
-        "0.002": {
-          "photos": 79,
-          "clean_pct": 11.4,
-          "clean_with_holes_pct": 2.5,
-          "median_spots_per_leaf": 3.0,
+          "median_spots_per_leaf": 33.5,
           "mean_iou": 0.357
         },
+        "5e-05": {
+          "photos": 82,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 23.0,
+          "mean_iou": 0.357
+        },
+        "0.0001": {
+          "photos": 82,
+          "clean_pct": 1.2,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 14.0,
+          "mean_iou": 0.357
+        },
+        "0.0002": {
+          "photos": 82,
+          "clean_pct": 1.2,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 10.0,
+          "mean_iou": 0.358
+        },
+        "0.0005": {
+          "photos": 82,
+          "clean_pct": 3.7,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 6.0,
+          "mean_iou": 0.359
+        },
+        "0.001": {
+          "photos": 82,
+          "clean_pct": 8.5,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 4.5,
+          "mean_iou": 0.361
+        },
+        "0.002": {
+          "photos": 82,
+          "clean_pct": 18.3,
+          "clean_with_holes_pct": 4.9,
+          "median_spots_per_leaf": 3.0,
+          "mean_iou": 0.363
+        },
         "0.005": {
-          "photos": 79,
-          "clean_pct": 16.5,
-          "clean_with_holes_pct": 5.1,
+          "photos": 82,
+          "clean_pct": 23.2,
+          "clean_with_holes_pct": 7.3,
           "median_spots_per_leaf": 1.0,
-          "mean_iou": 0.36
+          "mean_iou": 0.366
         },
         "0.01": {
-          "photos": 79,
-          "clean_pct": 29.1,
-          "clean_with_holes_pct": 8.9,
+          "photos": 82,
+          "clean_pct": 26.8,
+          "clean_with_holes_pct": 8.5,
           "median_spots_per_leaf": 1.0,
-          "mean_iou": 0.363
+          "mean_iou": 0.369
         }
       },
       "dev areas": {
         "0.0": {
-          "photos": 36,
+          "photos": 15,
           "clean_pct": 0.0,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 101.5,
-          "mean_iou": 0.277
+          "median_spots_per_leaf": 40.5,
+          "mean_iou": 0.235
         },
         "1e-05": {
-          "photos": 36,
+          "photos": 15,
           "clean_pct": 0.0,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 49.5,
-          "mean_iou": 0.278
+          "median_spots_per_leaf": 29.5,
+          "mean_iou": 0.235
         },
         "2e-05": {
-          "photos": 36,
+          "photos": 15,
           "clean_pct": 0.0,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 36.0,
-          "mean_iou": 0.278
+          "median_spots_per_leaf": 23.5,
+          "mean_iou": 0.235
         },
         "5e-05": {
-          "photos": 36,
+          "photos": 15,
           "clean_pct": 0.0,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 24.5,
-          "mean_iou": 0.278
+          "median_spots_per_leaf": 13.5,
+          "mean_iou": 0.235
         },
         "0.0001": {
-          "photos": 36,
+          "photos": 15,
           "clean_pct": 0.0,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 18.0,
-          "mean_iou": 0.279
+          "median_spots_per_leaf": 8.5,
+          "mean_iou": 0.236
         },
         "0.0002": {
-          "photos": 36,
+          "photos": 15,
           "clean_pct": 0.0,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 11.0,
-          "mean_iou": 0.279
+          "median_spots_per_leaf": 5.5,
+          "mean_iou": 0.236
         },
         "0.0005": {
-          "photos": 36,
-          "clean_pct": 2.8,
-          "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 6.0,
-          "mean_iou": 0.281
-        },
-        "0.001": {
-          "photos": 36,
-          "clean_pct": 5.6,
+          "photos": 15,
+          "clean_pct": 6.7,
           "clean_with_holes_pct": 0.0,
           "median_spots_per_leaf": 4.0,
-          "mean_iou": 0.282
+          "mean_iou": 0.237
+        },
+        "0.001": {
+          "photos": 15,
+          "clean_pct": 6.7,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 3.0,
+          "mean_iou": 0.237
         },
         "0.002": {
-          "photos": 36,
-          "clean_pct": 8.3,
+          "photos": 15,
+          "clean_pct": 6.7,
           "clean_with_holes_pct": 0.0,
           "median_spots_per_leaf": 2.0,
-          "mean_iou": 0.283
+          "mean_iou": 0.238
         },
         "0.005": {
-          "photos": 36,
-          "clean_pct": 8.3,
+          "photos": 15,
+          "clean_pct": 6.7,
           "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 2.0,
-          "mean_iou": 0.285
+          "median_spots_per_leaf": 1.5,
+          "mean_iou": 0.239
         },
         "0.01": {
-          "photos": 36,
-          "clean_pct": 11.1,
+          "photos": 15,
+          "clean_pct": 6.7,
           "clean_with_holes_pct": 0.0,
           "median_spots_per_leaf": 1.0,
-          "mean_iou": 0.288
+          "mean_iou": 0.24
         }
       },
       "healthy": {
         "0.0": {
-          "photos": 108,
-          "clean_pct": 13.0,
-          "clean_with_holes_pct": 2.8,
-          "median_spots_per_leaf": 3.0,
-          "mean_iou": 0.496
+          "photos": 114,
+          "clean_pct": 13.2,
+          "clean_with_holes_pct": 3.5,
+          "median_spots_per_leaf": 4.0,
+          "mean_iou": 0.495
         },
         "1e-05": {
-          "photos": 108,
-          "clean_pct": 17.6,
-          "clean_with_holes_pct": 2.8,
+          "photos": 114,
+          "clean_pct": 17.5,
+          "clean_with_holes_pct": 3.5,
           "median_spots_per_leaf": 2.0,
-          "mean_iou": 0.505
+          "mean_iou": 0.503
         },
         "2e-05": {
-          "photos": 108,
-          "clean_pct": 22.2,
-          "clean_with_holes_pct": 4.6,
+          "photos": 114,
+          "clean_pct": 21.1,
+          "clean_with_holes_pct": 5.3,
           "median_spots_per_leaf": 2.0,
-          "mean_iou": 0.51
+          "mean_iou": 0.508
         },
         "5e-05": {
-          "photos": 108,
-          "clean_pct": 34.3,
-          "clean_with_holes_pct": 10.2,
+          "photos": 114,
+          "clean_pct": 33.3,
+          "clean_with_holes_pct": 11.4,
           "median_spots_per_leaf": 1.0,
-          "mean_iou": 0.514
+          "mean_iou": 0.512
         },
         "0.0001": {
-          "photos": 108,
-          "clean_pct": 39.8,
-          "clean_with_holes_pct": 13.0,
+          "photos": 114,
+          "clean_pct": 38.6,
+          "clean_with_holes_pct": 14.0,
           "median_spots_per_leaf": 1.0,
-          "mean_iou": 0.524
+          "mean_iou": 0.521
         },
         "0.0002": {
-          "photos": 108,
-          "clean_pct": 46.3,
-          "clean_with_holes_pct": 13.9,
+          "photos": 114,
+          "clean_pct": 45.6,
+          "clean_with_holes_pct": 14.9,
           "median_spots_per_leaf": 0.0,
-          "mean_iou": 0.524
+          "mean_iou": 0.521
         },
         "0.0005": {
-          "photos": 108,
-          "clean_pct": 52.8,
-          "clean_with_holes_pct": 13.9,
+          "photos": 114,
+          "clean_pct": 51.8,
+          "clean_with_holes_pct": 14.9,
           "median_spots_per_leaf": 0.0,
-          "mean_iou": 0.524
+          "mean_iou": 0.522
         },
         "0.001": {
-          "photos": 108,
-          "clean_pct": 60.2,
-          "clean_with_holes_pct": 14.8,
+          "photos": 114,
+          "clean_pct": 59.6,
+          "clean_with_holes_pct": 16.7,
           "median_spots_per_leaf": 0.0,
-          "mean_iou": 0.524
+          "mean_iou": 0.526
         },
         "0.002": {
-          "photos": 108,
-          "clean_pct": 65.7,
-          "clean_with_holes_pct": 15.7,
+          "photos": 114,
+          "clean_pct": 65.8,
+          "clean_with_holes_pct": 17.5,
           "median_spots_per_leaf": 0.0,
-          "mean_iou": 0.524
+          "mean_iou": 0.526
         },
         "0.005": {
-          "photos": 108,
-          "clean_pct": 77.8,
-          "clean_with_holes_pct": 17.6,
+          "photos": 114,
+          "clean_pct": 78.9,
+          "clean_with_holes_pct": 20.2,
           "median_spots_per_leaf": 0.0,
-          "mean_iou": 0.525
+          "mean_iou": 0.527
         },
         "0.01": {
-          "photos": 108,
-          "clean_pct": 84.3,
-          "clean_with_holes_pct": 19.4,
+          "photos": 114,
+          "clean_pct": 85.1,
+          "clean_with_holes_pct": 21.9,
           "median_spots_per_leaf": 0.0,
-          "mean_iou": 0.525
+          "mean_iou": 0.527
         }
       }
     },
     "check_photos": {
-      "rows": 223,
-      "with_leaf": 223,
+      "rows": 212,
+      "with_leaf": 211,
       "by_group": {
         "plantseg fit spots": 357,
         "plantseg fit areas": 250,
         "plantseg holdout spots": 219,
         "plantseg holdout areas": 175,
-        "dev spots": 79,
-        "dev areas": 36,
-        "healthy": 108
+        "dev spots": 82,
+        "dev areas": 15,
+        "healthy": 114
+      },
+      "eval_manifest": {
+        "path": "ml/training/eval/manifest.jsonl",
+        "sha256": "e48d59e7852da8537e06e0e5fe8633a9811b37c62730a727af65d87e78302bec",
+        "dev_cases": 102,
+        "dev_cases_used": 93
       }
     },
     "healthy_holes": {
-      "leaves": 399,
-      "holes": 1472,
+      "leaves": 405,
+      "holes": 1582,
       "median_px": 8.0,
-      "p90_px": 80.0,
-      "up_to_20_px": 1042,
+      "p90_px": 84.90000000000009,
+      "up_to_20_px": 1107,
       "photos_with_no_hole_if_smaller_ignored": {
-        "0.0": 23,
-        "0.0001": 43,
-        "0.001": 77
+        "0.0": 27,
+        "0.0001": 46,
+        "0.001": 81
       }
     },
     "healthy_by_source": {
       "dev": {
         "0.0": {
-          "photos": 11,
-          "clean_pct": 9.1,
-          "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 25.0,
-          "mean_iou": 0.492
+          "photos": 17,
+          "clean_pct": 11.8,
+          "clean_with_holes_pct": 5.9,
+          "median_spots_per_leaf": 44.0,
+          "mean_iou": 0.486
         },
         "2e-05": {
-          "photos": 11,
-          "clean_pct": 36.4,
-          "clean_with_holes_pct": 0.0,
-          "median_spots_per_leaf": 3.0,
-          "mean_iou": 0.583
+          "photos": 17,
+          "clean_pct": 23.5,
+          "clean_with_holes_pct": 5.9,
+          "median_spots_per_leaf": 7.0,
+          "mean_iou": 0.545
         }
       },
       "plantdoc:test": {
@@ -1179,6 +1186,70 @@
           "median_spots_per_leaf": 2.0,
           "mean_iou": 0.506
         }
+      }
+    }
+  },
+  "parity": {
+    "2e-05": {
+      "date": "2026-10-23",
+      "thresholds": "fitted",
+      "min_spot_share": 2e-05,
+      "leaves": 40,
+      "pixels": 27776291,
+      "different": 0,
+      "speck_pixels_turned_to_leaf": 6090,
+      "leaves_by_disease": {
+        "apple black rot": 2,
+        "apple rust": 2,
+        "apple scab": 2,
+        "bell pepper bacterial spot": 2,
+        "bell pepper frogeye leaf spot": 2,
+        "bell pepper powdery mildew": 2,
+        "corn gray leaf spot": 2,
+        "corn northern leaf blight": 2,
+        "corn rust": 2,
+        "grape black rot": 2,
+        "grape downy mildew": 2,
+        "grape leaf spot": 2,
+        "squash powdery mildew": 2,
+        "tomato bacterial leaf spot": 2,
+        "tomato early blight": 2,
+        "tomato late blight": 2,
+        "tomato leaf mold": 2,
+        "tomato septoria leaf spot": 2,
+        "zucchini downy mildew": 2,
+        "zucchini powdery mildew": 2
+      }
+    },
+    "0.005": {
+      "date": "2026-10-23",
+      "thresholds": "fitted",
+      "min_spot_share": 0.005,
+      "leaves": 20,
+      "pixels": 16922066,
+      "different": 0,
+      "speck_pixels_turned_to_leaf": 97350,
+      "leaves_by_disease": {
+        "apple black rot": 1,
+        "apple rust": 1,
+        "apple scab": 1,
+        "bell pepper bacterial spot": 1,
+        "bell pepper frogeye leaf spot": 1,
+        "bell pepper powdery mildew": 1,
+        "corn gray leaf spot": 1,
+        "corn northern leaf blight": 1,
+        "corn rust": 1,
+        "grape black rot": 1,
+        "grape downy mildew": 1,
+        "grape leaf spot": 1,
+        "squash powdery mildew": 1,
+        "tomato bacterial leaf spot": 1,
+        "tomato early blight": 1,
+        "tomato late blight": 1,
+        "tomato leaf mold": 1,
+        "tomato septoria leaf spot": 1,
+        "zucchini downy mildew": 1,
+        "zucchini powdery mildew": 1
       }
     }
   }
