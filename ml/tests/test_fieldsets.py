@@ -227,3 +227,14 @@ def test_regroup_groups_the_manifest_and_moves_a_case_only_when_told(tmp_path):
 def test_the_manifests_neighbouring_frames_share_a_plant_key():
     lines = inat.MANIFEST.read_text().splitlines()
     assert fs.regroup(lines) == lines, "run `python -m ml.training.eval.fieldsets regroup` (evaluation.md §2, Splits)"
+
+
+def test_the_copy_check_skips_sources_the_leakage_check_skips(tmp_path, monkeypatch):
+    (tmp_path / "raw/plantdoc_cls/a").mkdir(parents=True)
+    (tmp_path / "raw/plantdoc_cls/a/1.jpg").write_bytes(b"x")
+    sources = tmp_path / "sources.yaml"
+    sources.write_text(yaml.safe_dump({"datasets": [{"name": "plantdoc_cls"}, {"name": "coco_val2017"},
+                                                    {"name": "plantseg", "leakage": False}]}))
+    monkeypatch.setattr(fs, "SOURCES", sources)
+    monkeypatch.setattr(fs, "RAW", tmp_path / "raw")
+    assert fs.training_images() == [tmp_path / "raw/plantdoc_cls/a/1.jpg"]  # plantseg isn't on disk, and isn't needed
