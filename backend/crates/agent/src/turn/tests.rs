@@ -73,6 +73,8 @@ struct Seen {
     usage_added: Mutex<Vec<Usage>>,
     /// Every task the classifier was asked.
     classified: Mutex<Vec<ClassifierTask>>,
+    /// Every card stored: its message, and whether that message was stored already.
+    cards: Mutex<Vec<(MessageId, bool)>>,
 }
 
 struct Setup {
@@ -150,6 +152,12 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
         .expect_context()
         .returning(|_, _| Ok((None, Vec::new())));
     chats.expect_message_count().returning(|_| Ok(2));
+    let s = seen.clone();
+    chats.expect_create_pending_action().returning(move |_, a| {
+        let stored = s.stored.lock().unwrap().iter().any(|m| m.id == a.message);
+        s.cards.lock().unwrap().push((a.message, stored));
+        Ok(a.action)
+    });
 
     let mut usage = MockUsageRepo::new();
     let spent = setup.spent_today;
@@ -1012,6 +1020,48 @@ async fn a_write_tool_is_unknown_to_a_viewer() {
             .as_str()
             .unwrap()
             .contains("no tool named create_task")
+    );
+}
+
+/// A write tool stores its card during the tool loop, naming the turn's assistant message,
+/// which the turn stores only afterwards. The store must accept a card for a message that
+/// isn't stored yet (`store`'s `a_card_names_the_turns_message_before_it_is_stored`).
+#[tokio::test]
+async fn a_card_is_stored_before_its_message() {
+    let (agent, _, seen) = harness(Setup::new(vec![
+        vec![
+            ChatChunk::ToolCall {
+                call_id: "toolu_1".to_owned(),
+                name: "create_task".to_owned(),
+                arguments: json!({"title": "Water the tomato"}),
+            },
+            ChatChunk::Done(StopReason::ToolUse),
+        ],
+        vec![
+            ChatChunk::TextDelta("I've proposed the task.".to_owned()),
+            ChatChunk::Done(StopReason::EndTurn),
+        ],
+    ]));
+    let stream = agent
+        .start_turn(request(owner(Role::Editor).await, "Add a task to water it"))
+        .await
+        .unwrap();
+    let (events, outcome) = collect(stream).await;
+    assert!(names(&events).contains(&"pending_action"));
+    let TurnOutcome::Completed(message) = outcome else {
+        panic!("the turn completed")
+    };
+    assert_eq!(
+        *seen.cards.lock().unwrap(),
+        [(message.id, false)],
+        "the card names the turn's message, stored after it"
+    );
+    assert!(
+        seen.stored
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|m| m.id == message.id)
     );
 }
 

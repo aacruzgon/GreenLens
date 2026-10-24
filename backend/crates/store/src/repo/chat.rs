@@ -118,9 +118,11 @@ SELECT ",
         "RETURN count(SELECT VALUE id FROM message WHERE conversation = $conversation);";
     /// A new summary.
     pub const SET_SUMMARY: &str = "UPDATE $conversation SET summary = $summary;";
-    /// A write tool's card, with the assistant message that proposed it.
+    /// A write tool's card, with the assistant message that proposed it. The tool runs inside
+    /// the turn's tool loop, before the turn stores that message (agent `store_reply`), so the
+    /// message usually doesn't exist yet; only a message of another conversation is refused.
     pub const CREATE_PENDING_ACTION: &str = "BEGIN;
-IF array::len(SELECT VALUE id FROM $row.message WHERE conversation = $conversation) = 0 { THROW 'not_found' };
+IF record::exists($row.message) AND $row.message.conversation != $conversation { THROW 'not_found' };
 CREATE $action CONTENT $row;
 COMMIT;";
     /// A card of the conversation, with its stored result.

@@ -1816,6 +1816,196 @@ async fn chat_flow() {
     assert_eq!(list.items.len(), 1);
 }
 
+/// A write tool makes its card inside the turn's tool loop, before the turn stores the
+/// assistant message the card names: that succeeds, and the card shows on the message once it
+/// is stored. A card naming a message of another conversation is refused. A card whose message
+/// is never stored (the turn failed) can still be rejected and expired.
+#[tokio::test]
+#[expect(clippy::too_many_lines, reason = "one flow, step by step")]
+async fn a_card_names_the_turns_message_before_it_is_stored() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let viewer = check_membership_of::<Viewer>(&*store, f.user, f.garden)
+        .await
+        .unwrap();
+    let mut verifier = domain::ports::MockAuthVerifier::new();
+    verifier.expect_verify().returning(|_, now| {
+        Ok(domain::ports::VerifiedToken {
+            auth_id: "user_2abc".parse().unwrap(),
+            display_name: None,
+            expires_at: now,
+        })
+    });
+    let user = domain::authz::authenticate(&verifier, &*store, "token", t0())
+        .await
+        .unwrap();
+    let mut owners = Vec::new();
+    for _ in 0..2 {
+        let conv = store
+            .create_conversation(
+                viewer,
+                NewConversation {
+                    id: f.ids.id(),
+                    user: f.user,
+                    anchor: Anchor::Plant(f.plant),
+                    created_at: t0(),
+                },
+            )
+            .await
+            .unwrap();
+        owners.push(
+            check_conversation::<Editor>(&*store, &user, conv.id)
+                .await
+                .unwrap(),
+        );
+    }
+    let (owner, other) = (owners[0], owners[1]);
+    let message = |id| NewMessage {
+        id,
+        role: MessageRole::Assistant,
+        text: "Shall I add a task?".into(),
+        attachments: Vec::new(),
+        citations: Vec::new(),
+        farm_citations: Vec::new(),
+        tool_calls: Vec::new(),
+        route: None,
+        interrupted: false,
+        model: None,
+        prompt_version: None,
+        tokens_in: 1,
+        tokens_out: 2,
+        created_at: t0(),
+    };
+    let card = |id| PendingAction {
+        id,
+        conversation_id: owner.conversation(),
+        tool: WriteTool::CreateTask,
+        status: PendingStatus::Proposed,
+        card: Card {
+            title: "Add a task?".into(),
+            body: "Water the tomato".into(),
+            confirm_label: "Add".into(),
+            reject_label: "Not now".into(),
+        },
+        preview: Preview::Task {
+            task: Box::new(domain::records::task::Task {
+                id: f.ids.id(),
+                garden_id: f.garden,
+                plant_id: Some(f.plant),
+                plan_id: None,
+                plan_step_id: None,
+                scan_id: None,
+                title: "Water the tomato".into(),
+                detail: None,
+                due: None,
+                repeat: None,
+                source: TaskSource::Chat,
+                trigger: None,
+                done_at: None,
+                dismissed_at: None,
+                dismissed_reason: None,
+                created_at: t0(),
+            }),
+        },
+        expires_at: t0().plus(Duration::from_hours(24)),
+    };
+
+    // The turn's message id, not stored yet.
+    let turn_message = f.ids.id();
+    let first = card(f.ids.id());
+    store
+        .create_pending_action(
+            owner,
+            NewPendingAction {
+                action: first.clone(),
+                message: turn_message,
+            },
+        )
+        .await
+        .expect("a card for the turn's message, before the message is stored");
+    store
+        .store_message(owner.at_least(), message(turn_message))
+        .await
+        .expect("the turn stores its message after the tool loop");
+    let detail = store
+        .conversation_detail(owner.at_least(), PageRequest::default())
+        .await
+        .unwrap();
+    assert_eq!(detail.messages.items.len(), 1);
+    assert_eq!(
+        detail.messages.items[0]
+            .pending_actions
+            .iter()
+            .map(|a| a.id)
+            .collect::<Vec<_>>(),
+        [first.id],
+        "the card shows on its message"
+    );
+
+    // A message of another conversation is refused, and nothing is stored.
+    let foreign = store
+        .store_message(other.at_least(), message(f.ids.id()))
+        .await
+        .unwrap();
+    let refused = card(f.ids.id());
+    assert!(matches!(
+        store
+            .create_pending_action(
+                owner,
+                NewPendingAction {
+                    action: refused.clone(),
+                    message: foreign.id,
+                },
+            )
+            .await,
+        Err(StoreError::NotFound)
+    ));
+    assert!(matches!(
+        store.pending_action(owner, refused.id).await,
+        Err(StoreError::NotFound)
+    ));
+
+    // A card whose message is never stored: reject and the expiry sweep still work, and the
+    // conversation still reads.
+    let orphan = card(f.ids.id());
+    let late = card(f.ids.id());
+    for c in [&orphan, &late] {
+        store
+            .create_pending_action(
+                owner,
+                NewPendingAction {
+                    action: c.clone(),
+                    message: f.ids.id(),
+                },
+            )
+            .await
+            .unwrap();
+    }
+    let rejected = store
+        .reject_pending_action(owner, orphan.id, t0())
+        .await
+        .unwrap();
+    assert_eq!(rejected.status, PendingStatus::Rejected);
+    assert_eq!(
+        store
+            .expire_pending_actions(t0().plus(Duration::from_hours(25)))
+            .await
+            .unwrap(),
+        2,
+        "the first card and the never-stored one expire"
+    );
+    assert_eq!(
+        store
+            .conversation_detail(owner.at_least(), PageRequest::default())
+            .await
+            .unwrap()
+            .messages
+            .items
+            .len(),
+        1
+    );
+}
+
 /// Memory: private chat memories stay private; notes are shared; search, share and delete.
 #[tokio::test]
 async fn memory_visibility() {

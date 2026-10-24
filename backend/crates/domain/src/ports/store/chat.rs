@@ -169,7 +169,9 @@ pub trait ChatRepo: Send + Sync {
         summary: String,
     ) -> Result<(), StoreError>;
 
-    /// A write tool's card. Editors and owners only.
+    /// A write tool's card. Editors and owners only. Its message is the turn's assistant
+    /// message, which the turn stores only after its tool loop, so it need not exist yet; a
+    /// message of another conversation is `NotFound`.
     async fn create_pending_action(
         &self,
         owner: ConversationOwner<Editor>,
