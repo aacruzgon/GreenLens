@@ -105,10 +105,12 @@ struct Earlier<'a> {
     assistant: Option<&'a str>,
 }
 
-/// Put before each route question when the state carries the earlier exchange.
-const CONTEXT_PREFIX: &str = "The state holds the gardener's newest `message` and, under \
-                              `earlier`, the exchange just before it. Judge `message`, reading \
-                              `earlier` only to understand what it refers to. ";
+/// Put before each route question when the state carries the earlier exchange. It goes in
+/// every question because the request has no instructions shared by all questions, and
+/// `TypeSafe`'s guidance keeps the judgment in the questions and the content in the state; it
+/// is kept short (about 20 tokens a question).
+const CONTEXT_PREFIX: &str = "Judge the gardener's newest `message`; `earlier` is the exchange \
+                              before it, for context only. ";
 
 /// A question, tagged by `type`.
 #[derive(Debug, Serialize)]
