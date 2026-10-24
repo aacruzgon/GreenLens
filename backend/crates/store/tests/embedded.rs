@@ -98,6 +98,7 @@ async fn farm_connectors_store_and_go_with_their_garden() {
         author: Some("Sam".into()),
         at: t0(),
         link: "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100".into(),
+        text: None,
     };
     let citation_json = serde_json::to_value(&citation).unwrap();
     let v1: PlanId = f.ids.id();
