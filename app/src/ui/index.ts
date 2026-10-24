@@ -36,4 +36,9 @@ export { CitationList, CiteNumber, type CitationListProps } from "./composites/C
 export { PhotoTint, type PhotoTintProps } from "./composites/PhotoTint";
 export { BarButton, BAR_INK, type BarButtonProps } from "./composites/BarButton";
 export { TopEdge, TopScrim, useHeroScroll, type TopEdgeProps } from "./composites/TopEdge";
+export { LineChart, type LineChartProps, type ChartPoint } from "./composites/LineChart";
+export { BandLine, type BandLineProps, type BandPoint } from "./composites/BandLine";
+export { StepLanes, type StepLanesProps, type StepLane } from "./composites/StepLanes";
+export { StatusStrip, type StatusStripProps, type StripCell, type StripStatus } from "./composites/StatusStrip";
+export { DAY_MS, TREND_MIN_DAYS, TREND_MIN_POINTS, isTrend, timeDomain } from "./composites/chart";
 export { photoTint, dominantHue, contrast, type PhotoTint as PhotoTintColors } from "./tint";

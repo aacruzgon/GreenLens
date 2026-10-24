@@ -73,8 +73,9 @@ export function useDiagnosis(scanId: string) {
 
   const actions = {
     back: () => (router.canGoBack() ? router.back() : router.dismissAll()),
-    /** The garden; the 3D garden takes this over in F7. */
-    inGarden: () => router.dismissAll(),
+    /** The garden in 3D (or on the map), on this plant (roadmap F7). */
+    inGarden: () =>
+      detail?.plant_id ? router.push({ pathname: "/garden", params: { plantId: detail.plant_id } }) : router.dismissAll(),
     stepByStep: (start?: number) =>
       router.push({ pathname: "/scans/[scanId]/steps", params: { scanId, ...(start !== undefined ? { start: String(start) } : {}) } }),
     feedback: () => router.push({ pathname: "/scans/[scanId]/feedback", params: { scanId } }),

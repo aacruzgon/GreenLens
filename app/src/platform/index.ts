@@ -21,3 +21,6 @@ export { GardenMappingView, mapping, type GardenMappingHandle, type TrackingStat
 export { liveActivity, type ScanActivityAlert, type ScanActivityAttributes, type ScanActivityDismissal, type ScanActivityState } from "./liveActivity";
 export { ModePickerView, type ModePickerItem, type ModePickerViewProps } from "./modePicker";
 export { GardenView, type GardenSelectEvent, type GardenViewBed, type GardenViewMode, type GardenViewPlant, type GardenViewProps, type GardenViewStatus } from "./garden3d";
+export { deviceCrypto } from "./crypto";
+export { authSession, type AuthSessionFake, type AuthSessionResult } from "./authSession";
+export { AppleButton, useAppleButtonAvailable, type AppleButtonProps } from "./appleButton";

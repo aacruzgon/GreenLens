@@ -98,6 +98,23 @@ async function ask(text: string) {
 }
 
 describe("the conversation (screens 3.6)", () => {
+  it("keeps Try again on a repeat of an earlier question that never reached the server", async () => {
+    // Before: a failed turn gave way to any stored question with its text, so asking again lost Try again (review
+    // of #205). Here the earlier copy is answered, and the repeat fails on the network before the server.
+    await openNew();
+    await ask("Should I water today?");
+    expect(await screen.findByTestId("block-weather_hours")).toBeTruthy();
+    const real = mockTransport.fetch.bind(mockTransport);
+    jest.spyOn(mockTransport, "fetch").mockImplementation((input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      const method = init?.method ?? (typeof input === "string" ? "GET" : input.method);
+      if (method === "POST" && /\/messages$/.test(url)) return Promise.reject(new TypeError("Network request failed"));
+      return real(input, init);
+    });
+    await ask("Should I water today?");
+    expect(await screen.findByRole("button", { name: "Try again" }, { timeout: 20_000 })).toBeTruthy();
+  });
+
   it("streams a scripted turn with a tool chip, a block and a card (F6 exit check)", async () => {
     await openNew();
     await ask("Should I water today?");

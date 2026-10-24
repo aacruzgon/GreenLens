@@ -44,4 +44,10 @@ describe("Button", () => {
     expect(icon).toHaveBeenCalledWith({ color: "#2F6B47", size: 18 });
     expect(button).toHaveStyle({ minHeight: 44 });
   });
+
+  it("draws destructive as the secondary pill with its label in danger red", async () => {
+    const { button } = await renderButton({ variant: "destructive" });
+    expect(button).toHaveStyle({ backgroundColor: "#FFFFFF" });
+    expect(screen.getByText("See the diagnosis and plan")).toHaveStyle({ color: "#B3261E" });
+  });
 });

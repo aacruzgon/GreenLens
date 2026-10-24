@@ -47,7 +47,9 @@ reports before the test split is scored. Writes `reports/<out>.md` and `.json`. 
 part keeps what the photos and models gave (each case's results, the disease head's logits per leaf
 photo with its labels and temperature, each VLM job's calls and guess, each photo's upload result; no
 image data), so `--rebuild` recomputes every row from it without photos, models or a GPU, and a test
-checks the committed report rebuilds exactly. `--notes` adds a markdown section, such as how the run went;
+checks the committed report rebuilds exactly. The report records a hash of its split's cases beside the
+manifest's, so it still rebuilds after the manifest gains cases in another split, and refuses once one of
+its own cases changes. `--notes` adds a markdown section, such as how the run went;
 the JSON keeps it as `notes`, beside `measured` rather than in it, since nothing measured it.
 """
 
@@ -572,6 +574,12 @@ def split_cases(manifest: Path, split: str) -> tuple[list[dict], str]:
     return cases, hashlib.sha256(data).hexdigest()
 
 
+def cases_sha(cases: list[dict]) -> str:
+    """A hash of a split's cases that ignores their order and the JSON's spacing, but not their content."""
+    lines = sorted(json.dumps(c, sort_keys=True, ensure_ascii=False) for c in cases)
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:16]
+
+
 # --- rebuilding a report from its JSON ----------------------------------------------------------
 
 def measured_of(doc: dict, vlm_dir: Path | None = None) -> dict:
@@ -607,11 +615,13 @@ def measured_of(doc: dict, vlm_dir: Path | None = None) -> dict:
 def rebuilt(doc: dict, measured: dict, argv: list[str], draws: int = FLOOR_DRAWS, notes: str | None = None) -> dict:
     """The report recomputed from what it measured, its run's command, date, inputs and notes kept.
     `notes` replaces the notes; a report that kept them inside `measured` has them moved out."""
-    manifest = ROOT / doc["inputs"]["manifest"]["file"]
+    recorded = doc["inputs"]["manifest"]
+    manifest = ROOT / recorded["file"]
     cases, sha = split_cases(manifest, doc["split"])
-    if sha[:16] != doc["inputs"]["manifest"]["sha256"]:
-        raise SystemExit(f"{manifest} changed since the report was made")
+    if sha[:16] != recorded["sha256"] and cases_sha(cases) != recorded.get("split_sha256"):
+        raise SystemExit(f"{manifest}'s {doc['split']} cases changed since the report was made")
     keep = {k: doc[k] for k in ("date", "command", "split", "cases", "shipped", "missing", "inputs", "vlm_meta") if k in doc}
+    keep["inputs"] = {**doc["inputs"], "manifest": {**recorded, "split_sha256": cases_sha(cases)}}
     notes = notes if notes is not None else doc.get("notes", measured.get("notes"))
     measured = {k: v for k, v in measured.items() if k != "notes"}
     rep = {**keep, "measured": measured, **assemble(measured, cases, draws)}
@@ -657,7 +667,8 @@ def main(argv=None) -> int:
     m = {"plant_passes": None, "species_cases": None, "bioclip_stored": None, "disease": None, "vlm": None, "upload_photos": None}
     rep = {"date": today, "command": shlex.join(["python", "-m", "ml.training.eval.score_test_split", *argv]), "split": args.split,
            "cases": len(cases), "shipped": s, "missing": {}, "vlm_meta": None,
-           "inputs": {"manifest": file_id(args.manifest), "models_manifest": file_id(MODELS / "manifest.toml")}}
+           "inputs": {"manifest": file_id(args.manifest) | {"split_sha256": cases_sha(cases)},
+                      "models_manifest": file_id(MODELS / "manifest.toml")}}
 
     if args.plant:
         rep["inputs"]["plant"] = file_id(args.plant)

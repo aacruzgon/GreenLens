@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { View } from "react-native";
 
-import { chooseAccount, useScenario, type ChatFault, type DemoAccount, type NextScan, type UploadFault } from "@/api/mock";
+import { chooseAccount, guestInviteCode, mockStore, useScenario, type ChatFault, type DemoAccount, type NextScan, type UploadFault } from "@/api/mock";
 import type { Role } from "@/domain/types";
 import { Chip, Section, Text, space } from "@/ui";
 
@@ -37,6 +38,8 @@ const ACCOUNTS: { value: DemoAccount; label: string }[] = [
   { value: "demo", label: "The demo garden" },
   // No name and no garden, so the session gate opens onboarding.
   { value: "new", label: "A new account" },
+  // Someone else with no garden, who opens the owner's newest invite to the demo garden (roadmap F7 exit checks).
+  { value: "guest", label: "A second account, invited" },
 ];
 
 const ROLES: Role[] = ["owner", "editor", "reviewer", "viewer"];
@@ -44,6 +47,7 @@ const ROLES: Role[] = ["owner", "editor", "reviewer", "viewer"];
 export function DemoControls() {
   const s = useScenario();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const refetchAll = () => void queryClient.invalidateQueries();
   return (
     <Section title="Demo controls">
@@ -81,8 +85,14 @@ export function DemoControls() {
               label={o.label}
               selected={s.account === o.value}
               onPress={() => {
+                const was = s.account;
                 chooseAccount(o.value);
+                // A different person on the phone: nothing of the last one's cache stays.
+                if (o.value === "guest" || was === "guest") queryClient.clear();
                 refetchAll();
+                if (o.value === "guest" && was !== "guest") {
+                  router.push({ pathname: "/invite/[code]", params: { code: guestInviteCode(mockStore) } });
+                }
               }}
             />
           ))}

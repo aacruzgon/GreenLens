@@ -29,3 +29,12 @@ export function isEmailTaken(error: unknown): boolean {
   const paramName = firstError(error)?.meta?.paramName ?? "email_address";
   return clerkErrorCode(error) === "form_identifier_exists" && paramName === "email_address";
 }
+
+// A sign-in method the Clerk instance doesn't have turned on: an error on the `strategy` parameter, such as
+// "oauth_apple does not match one of the allowed values for parameter strategy" (seen on the development instance).
+export function isStrategyOff(error: unknown): boolean {
+  const first = firstError(error);
+  if (first?.meta?.paramName === "strategy") return true;
+  const message = clerkErrorMessage(error);
+  return /allowed values for parameter strategy/i.test(message);
+}

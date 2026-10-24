@@ -36,6 +36,10 @@ export interface MessageContext {
   /** Puts text in the composer ("Ask again"). */
   onPrefill: (text: string) => void;
   onOpenPlant: (plantId: string) => void;
+  /** The garden screen on these plants (the map block's Open in 3D). */
+  onOpenGarden: (plantIds: string[]) => void;
+  /** Chat's trend block opens the plant's Insights (roadmap F7 item 3). */
+  onOpenInsights: (plantId: string) => void;
   onRescan: (plantId: string, photoKind: RescanRequest["photoKind"]) => void;
   rescanning: boolean;
   onResend: (request: { text: string; attachments: Attachment[] }, failedLocalId?: string) => void;
@@ -109,7 +113,7 @@ function Answer(p: AnswerProps) {
         </View>
       ) : null}
       {p.blocks.map((b, i) => (
-        <AnswerBlockView key={`${b.kind}-${b.call_id}-${i}`} block={b} gardenId={ctx.gardenId} canAddTasks={ctx.canAddTasks} onOpenPlant={ctx.onOpenPlant} />
+        <AnswerBlockView key={`${b.kind}-${b.call_id}-${i}`} block={b} gardenId={ctx.gardenId} canAddTasks={ctx.canAddTasks} onOpenPlant={ctx.onOpenPlant} onOpenGarden={ctx.onOpenGarden} onOpenInsights={ctx.onOpenInsights} />
       ))}
       {p.citations.length ? (
         <View style={{ borderRadius: radii.field, backgroundColor: colors.surfaceMuted, overflow: "hidden" }}>

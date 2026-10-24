@@ -6,6 +6,7 @@ import { envResult } from "@/config/env";
 import { Banner, Button, Text, TextField } from "@/ui";
 
 import { AuthShell } from "../components/AuthShell";
+import { SsoButtons } from "../components/SsoButtons";
 import { clerkErrorMessage } from "../model/clerkErrors";
 import { useSession } from "../session";
 import { continueSignIn } from "../signInSteps";
@@ -42,6 +43,7 @@ function ClerkSignIn() {
   return (
     <AuthShell title="Sign in">
       {sampleData ? <Banner tone="watch" title="Sample data" message="This build shows sample data, not your garden." /> : null}
+      <SsoButtons />
       <TextField
         label="Email"
         value={email}

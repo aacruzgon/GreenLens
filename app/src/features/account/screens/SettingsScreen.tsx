@@ -1,27 +1,21 @@
-import { useState } from "react";
-import { View } from "react-native";
+import { Switch, View } from "react-native";
 
-import { useMe } from "@/api";
 import { envResult } from "@/config/env";
-import { useSession } from "@/features/auth";
-import { Banner, Button, ListItem, Screen, Section, Text, space } from "@/ui";
+import { Banner, Button, Card, ListItem, Screen, Section, Skeleton, Text, TextField, space, useTheme } from "@/ui";
 
 import { DemoControls } from "../components/DemoControls";
 import { DeviceTools } from "../components/DeviceTools";
+import { useSettings } from "../hooks/useSettings";
 
-// Settings (screens 3.9), F0's part: the account and sign-out; the gardens, members and notifications come in F7.
+// Settings (screens 3.9): the account, the gardens (switch, manage, members, new), sign-out and account deletion.
+// Notifications are shown only in builds with push, and there is none yet (roadmap F7 item 4).
 export function SettingsScreen() {
-  const me = useMe();
-  const session = useSession();
-  const [signingOut, setSigningOut] = useState(false);
+  const { colors } = useTheme();
+  const vm = useSettings();
+  const { actions, session } = vm;
   const mock = envResult.ok && envResult.env.apiMode === "mock";
-
-  // The session layer clears the cache and client state on every sign-out (features/shell).
-  async function signOut() {
-    setSigningOut(true);
-    await session.signOut();
-    setSigningOut(false);
-  }
+  const divider = { borderTopWidth: 1, borderTopColor: colors.border };
+  const consent = vm.me?.location_consent ?? false;
 
   return (
     <Screen>
@@ -29,8 +23,32 @@ export function SettingsScreen() {
         <Text variant="largeTitle" emphasis accessibilityRole="header">
           Settings
         </Text>
+
         <Section title="Account">
-          <ListItem title={me.data?.display_name || "Your account"} subtitle={session.mode === "demo" ? "Demo account" : undefined} />
+          <Card padded={false}>
+            {vm.editingName ? (
+              <View style={{ padding: space[4], gap: space[3] }}>
+                <TextField label="Your name" value={vm.name} onChangeText={vm.setName} autoComplete="name" autoFocus testID="settings-name" />
+                <View style={{ flexDirection: "row", gap: space[2] }}>
+                  <Button label="Save" variant="secondary" size="small" onPress={actions.saveName} busy={vm.savingName} disabled={!vm.name.trim()} testID="settings-name-save" />
+                  <Button label="Cancel" variant="plain" size="small" onPress={actions.cancelEditingName} />
+                </View>
+              </View>
+            ) : (
+              <ListItem
+                title={vm.me?.display_name || "Your account"}
+                subtitle={session.mode === "demo" ? "Demo account" : undefined}
+                trailing={<Button label="Edit" variant="plain" size="small" accessibilityLabel="Edit your name" onPress={actions.startEditingName} testID="settings-name-edit" />}
+              />
+            )}
+            <ListItem
+              title="Share my location"
+              subtitle={consent ? "Gardens can use your phone's location." : "Gardens you own are rounded to about 10 km."}
+              style={divider}
+              accessibilityLabel="Share my location"
+              trailing={<Switch value={consent} onValueChange={actions.setConsent} accessibilityLabel="Share my location" testID="settings-consent" />}
+            />
+          </Card>
           {session.secondFactorProblem ? (
             <Banner
               tone="watch"
@@ -40,9 +58,50 @@ export function SettingsScreen() {
             />
           ) : null}
         </Section>
+
+        <Section title="Gardens">
+          {vm.gardensLoading ? (
+            <Skeleton height={52} />
+          ) : (
+            <Card padded={false}>
+              {vm.rows.map((row, i) => (
+                <ListItem
+                  key={row.garden.id}
+                  title={row.garden.name}
+                  subtitle={row.subtitle}
+                  style={i > 0 ? divider : undefined}
+                  chevron={false}
+                  accessibilityHint={row.active ? undefined : "Opens this garden"}
+                  onPress={() => actions.open(row.garden.id)}
+                  trailing={
+                    <Button
+                      label={row.manage.label}
+                      variant="plain"
+                      size="small"
+                      accessibilityLabel={`${row.manage.label}, ${row.garden.name}`}
+                      onPress={row.manage.onPress}
+                      testID={`garden-${row.manage.label.toLowerCase()}-${row.garden.id}`}
+                    />
+                  }
+                />
+              ))}
+            </Card>
+          )}
+          <Button label="New garden" variant="secondary" onPress={actions.newGarden} testID="garden-new" />
+        </Section>
+
+        {vm.problem ? (
+          <Text variant="footnote" color="danger" accessibilityLiveRegion="polite">
+            {vm.problem}
+          </Text>
+        ) : null}
+
         {mock ? <DemoControls /> : null}
         <DeviceTools />
-        <Button label="Sign out" variant="secondary" onPress={signOut} busy={signingOut} />
+        <View style={{ gap: space[3] }}>
+          <Button label="Sign out" variant="secondary" onPress={actions.signOut} busy={vm.signingOut} />
+          <Button label="Delete account" variant="destructive" onPress={actions.deleteAccount} testID="account-delete" />
+        </View>
         {mock ? (
           <Text variant="footnote" color="textMuted" align="center">
             Sample data. Nothing here reaches a server.

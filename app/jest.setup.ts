@@ -41,6 +41,7 @@ jest.mock("@clerk/expo", () => {
   };
 });
 jest.mock("@clerk/expo/token-cache", () => ({ tokenCache: undefined }));
+jest.mock("@clerk/expo/experimental", () => ({ useSSO: () => ({ startSSOFlow: async () => ({ createdSessionId: null, authSessionResult: null }) }) }));
 
 // TanStack Query keeps a finished mutation (and an unused query without gcTime: Infinity) for 5 minutes on a
 // timer, which kept Jest running for minutes after a screen suite that completes a task. Its timers don't hold
