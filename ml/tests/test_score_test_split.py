@@ -217,15 +217,37 @@ def test_the_shipped_values_come_from_the_final_manifest():
     assert s["matrix"]["version"] == "edb29fe878952e7b"
 
 
-def test_the_report_says_what_wasnt_measured():
+def empty_report(**kw):
     s = {"matrix": {"version": "m"}, "species_temperature": 1.0, "disease_head": {"version": "h"},
          "plant_pair": {"set": "p", "tau_leaf": 0.9, "tau_plant": 0.3}}
-    rep = {"command": "c", "date": "d", "split": "test", "cases": 0, "shipped": s, "missing": {"T1": "no plant_check report given"},
-           "inputs": {"manifest": {"file": "m", "sha256": "1"}, "models_manifest": {"file": "t", "sha256": "2"}},
-           "t1": None, "t2": None, "t3": None, "t4": None, "disease": None, "vlm": None, "vlm_meta": None, "upload": None,
-           "measured": {"notes": "## How it ran\n\nOnce."}}
+    return {"command": "c", "date": "d", "split": "test", "cases": 0, "shipped": s, "missing": {},
+            "inputs": {"manifest": {"file": "m", "sha256": "1"}, "models_manifest": {"file": "t", "sha256": "2"}},
+            "t1": None, "t2": None, "t3": None, "t4": None, "disease": None, "vlm": None, "vlm_meta": None, "upload": None,
+            "measured": {}, **kw}
+
+
+def test_the_report_says_what_wasnt_measured():
+    rep = empty_report(missing={"T1": "no plant_check report given"}, notes="## How it ran\n\nOnce.")
     md = ts.markdown(rep, "t")
     assert md.count(ts.NOT_BUILT) == 6 and "no plant_check report given" in md and "## How it ran" in md
+
+
+def test_a_split_with_no_leaf_photos_still_gets_a_report():
+    head = {"labels": [{"index": 0, "species_id": "tomato", "problem_id": "healthy"},
+                       {"index": 1, "species_id": "tomato", "problem_id": "tomato_early_blight"}], "temperature": 1.0}
+    rep = empty_report(disease=ts.disease([], head, []), measured={"disease": {"left_out": {}}})
+    md = ts.markdown(rep, "t")
+    assert "- **T5–T7.** No leaf photos." in md and "| T7 | Disease head: ECE (15 bins) at the file's temperature | 0.05 or less | no photos |" in md
+
+
+def test_notes_are_kept_beside_what_was_measured_not_in_it():
+    path = ts.REPORTS / "test-split-2026-10-23"
+    doc = json.loads(path.with_suffix(".json").read_text())
+    assert "notes" not in doc["measured"] and doc["notes"].startswith("## How it ran")
+    old = {k: v for k, v in doc.items() if k != "notes"} | {"measured": doc["measured"] | {"notes": doc["notes"]}}
+    again = ts.rebuilt(old, old["measured"], None)
+    assert "notes" not in again["measured"] and again["notes"] == doc["notes"]
+    assert ts.rebuilt(doc, doc["measured"], None, notes="Other.")["notes"] == "Other."
 
 
 def test_the_committed_test_split_report_rebuilds_from_its_json_exactly():
