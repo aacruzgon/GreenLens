@@ -171,6 +171,8 @@ struct PlanKnowledge {
     organisms: Vec<OrganismSeed>,
     neighbours: Vec<PlanNeighbour>,
     sources: Vec<SourceId>,
+    /// The base plan's farm records: a revised step may keep citing them, and cite no other.
+    farm_records: Vec<domain::connectors::FarmCitation>,
 }
 
 impl PlanKnowledge {
@@ -238,6 +240,7 @@ impl PlanKnowledge {
             organisms,
             neighbours,
             sources,
+            farm_records: base.farm_records.clone(),
         })
     }
 
@@ -258,6 +261,7 @@ impl PlanKnowledge {
                 .iter()
                 .any(|o| o.role == OrganismRole::Beneficial),
             known_sources: &self.sources,
+            farm_records: &self.farm_records,
         }
     }
 }

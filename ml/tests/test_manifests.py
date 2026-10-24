@@ -50,6 +50,14 @@ def test_plant_probe_file_rules():
         assert any(needle in p for p in problems), (bad, problems)
 
 
+def test_a_leaf_detector_never_ships_without_its_plant_probe():
+    """At τ_leaf 0.94 the leaf score alone fails most plant photos (Alan's review of #167)."""
+    detector, probe = {"name": "leaf_detector"}, {"name": "plant_probe"}
+    assert check.probe_problems("m", [detector, probe]) == []
+    assert check.probe_problems("m", [probe]) == []
+    assert "leaf_detector without plant_probe" in check.probe_problems("m", [detector])[0]
+
+
 def test_seed_rows_are_compared_by_index(tmp_path, monkeypatch):
     """classifier_labels.yaml may map fewer classes than the head; each row must match its index,
     and a species it maps must have all of the head's classes."""

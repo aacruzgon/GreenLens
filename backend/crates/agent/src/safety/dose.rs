@@ -418,8 +418,9 @@ fn is_year(n: &str) -> bool {
 /// numbers ("20:20:20", "18:40:00"), with a time word, a date, or a range's start that is itself
 /// a clock time before it ("at 18:40", "before 06:30", "2 July 18:40", "from 18:40 to 19:10",
 /// "between 7:00 and 9:00"), and `H` from 5 or `am`, `pm`, `o'clock`, `UTC` or `GMT` after it
-/// ("at 1:20 pm"). A ratio's first term is small and a ratio has no time word before it, so
-/// "1:10", "at 1:20 in the evening", "Mix 2:30 am" and "a 20:20 feed" stay ratios.
+/// ("at 1:20 pm"). An opening parenthesis may stand between them ("on 31 August (22:40 UTC)",
+/// EON gap G20's re-run). A ratio's first term is small and a ratio has no time word before it,
+/// so "1:10", "at 1:20 in the evening", "Mix 2:30 am" and "a 20:20 feed" stay ratios.
 fn is_clock_time(before: &str, l: &str, r: &str, after: &str) -> bool {
     let (Ok(hour), Ok(minute)) = (l.parse::<u32>(), r.parse::<u32>()) else {
         return false;
@@ -433,6 +434,7 @@ fn is_clock_time(before: &str, l: &str, r: &str, after: &str) -> bool {
     if COLON_BEFORE.is_match(before) || COLON_AFTER.is_match(after) {
         return false;
     }
+    let before = before.strip_suffix('(').unwrap_or(before);
     (hour >= 5 || CLOCK_AFTER.is_match(after))
         && (TIME_BEFORE.is_match(before) || range_end(before))
 }
@@ -872,6 +874,9 @@ mod tests {
             "Water the beds at 7:15 tonight.",
             "The sync ran at 2026-07-15T18:40:00Z.",
             "Spray at 5 a.m. or after 20:00.",
+            "Riley's only post in #field-reports on 31 August (22:40 UTC) wasn't a field report.",
+            "Maria sprayed bed 3 on 2 July (18:40).",
+            "Riley posted at (09:15) on 31 August.",
         ];
         for text in cases {
             assert_eq!(check(text), None, "{text:?} should pass");
@@ -932,6 +937,8 @@ mod tests {
             ("Mix neem 1:20 pm", ColonRatio),
             ("Mix 2:30 am", ColonRatio),
             ("Mix copper 18:40 utc", ColonRatio),
+            ("Mix copper (18:40 utc)", ColonRatio),
+            ("Dilute (1:10) on 2 July", ColonRatio),
             ("Switch to 15:30 feed", ColonRatio),
             ("Mix to 13:40", ColonRatio),
             ("Blend about 20:30 sand to compost", ColonRatio),
