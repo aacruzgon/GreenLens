@@ -1234,8 +1234,6 @@ struct Outbound {
     notifier: Arc<dyn Notifier>,
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
-    /// The router's calibration for the classifier wired: Jev's scores and the LLM's differ.
-    calibration: Calibration,
     beliefs: Arc<dyn BeliefStore>,
     connect: Arc<dyn ConnectVendors>,
     farm: FarmSources,
@@ -1280,27 +1278,21 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         },
     );
     let chat_model: Arc<dyn ChatModel> = Arc::new(agent::model::AnthropicChat::new(llm));
-    let (classifier, calibration): (Arc<dyn TextClassifier>, Calibration) =
-        if let Some(jev) = &config.providers.jev {
-            tracing::info!(model = %jev.model, "text classifier: jev");
-            let jev_config = JevConfig {
-                model: jev.model.clone(),
-                ..JevConfig::new(jev.url.clone(), jev.api_key.clone())
-            };
-            (
-                Arc::new(JevClassifier::new(http.clone(), jev_config)),
-                Calibration::jev(),
-            )
-        } else {
-            tracing::info!("text classifier: the LLM fallback (JEV_API_KEY is not set)");
-            (
-                Arc::new(agent::model::LlmClassifier::new(
-                    Arc::clone(&chat_model),
-                    256,
-                )),
-                Calibration::default(),
-            )
+    // `agent_config` picks the router calibration on the same condition.
+    let classifier: Arc<dyn TextClassifier> = if let Some(jev) = &config.providers.jev {
+        tracing::info!(model = %jev.model, "text classifier: jev");
+        let jev_config = JevConfig {
+            model: jev.model.clone(),
+            ..JevConfig::new(jev.url.clone(), jev.api_key.clone())
         };
+        Arc::new(JevClassifier::new(http.clone(), jev_config))
+    } else {
+        tracing::info!("text classifier: the LLM fallback (JEV_API_KEY is not set)");
+        Arc::new(agent::model::LlmClassifier::new(
+            Arc::clone(&chat_model),
+            256,
+        ))
+    };
     let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
         |c| SlackClient::new(http.clone(), c),
         |c| DriveClient::new(http.clone(), c),
@@ -1356,7 +1348,6 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         )),
         chat_model,
         classifier,
-        calibration,
         beliefs,
         connect,
         farm,
@@ -1540,7 +1531,7 @@ pub async fn build(
     let chat = chat_turns(
         &ports,
         out.chat_model,
-        (out.classifier, out.calibration),
+        out.classifier,
         products,
         agent_settings,
         tasks.clone(),

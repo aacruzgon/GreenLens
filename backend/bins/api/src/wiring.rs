@@ -324,8 +324,6 @@ struct Outbound {
     notifier: Arc<dyn Notifier>,
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
-    /// The router's calibration for the classifier wired: Jev's scores and the LLM's differ.
-    calibration: Calibration,
     beliefs: Arc<dyn BeliefStore>,
     connect: Arc<dyn ConnectVendors>,
     farm: FarmSources,
@@ -420,27 +418,21 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         },
     );
     let chat_model: Arc<dyn ChatModel> = Arc::new(agent::model::AnthropicChat::new(llm));
-    let (classifier, calibration): (Arc<dyn TextClassifier>, Calibration) =
-        if let Some(jev) = &config.providers.jev {
-            tracing::info!(model = %jev.model, "text classifier: jev");
-            let jev_config = JevConfig {
-                model: jev.model.clone(),
-                ..JevConfig::new(jev.url.clone(), jev.api_key.clone())
-            };
-            (
-                Arc::new(JevClassifier::new(http.clone(), jev_config)),
-                Calibration::jev(),
-            )
-        } else {
-            tracing::info!("text classifier: the LLM fallback (JEV_API_KEY is not set)");
-            (
-                Arc::new(agent::model::LlmClassifier::new(
-                    Arc::clone(&chat_model),
-                    256,
-                )),
-                Calibration::default(),
-            )
+    // `agent_config` picks the router calibration on the same condition.
+    let classifier: Arc<dyn TextClassifier> = if let Some(jev) = &config.providers.jev {
+        tracing::info!(model = %jev.model, "text classifier: jev");
+        let jev_config = JevConfig {
+            model: jev.model.clone(),
+            ..JevConfig::new(jev.url.clone(), jev.api_key.clone())
         };
+        Arc::new(JevClassifier::new(http.clone(), jev_config))
+    } else {
+        tracing::info!("text classifier: the LLM fallback (JEV_API_KEY is not set)");
+        Arc::new(agent::model::LlmClassifier::new(
+            Arc::clone(&chat_model),
+            256,
+        ))
+    };
     let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
         |c| SlackClient::new(http.clone(), c),
         |c| DriveClient::new(http.clone(), c),
@@ -496,7 +488,6 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         )),
         chat_model,
         classifier,
-        calibration,
         beliefs,
         connect,
         farm,
@@ -595,13 +586,29 @@ fn pipeline_api(
     }))
 }
 
-/// The agent's settings: the defaults, with the deployment's poison-control text when set. The
-/// text must pass the dose check, as the agent runs it through that check when it answers.
+/// The router calibration of the classifier `build` wires: `Calibration::jev()` with Jev,
+/// the default with the LLM classifier, whose scores differ ([agent 7]).
+///
+/// [agent 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/backend/agent.md#7-router-and-safety-gate
+fn router_calibration(config: &Config) -> Calibration {
+    if config.providers.jev.is_some() {
+        Calibration::jev()
+    } else {
+        Calibration::default()
+    }
+}
+
+/// The agent's settings: the defaults, with the router calibration of the classifier wired and
+/// the deployment's poison-control text when set. The text must pass the dose check, as the
+/// agent runs it through that check when it answers.
 pub(crate) fn agent_config(
     config: &Config,
     products: &agent::safety::ProductCatalogue,
 ) -> Result<agent::AgentConfig, crate::config::ConfigError> {
-    let mut agent_config = agent::AgentConfig::default();
+    let mut agent_config = agent::AgentConfig {
+        calibration: router_calibration(config),
+        ..agent::AgentConfig::default()
+    };
     if let Some(text) = &config.poison_control_text {
         crate::config::check_poison_control_text(text, products)?;
         text.clone_into(&mut agent_config.poison_control_text);
@@ -609,12 +616,12 @@ pub(crate) fn agent_config(
     Ok(agent_config)
 }
 
-/// The chat agent over the ports, with its chat model, classifier and its calibration, the
-/// product catalogue and the agent's settings, which take the classifier's calibration.
+/// The chat agent over the ports, with its chat model, classifier, product catalogue and
+/// settings ([`agent_config`]).
 fn chat_turns(
     ports: &Ports,
     chat: Arc<dyn ChatModel>,
-    (classifier, calibration): (Arc<dyn TextClassifier>, Calibration),
+    classifier: Arc<dyn TextClassifier>,
     products: Arc<agent::safety::ProductCatalogue>,
     config: agent::AgentConfig,
     tasks: TaskTracker,
@@ -633,10 +640,7 @@ fn chat_turns(
             clock: Arc::clone(&ports.clock),
             ids: Arc::clone(&ports.ids),
             products,
-            config: agent::AgentConfig {
-                calibration,
-                ..config
-            },
+            config,
         },
         tasks,
     ))
@@ -724,7 +728,7 @@ pub async fn build(
     let chat = chat_turns(
         &ports,
         out.chat_model,
-        (out.classifier, out.calibration),
+        out.classifier,
         products,
         agent_settings,
         tasks.clone(),
