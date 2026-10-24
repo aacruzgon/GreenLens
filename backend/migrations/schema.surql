@@ -444,6 +444,7 @@ DEFINE FIELD OVERWRITE text           ON message TYPE string;
 DEFINE FIELD OVERWRITE attachments    ON message TYPE array<record<chat_image>> DEFAULT [];
 DEFINE FIELD OVERWRITE citations      ON message TYPE array<object> FLEXIBLE DEFAULT [];
 DEFINE FIELD OVERWRITE farm_citations ON message TYPE array<object> FLEXIBLE DEFAULT [];   -- FarmCitation[] (connectors 7); kept when a record is deleted
+DEFINE FIELD OVERWRITE blocks         ON message TYPE array<object> FLEXIBLE DEFAULT [];   -- AnswerBlock[] (contracts 8), at most 3, every kind tagged by `kind`
 DEFINE FIELD OVERWRITE tool_calls     ON message TYPE array<object> FLEXIBLE DEFAULT [];   -- stored, never sent to the app
 DEFINE FIELD OVERWRITE route          ON message TYPE option<"diagnosis_question" | "care_question" | "task_change" | "safety_sensitive" | "off_topic">;
 DEFINE FIELD OVERWRITE interrupted    ON message TYPE bool DEFAULT false;

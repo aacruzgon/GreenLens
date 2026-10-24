@@ -85,6 +85,70 @@ struct Setup {
     embed_fails_after_memory: bool,
     /// What the classifier scores a route task: a clear care question unless a test says.
     route_scores: Vec<(&'static str, f64)>,
+    /// The garden's ports: no weather, no plants and no map unless a test says otherwise.
+    gardens: MockGardenRepo,
+    weather_cache: MockWeatherCacheRepo,
+    plants: MockPlantRepo,
+    maps: MockMapRepo,
+    knowledge: MockKnowledgeStore,
+    /// The conversation's earlier messages, oldest first: none unless a test says otherwise.
+    history: Vec<domain::ports::ContextMessage>,
+}
+
+/// The garden as every turn reads it; its context fails, so it has no weather.
+fn garden_repo(context: bool) -> MockGardenRepo {
+    let mut gardens = MockGardenRepo::new();
+    gardens.expect_garden().returning(|_| {
+        Ok(serde_json::from_value(json!({
+            "id": GARDEN, "name": "Back yard", "my_role": "editor",
+            "location_label": "Toronto", "location_precision": "about_1_km",
+            "time_zone": "America/Toronto", "soil_profile_status": "pending",
+            "member_count": 1, "created_at": "2026-10-01T00:00:00Z"
+        }))
+        .unwrap())
+    });
+    if context {
+        gardens.expect_garden_context().returning(|garden| {
+            let at = domain::records::weather::Coordinates {
+                lat: 43.65,
+                lon: -79.38,
+            };
+            Ok(domain::ports::GardenContext {
+                id: garden,
+                name: "Back yard".to_owned(),
+                coordinates: at,
+                precision: domain::records::weather::LocationPrecision::About1Km,
+                weather_cell: domain::records::weather::WeatherCell::of(at),
+                time_zone: domain::garden::gardens::TimeZone("America/Toronto".to_owned()),
+                soil_profile: None,
+                map_version: 0,
+            })
+        });
+    } else {
+        gardens
+            .expect_garden_context()
+            .returning(|_| Err(StoreError::Unavailable("offline".into())));
+    }
+    gardens
+}
+
+/// A garden with no plants.
+fn no_plants() -> MockPlantRepo {
+    let mut plants = MockPlantRepo::new();
+    plants.expect_plants().returning(|_, _| {
+        Ok(Page {
+            items: Vec::new(),
+            next_cursor: None,
+        })
+    });
+    plants
+}
+
+/// A garden with no map.
+fn no_map() -> MockMapRepo {
+    let mut maps = MockMapRepo::new();
+    maps.expect_map().returning(|_| Ok(None));
+    maps
 }
 
 impl Setup {
@@ -100,6 +164,12 @@ impl Setup {
             farm: crate::testing::no_connectors(),
             embed_fails_after_memory: false,
             route_scores: vec![("care_question", 0.9), ("off_topic", 0.05)],
+            gardens: garden_repo(false),
+            weather_cache: MockWeatherCacheRepo::new(),
+            plants: no_plants(),
+            maps: no_map(),
+            knowledge: MockKnowledgeStore::new(),
+            history: Vec::new(),
         }
     }
 }
@@ -113,6 +183,7 @@ fn stored_message(m: &NewMessage) -> Message<Stored> {
         citations: m.citations.clone(),
         farm_citations: m.farm_citations.clone(),
         pending_actions: Vec::new(),
+        blocks: m.blocks.clone(),
         interrupted: m.interrupted,
         created_at: m.created_at,
     }
@@ -146,9 +217,10 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
         s.stored.lock().unwrap().push(m);
         Ok(out)
     });
+    let history = setup.history;
     chats
         .expect_context()
-        .returning(|_, _| Ok((None, Vec::new())));
+        .returning(move |_, _| Ok((None, history.clone())));
     chats.expect_message_count().returning(|_| Ok(2));
 
     let mut usage = MockUsageRepo::new();
@@ -165,26 +237,6 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
         Ok(UsageTotals::default())
     });
 
-    let mut gardens = MockGardenRepo::new();
-    gardens.expect_garden().returning(|_| {
-        Ok(serde_json::from_value(json!({
-            "id": GARDEN, "name": "Back yard", "my_role": "editor",
-            "location_label": "Toronto", "location_precision": "about_1_km",
-            "time_zone": "America/Toronto", "soil_profile_status": "pending",
-            "member_count": 1, "created_at": "2026-10-01T00:00:00Z"
-        }))
-        .unwrap())
-    });
-    gardens
-        .expect_garden_context()
-        .returning(|_| Err(StoreError::Unavailable("offline".into())));
-    let mut plants = MockPlantRepo::new();
-    plants.expect_plants().returning(|_, _| {
-        Ok(Page {
-            items: Vec::new(),
-            next_cursor: None,
-        })
-    });
     let mut plan_repo = MockPlanRepo::new();
     plan_repo.expect_tasks().returning(|_, _, _| {
         Ok(Page {
@@ -192,9 +244,6 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
             next_cursor: None,
         })
     });
-    let mut maps = MockMapRepo::new();
-    maps.expect_map().returning(|_| Ok(None));
-
     let mut classifier = MockTextClassifier::new();
     let recorder = Arc::clone(&seen);
     let route_scores = setup.route_scores;
@@ -242,16 +291,16 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
             scans: Arc::new(MockScanRepo::new()),
             analysis: Arc::new(MockAnalysisRepo::new()),
             plans: Arc::new(plan_repo),
-            plants: Arc::new(plants),
-            gardens: Arc::new(gardens),
-            maps: Arc::new(maps),
+            plants: Arc::new(setup.plants),
+            gardens: Arc::new(setup.gardens),
+            maps: Arc::new(setup.maps),
             usage: Arc::new(usage),
-            weather_cache: Arc::new(MockWeatherCacheRepo::new()),
+            weather_cache: Arc::new(setup.weather_cache),
             farm: Arc::new(setup.farm),
         },
         memory: Arc::new(setup.memory),
         beliefs: Arc::new(domain::ports::NoBeliefs),
-        knowledge: Arc::new(MockKnowledgeStore::new()),
+        knowledge: Arc::new(setup.knowledge),
         chat: model.clone(),
         classifier: Arc::new(classifier),
         embedder,
@@ -711,7 +760,7 @@ async fn search_farm_records_is_offered_only_to_a_garden_with_farm_records() {
             offered,
             "{statuses:?}"
         );
-        assert_eq!(names.len(), if offered { 17 } else { 16 }, "{statuses:?}");
+        assert_eq!(names.len(), if offered { 18 } else { 17 }, "{statuses:?}");
     }
 }
 
@@ -839,7 +888,7 @@ async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
     assert_eq!(stored[1].farm_citations, [hit.citation]);
     assert_eq!(
         stored[1].prompt_version.as_deref(),
-        Some("chat/2026-10-20.6")
+        Some(crate::prompt::CHAT_PROMPT_VERSION)
     );
 
     // The records reach the model as farm_records data.
@@ -1353,3 +1402,5 @@ async fn farm_records_leave_an_off_topic_message_off_topic() {
     assert_eq!(started.route, ChatRoute::OffTopic);
     assert_eq!(model.sent()[0].purpose, ChatPurpose::OffTopic);
 }
+
+mod blocks;

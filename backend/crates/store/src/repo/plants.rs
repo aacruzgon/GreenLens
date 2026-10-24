@@ -6,10 +6,11 @@ use std::collections::BTreeMap;
 use chrono::{DateTime, Utc};
 use domain::{
     authz::{Editor, Membership, Viewer},
+    chat::BlockPlant,
     garden::plants::{GrowthQuantity, MeasurementPoint, TimelineEntry, UpdatePlantRequest},
     id::{GardenId, PlantId, ScanId, SpeciesId},
     jobs::PerceptionStage,
-    ports::{NewPlant, PlantRepo, RecentScan, SpeciesConfirmation, StoreError},
+    ports::{NewPlant, PlantRepo, PlantSummary, RecentScan, SpeciesConfirmation, StoreError},
     scan::{Plant, PlantStatus, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
     url::Stored,
     wire::{Confidence, Page, PageRequest, Run},
@@ -133,6 +134,14 @@ FROM scan WHERE plant = $plant AND deleting_at = NONE AND ($after = NONE OR [cre
 ORDER BY created_at DESC, scan_id DESC LIMIT $limit;";
     /// The cursor key of a scan in the timeline.
     pub const SCAN_CURSOR: &str = "SELECT VALUE [created_at, id] FROM ONLY $scan;";
+    /// Every live plant of a garden by name (index `plant_garden`), with the newest scan's
+    /// `plant_height_cm` of medium confidence or more (index `observation_growth`) and the
+    /// species only when it is confirmed, for an answer block.
+    pub const PLANT_SUMMARIES: &str = "SELECT id, name, status,
+  IF species_status = 'confirmed' { species } ELSE { NONE } AS species,
+  (SELECT VALUE measured_value FROM observation WHERE plant = $parent.id AND quantity = 'plant_height_cm'
+     AND retracted_at = NONE AND confidence >= 0.5 ORDER BY taken_at DESC, confidence DESC LIMIT 1)[0] AS height_cm
+FROM plant WHERE garden = $garden AND deleting_at = NONE ORDER BY name;";
     /// The growth series ([database 5] ✓ `observation_growth`, no sort step): current
     /// measurement observations of medium confidence or more, dated by their scan.
     pub const GROWTH_SERIES: &str = "SELECT scan, taken_at, quantity, measured_value, confidence FROM observation
@@ -178,6 +187,35 @@ pub struct GrowthRow {
     pub measured_value: f64,
     /// Its confidence.
     pub confidence: f64,
+}
+
+/// One plant of [`sql::PLANT_SUMMARIES`].
+#[derive(Debug, Clone, SurrealValue)]
+pub struct PlantSummaryRow {
+    /// The plant.
+    pub id: RecordId,
+    /// Its name.
+    pub name: String,
+    /// `healthy`, `watch`, `sick` or `dead`.
+    pub status: String,
+    /// Its species, only when confirmed.
+    pub species: Option<RecordId>,
+    /// The newest scan's height, cm.
+    pub height_cm: Option<f64>,
+}
+
+impl PlantSummaryRow {
+    fn into_summary(self) -> Result<PlantSummary, RowError> {
+        Ok(PlantSummary {
+            plant: BlockPlant {
+                plant_id: from_rid(&self.id)?,
+                name: self.name,
+                status: crate::rows::from_json("status", serde_json::Value::String(self.status))?,
+                height_cm: self.height_cm,
+            },
+            confirmed_species: from_opt_rid(self.species.as_ref())?,
+        })
+    }
 }
 
 /// One point per scan and quantity, the highest-confidence one, oldest first ([contracts 7],
@@ -558,6 +596,23 @@ impl PlantRepo for SurrealStore {
 
     async fn heights(&self, plant: PlantId) -> Result<Vec<MeasurementPoint>, StoreError> {
         self.growth(plant, &["plant_height_cm"]).await
+    }
+
+    async fn plant_summaries(
+        &self,
+        member: Membership<Viewer>,
+    ) -> Result<Vec<PlantSummary>, StoreError> {
+        const WHAT: &str = "plant summaries";
+        let mut r = run_tx(&self.db, sql::PLANT_SUMMARIES, |q| {
+            q.bind(("garden", rid(&member.garden())))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let rows: Vec<PlantSummaryRow> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
+        rows.into_iter()
+            .map(PlantSummaryRow::into_summary)
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.into_store(WHAT))
     }
 }
 

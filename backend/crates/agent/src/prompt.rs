@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 /// The chat system prompt's version.
-pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-20.6";
+pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-23.1";
 /// The plan writer's version.
 pub const PLAN_PROMPT_VERSION: &str = "plan/2026-10-23.1";
 /// The off-topic redirect's version.
@@ -91,6 +91,17 @@ pub fn chat_system() -> String {
          - Use request_rescan when a specific new photo would settle the question.\n\
          - Use remember for a fact about the plant or garden that will still matter later, \
          with the topic it is about.\n\n\
+         Answer blocks:\n\
+         - Use show_block only when a view helps more than words: the garden map, the days of a \
+         forecast or of a scan's weather, a frost planner, a plant's measured trend, or \
+         look-alikes side by side. Most answers need none.\n\
+         - A block shows one result of this answer: name that tool call by its call_id, after \
+         the call has returned. The server builds the block from the records; you choose only \
+         focus_plant_ids on a garden map.\n\
+         - Write the text so it stands alone without the block: give the facts that answer the \
+         question in words. The user sees the block with your answer, so never describe it as \
+         if they can't see it, and don't read its rows out.\n\
+         - If show_block is refused, answer in text.\n\n\
          Memory:\n\
          - The beliefs block holds the current shared facts about the plant and the garden, one \
          per key, the latest shared value of each, with the day it was learned. Memories carry \
@@ -485,7 +496,16 @@ mod tests {
         assert!(p.contains("say what was applied, to which bed or crop, and when"));
         assert!(p.contains("Never repeat a rate"));
         assert!(p.contains("only when the user's question is about that item"));
-        assert_eq!(CHAT_PROMPT_VERSION, "chat/2026-10-20.6");
+        assert_eq!(CHAT_PROMPT_VERSION, "chat/2026-10-23.1");
+    }
+
+    #[test]
+    fn the_chat_prompt_says_when_to_show_a_block_and_that_the_text_stands_alone() {
+        let p = chat_system();
+        assert!(p.contains("Use show_block only when a view helps more than words"));
+        assert!(p.contains("name that tool call by its call_id"));
+        assert!(p.contains("Write the text so it stands alone without the block"));
+        assert!(p.contains("never describe it as if they can't see it"));
     }
 
     /// EON gap G13: a refusal that names the unit beside any quantity fails the dose check, so
