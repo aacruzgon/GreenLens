@@ -208,6 +208,9 @@ pub trait DynTool: Send + Sync {
     fn needs_farm_records(&self) -> bool;
     /// The spec sent to the model.
     fn spec(&self) -> &ToolSpec;
+    /// The argument type's own JSON Schema, before a strict tool's properties are all made
+    /// required: which of them may be left out.
+    fn args_schema(&self) -> Value;
     /// Parses, dose-checks and runs a call.
     ///
     /// One lifetime `'a` for the tool, the context and the context's own borrows: the boxed
@@ -255,18 +258,30 @@ impl<T: Tool> Erased<T> {
 /// only its summary and no steps, and `create_task` never with a plant, a date or a repeat
 /// (live S5 checks, 2026-10-23). An optional argument is an `Option` (nullable in the schema)
 /// or a list (sent empty), so the model can always give "none"; the arguments still parse when
-/// one is missing.
-fn require_every_property(schema: &mut Value) {
-    match schema {
-        Value::Object(o) => {
-            if let Some(Value::Object(props)) = o.get("properties") {
-                let all = props.keys().cloned().map(Value::String).collect();
-                o.insert("required".to_owned(), Value::Array(all));
-            }
-            o.values_mut().for_each(require_every_property);
+/// one is missing. It walks only schema positions, as the adapter's `sanitize_schema` does, so
+/// a `default`, `const` or `examples` value that holds a `properties` key is left alone.
+pub(crate) fn require_every_property(schema: &mut Value) {
+    let Value::Object(o) = schema else {
+        return;
+    };
+    if let Some(Value::Object(props)) = o.get("properties") {
+        let all = props.keys().cloned().map(Value::String).collect();
+        o.insert("required".to_owned(), Value::Array(all));
+    }
+    for key in ["properties", "$defs", "definitions"] {
+        if let Some(Value::Object(map)) = o.get_mut(key) {
+            map.values_mut().for_each(require_every_property);
         }
-        Value::Array(a) => a.iter_mut().for_each(require_every_property),
-        _ => {}
+    }
+    for key in ["items", "additionalProperties", "not", "contains"] {
+        if let Some(child) = o.get_mut(key) {
+            require_every_property(child);
+        }
+    }
+    for key in ["anyOf", "allOf", "oneOf", "prefixItems"] {
+        if let Some(Value::Array(children)) = o.get_mut(key) {
+            children.iter_mut().for_each(require_every_property);
+        }
     }
 }
 
@@ -293,6 +308,10 @@ impl<T: Tool> DynTool for Erased<T> {
 
     fn spec(&self) -> &ToolSpec {
         &self.spec
+    }
+
+    fn args_schema(&self) -> Value {
+        serde_json::to_value(schemars::schema_for!(T::Args)).unwrap_or(Value::Null)
     }
 
     fn call<'a>(

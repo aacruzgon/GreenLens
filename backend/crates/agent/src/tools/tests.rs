@@ -334,15 +334,18 @@ fn strict_tool_schemas_require_every_property() {
 }
 
 /// What `require_every_property` makes required was optional in the arguments, so the model
-/// must be able to say "none": each such property is nullable or a list (sent empty). And the
-/// arguments still parse with those values, or with them missing.
+/// must be able to say "none": each such property of every write tool (from the registry, so a
+/// new write tool or field is covered) is nullable or a list (sent empty). And the arguments
+/// still parse with those values, or with them missing.
 #[test]
 fn strict_tools_optional_arguments_are_nullable_or_lists() {
-    let raw = [
-        serde_json::to_value(schemars::schema_for!(write::CreateTaskArgs)).unwrap(),
-        serde_json::to_value(schemars::schema_for!(write::CompleteTaskArgs)).unwrap(),
-        serde_json::to_value(schemars::schema_for!(revise::RevisePlanArgs)).unwrap(),
-    ];
+    let registry = ToolRegistry::standard();
+    let raw: Vec<(String, serde_json::Value)> = registry
+        .offered(Offer::everything(Role::Owner))
+        .filter(|t| t.kind() == ToolKind::Write)
+        .map(|t| (t.spec().name.clone(), t.args_schema()))
+        .collect();
+    assert_eq!(raw.len(), 3, "every write tool");
     let nullable = |s: &serde_json::Value| {
         s["type"] == "array"
             || s["type"]
@@ -354,7 +357,7 @@ fn strict_tools_optional_arguments_are_nullable_or_lists() {
     };
     let bad: Vec<String> = raw
         .iter()
-        .flat_map(|s| optional_properties(s, ""))
+        .flat_map(|(name, s)| optional_properties(s, name))
         .filter(|(_, s)| !nullable(s))
         .map(|(p, _)| p)
         .collect();
@@ -380,6 +383,65 @@ fn strict_tools_optional_arguments_are_nullable_or_lists() {
     }))
     .unwrap();
     assert_eq!(revise.constraints, Vec::<String>::new());
+}
+
+/// `require_every_property` changes schema positions only: a `default` (or `const`) value that
+/// holds a `properties` key is left as it was.
+#[test]
+fn require_every_property_walks_schema_positions_only() {
+    let mut schema = json!({
+        "type": "object",
+        "properties": {
+            "a": {"type": "string"},
+            "b": {"type": "object", "properties": {"c": {"type": "integer"}},
+                  "default": {"properties": {"x": 1}}}
+        },
+        "$defs": {"D": {"type": "object", "properties": {"e": {"type": "string"}}}}
+    });
+    require_every_property(&mut schema);
+    assert_eq!(schema["required"], json!(["a", "b"]));
+    assert_eq!(schema["properties"]["b"]["required"], json!(["c"]));
+    assert_eq!(schema["$defs"]["D"]["required"], json!(["e"]));
+    assert_eq!(
+        schema["properties"]["b"]["default"],
+        json!({"properties": {"x": 1}})
+    );
+}
+
+/// A required `detail` invites `""` for none: `create_task` stores a blank detail as none.
+#[tokio::test]
+async fn create_task_stores_a_blank_detail_as_none() {
+    use crate::testing::{GARDEN, garden_deps, now, owner};
+    let mut deps = garden_deps(
+        domain::ports::MockMemoryStore::new(),
+        std::sync::Arc::new(domain::ports::NoBeliefs),
+    );
+    let mut chats = domain::ports::MockChatRepo::new();
+    chats
+        .expect_create_pending_action()
+        .returning(|_, a| Ok(a.action));
+    deps.stores.chats = std::sync::Arc::new(chats);
+    let ctx = ToolCtx {
+        deps: &deps,
+        owner: owner(Role::Editor).await,
+        anchor: domain::chat::Anchor::Garden(GARDEN.parse().unwrap()),
+        plant: None,
+        message_id: "01JAX3K9T6R2B8V0QZ4M7D1E72".parse().unwrap(),
+        now: now(),
+    };
+    let args: write::CreateTaskArgs = serde_json::from_value(json!({
+        "title": "Water the tomato", "detail": "  ", "plant_id": null, "due": null,
+        "repeat_every_days": null
+    }))
+    .unwrap();
+    let out = write::CreateTask.run(&ctx, args).await.unwrap();
+    let Some(ToolEffect::PendingAction(card)) = out.effects.first() else {
+        panic!("a card")
+    };
+    let Preview::Task { task } = &card.preview else {
+        panic!("a task card")
+    };
+    assert_eq!(task.detail, None);
 }
 
 mod search_memory {
@@ -886,7 +948,7 @@ fn the_strict_tool_schemas_stay_inside_anthropics_budget() {
         );
     }
     assert!(cost.patterns <= 8, "{cost:?}");
-    assert!(cost.optional <= 12, "{cost:?}");
+    assert_eq!(cost.optional, 0, "{cost:?}");
     assert!(cost.unions <= 10, "{cost:?}");
 }
 
