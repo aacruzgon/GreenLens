@@ -10,6 +10,7 @@ mod connectors;
 mod fake_store;
 mod pending_actions;
 mod pipeline;
+mod scan_harness;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
