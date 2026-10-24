@@ -177,7 +177,7 @@ fn farm_citations_need_a_given_record_and_a_knowledge_source() {
     assert!(retry.contains("step s2: farm records are not sources"));
     assert!(v.steps.is_empty() && v.farm_records.is_empty());
 
-    // Ids that match the schema's pattern but aren't ids (a ULID past the 128 bits, a number
+    // Ids shaped like farm record ids that aren't ids (a ULID past the 128 bits, a number
     // with a leading zero) refuse the step, not the answer.
     for raw in [
         "ZZJAX3K9T6R2B8V0QZ4M7D1E5C.0.D_SPRAY",
