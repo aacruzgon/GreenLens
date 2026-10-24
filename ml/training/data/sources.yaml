@@ -166,6 +166,31 @@ datasets:
     ship: true
     use: species head and the trained plant probe
 
+  - name: plantseg
+    description: >-
+      PlantSeg, in-the-wild photos of diseased plants with pixel masks of their lesions; only the
+      spot-type leaf diseases of the head's crops (about 0.28 GB of a 1.06 GB zip), whose masks
+      fit the spot segmenter's colour thresholds
+    kind: zip_members
+    zips:
+      - url: https://zenodo.org/records/17719108/files/plantseg.zip?download=1   # 1,057,281,724 bytes, md5:9358a66dff88cdd15c4fe009763c40a3
+    include:
+      - '^plantseg/Metadata\.csv$'
+      - '^plantseg/(images|annotations)/(train|val|test)/(tomato_(bacterial_leaf_spot|early_blight|late_blight|septoria_leaf_spot|leaf_mold)|corn_(gray_leaf_spot|northern_leaf_blight|rust)|apple_(black_rot|rust|scab)|grape_(black_rot|leaf_spot|downy_mildew)|bell_pepper_(bacterial_spot|frogeye_leaf_spot|powdery_mildew)|(squash|zucchini)_(powdery_mildew|downy_mildew))_[^/]+\.(jpe?g|JPE?G|png)$'
+    url: https://zenodo.org/records/17719108
+    sha256: e91f8bb8c0cd1918228cfb178ac2a4d953c85a06f8cb88090404af7194274f8a   # SHA-256 of the sorted "path sha256" listing of its 3,903 members, per fetch.py
+    licence: >-
+      CC BY-NC 4.0 on this version, the latest of seven: Zenodo's versions of concept 13293890
+      say CC BY-NC-ND 4.0 (13293891, 13762907, 13924591, 13958858), CC BY 4.0 (14935094,
+      16665770) or CC BY-NC 4.0 (17719108), and GitHub says nothing (docs/vision/training.md 3).
+      Its photos are scraped from the web, and Metadata.csv names each one's page. Non-commercial:
+      fitting the spot thresholds only, never training data, and the photos are never republished.
+      Whether thresholds fitted on it may ship is part of D12 (#14)
+    citation: "Wei et al., PlantSeg: A Large-Scale In-the-wild Dataset for Plant Disease Segmentation, arXiv:2409.04038, 2024"
+    ship: false
+    use: spot colour thresholds (fitting only, never training data)
+    leakage: false   # neither training data nor evaluation cases: check_leakage skips it
+
   - name: coco_val2017
     description: COCO val2017, 5,000 images (about 778 MB); the source of photos with no plant for scoring the plant check
     kind: direct
