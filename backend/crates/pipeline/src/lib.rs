@@ -45,6 +45,7 @@ pub use entry::{PhotoInfo, SubmitOutcome};
 pub use error::PipelineError;
 pub use measure::{ImageMeasurer, MeasureFailed, MeasureRequest, MeasuredQuantity};
 pub use plan_author::PlanAuthor;
+pub use steps::plan::{PlanContext, PlanPorts, plan_context};
 pub use writer::{PlanGuard, ScanWriter};
 
 /// Tunables that the contracts leave to the evaluation set.

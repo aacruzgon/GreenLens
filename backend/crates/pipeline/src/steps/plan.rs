@@ -1,7 +1,7 @@
 //! The `plan` step ([contracts 3]: the plan writer; [contracts 7], action plan, re-planning,
 //! neighbours, steps to tasks; [database 4], plan writes: compare-and-set).
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use agent::{
     beliefs::current_beliefs,
@@ -14,7 +14,8 @@ use domain::{
     id::{OrganismId, SourceId, SpeciesId},
     knowledge::{OrganismSeed, SpeciesSeed},
     ports::{
-        Conflict, IdGenExt, NewMemory, PlanWrite, ScanSnapshot, StepClaim, StepOutput, StoreError,
+        BeliefStore, Conflict, IdGenExt, KnowledgeStore, MemoryStore, NewMemory, PlanWrite,
+        ScanSnapshot, StepClaim, StepOutput, Store, StoreError, TextEmbedder,
     },
     records::{
         diagnosis::{Diagnosis, DiagnosisStatus},
@@ -35,8 +36,11 @@ use crate::{
 /// `rescore_pending` is set) instead of holding it until the 5-minute sweep.
 const MAX_PLAN_ATTEMPTS: u32 = 3;
 
-/// What the plan writer reads, owned by the step so [`PlanInput<'_>`] can borrow it.
-struct PlanContext {
+/// What the plan writer reads for one scan, owned so [`PlanInput<'_>`] can borrow it: the
+/// step builds it with [`plan_context`], and so does `era-eval`, which writes a scan's plan with
+/// each candidate model without storing it (docs/EON E8.1).
+#[derive(Debug, Clone)]
+pub struct PlanContext {
     problems: Vec<domain::knowledge::ProblemSeed>,
     treatments: Vec<domain::knowledge::TreatmentSeed>,
     organisms: Vec<OrganismSeed>,
@@ -49,6 +53,177 @@ struct PlanContext {
     known_sources: Vec<SourceId>,
     /// The garden's farm records for this plan: empty without connectors.
     farm_records: Vec<FarmRecordHit>,
+}
+
+/// The ports [`plan_context`] reads, borrowed from their owner.
+#[derive(Clone, Copy)]
+pub struct PlanPorts<'p> {
+    /// The neighbours' map and plants, and the garden's farm records.
+    pub store: &'p dyn Store,
+    /// Problems, treatments, organisms, the species and the sources.
+    pub knowledge: &'p dyn KnowledgeStore,
+    /// The plant's and the garden's shared memories.
+    pub memory: &'p dyn MemoryStore,
+    /// Agent Memory; `NoBeliefs` when it isn't configured.
+    pub beliefs: &'p dyn BeliefStore,
+    /// The farm-record query's embedding.
+    pub embedder: &'p dyn TextEmbedder,
+    /// How long to wait for the beliefs ([`crate::PipelineConfig::beliefs_read_timeout`]).
+    pub beliefs_read_timeout: Duration,
+}
+
+impl std::fmt::Debug for PlanPorts<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlanPorts")
+            .field("beliefs_read_timeout", &self.beliefs_read_timeout)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PlanContext {
+    /// The plan writer's input for `snap`'s plant and `diagnosis`, borrowing this context.
+    /// `Inconsistent` when a private memory reached it (the store's `shared_for_plan` reads
+    /// shared memories only).
+    pub fn input<'k>(
+        &'k self,
+        snap: &'k ScanSnapshot,
+        diagnosis: &'k Diagnosis<Stored>,
+    ) -> Result<PlanInput<'k>, PipelineError> {
+        let memories = SharedMemories::new(&self.memories)
+            .map_err(|_| PipelineError::Inconsistent("a private memory reached the plan writer"))?;
+        Ok(PlanInput {
+            plant_name: &snap.plant.name,
+            species: self.species.as_ref(),
+            diagnosis,
+            problems: &self.problems,
+            treatments: &self.treatments,
+            organisms: &self.organisms,
+            memories,
+            beliefs: &self.beliefs,
+            constraints: &self.constraints,
+            neighbours: &self.neighbours,
+            open_question: snap.scan.open_question.as_ref(),
+            weather: snap.weather.as_ref(),
+            known_sources: &self.known_sources,
+            farm_records: &self.farm_records,
+        })
+    }
+}
+
+/// Everything the plan writer reads for `snap`'s plant and `diagnosis`: the plan's problems with
+/// their treatments, the organisms seen and targeted, the species, the shared memories, the
+/// plant's current beliefs, the constraints carried from the current plan, the neighbours, the
+/// sources a step may cite and the garden's farm records. [`PlanContext::input`] then borrows
+/// it. Reads only; writes nothing.
+pub async fn plan_context(
+    ports: PlanPorts<'_>,
+    snap: &ScanSnapshot,
+    diagnosis: &Diagnosis<Stored>,
+) -> Result<PlanContext, PipelineError> {
+    let k = ports.knowledge;
+    let problems = k.problems(&plan_problems(diagnosis)).await?;
+    let treatment_ids: Vec<_> = problems
+        .iter()
+        .flat_map(|p| p.treatments.iter().cloned())
+        .collect();
+    let treatments = k.treatments(&treatment_ids).await?;
+    let mut organism_ids: Vec<OrganismId> = diagnosis
+        .organisms
+        .iter()
+        .filter_map(|o| o.organism_id.clone())
+        .chain(problems.iter().flat_map(|p| p.caused_by.iter().cloned()))
+        .collect();
+    organism_ids.sort();
+    organism_ids.dedup();
+    let mut organisms: Vec<OrganismSeed> = Vec::new();
+    for id in &organism_ids {
+        organisms.extend(k.organism(id).await?);
+    }
+    let species: Option<SpeciesSeed> = match &snap.working_species {
+        Some(s) => k.species(s).await?,
+        None => None,
+    };
+    // The belief read and the farm-record search run beside the memory read and never fail:
+    // Agent Memory off, down or slower than its timeout gives no beliefs, and a garden
+    // without farm records, or a failed or slow search, gives no records ([connectors 7]);
+    // the plan is written without them.
+    let farm_query = farm_query(&snap.plant.name, diagnosis);
+    let (memories, beliefs, farm_records) = tokio::join!(
+        ports.memory.shared_for_plan(snap.garden.id, snap.plant.id),
+        current_beliefs(
+            ports.beliefs,
+            snap.garden.id,
+            Some(snap.plant.id),
+            ports.beliefs_read_timeout,
+        ),
+        plan_farm_records(
+            ports.store,
+            ports.embedder,
+            snap.garden.id,
+            &farm_query,
+            FARM_SEARCH_TIMEOUT,
+        ),
+    );
+    let memories = memories?;
+    let constraints = snap
+        .plan
+        .as_ref()
+        .map(|p| p.constraints.clone())
+        .unwrap_or_default();
+
+    // Neighbours from the current map ([contracts 7]): healthy diagnoses get none.
+    let neighbours = if diagnosis.status == DiagnosisStatus::Healthy || snap.garden.map_version == 0
+    {
+        Vec::new()
+    } else if let Some(map) = ports.store.current_map(snap.garden.id).await? {
+        let plants = ports.store.garden_plants(snap.garden.id).await?;
+        let mut names: Vec<(SpeciesId, String)> = Vec::new();
+        for p in &plants {
+            if let Some(s) = &p.species
+                && !names.iter().any(|(id, _)| id == &s.id)
+            {
+                names.push((s.id.clone(), s.common_name.clone()));
+            }
+        }
+        let views: Vec<NeighbourPlant<'_>> = plants
+            .iter()
+            .map(|p| {
+                let species = p.species.as_ref().map(|s| &s.id);
+                NeighbourPlant {
+                    plant: p,
+                    species,
+                    species_name: p.species.as_ref().map(|s| s.common_name.as_str()),
+                }
+            })
+            .collect();
+        let refs: Vec<_> = problems.iter().collect();
+        neighbours(snap.plant.id, &map.pins, &views, &refs)
+    } else {
+        Vec::new()
+    };
+
+    let mut known_sources: Vec<SourceId> = problems
+        .iter()
+        .flat_map(|p| p.sources.iter().cloned())
+        .chain(treatments.iter().flat_map(|t| t.sources.iter().cloned()))
+        .chain(organisms.iter().flat_map(|o| o.sources.iter().cloned()))
+        .chain(species.iter().flat_map(|s| s.sources.iter().cloned()))
+        .collect();
+    known_sources.sort();
+    known_sources.dedup();
+
+    Ok(PlanContext {
+        problems,
+        treatments,
+        organisms,
+        species,
+        memories,
+        beliefs,
+        constraints,
+        neighbours,
+        known_sources,
+        farm_records,
+    })
 }
 
 impl Pipeline {
@@ -90,10 +265,6 @@ impl Pipeline {
         self.commit(claim, StepOutput::Release).await
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "a step reads top to bottom in the order of its contract section"
-    )]
     async fn write_plan(
         &self,
         claim: StepClaim,
@@ -107,25 +278,8 @@ impl Pipeline {
         self.emit(snap.scan.id, run, vec![started(Stage::Plan)])
             .await?;
 
-        let ctx = self.plan_context(snap, diagnosis).await?;
-        let memories = SharedMemories::new(&ctx.memories)
-            .map_err(|_| PipelineError::Inconsistent("a private memory reached the plan writer"))?;
-        let input = PlanInput {
-            plant_name: &snap.plant.name,
-            species: ctx.species.as_ref(),
-            diagnosis,
-            problems: &ctx.problems,
-            treatments: &ctx.treatments,
-            organisms: &ctx.organisms,
-            memories,
-            beliefs: &ctx.beliefs,
-            constraints: &ctx.constraints,
-            neighbours: &ctx.neighbours,
-            open_question: snap.scan.open_question.as_ref(),
-            weather: snap.weather.as_ref(),
-            known_sources: &ctx.known_sources,
-            farm_records: &ctx.farm_records,
-        };
+        let ctx = plan_context(self.plan_ports(), snap, diagnosis).await?;
+        let input = ctx.input(snap, diagnosis)?;
         let written = match self.deps.plan_author.write_plan(&input).await {
             Ok(w) => w,
             Err(e) if snap.plan.is_none() && snap.scan.status == ScanStatus::Diagnosed => {
@@ -217,121 +371,16 @@ impl Pipeline {
         Ok(next)
     }
 
-    /// Everything the plan writer reads, owned for the step: the plan's problems with their
-    /// treatments, the organisms seen and targeted, the species, the shared memories, the
-    /// constraints carried from the current plan, the neighbours, the sources a step may cite
-    /// and the garden's farm records. [`PlanInput`] then borrows it.
-    async fn plan_context(
-        &self,
-        snap: &ScanSnapshot,
-        diagnosis: &Diagnosis<Stored>,
-    ) -> Result<PlanContext, PipelineError> {
-        let k = &self.deps.knowledge;
-        let problems = k.problems(&plan_problems(diagnosis)).await?;
-        let treatment_ids: Vec<_> = problems
-            .iter()
-            .flat_map(|p| p.treatments.iter().cloned())
-            .collect();
-        let treatments = k.treatments(&treatment_ids).await?;
-        let mut organism_ids: Vec<OrganismId> = diagnosis
-            .organisms
-            .iter()
-            .filter_map(|o| o.organism_id.clone())
-            .chain(problems.iter().flat_map(|p| p.caused_by.iter().cloned()))
-            .collect();
-        organism_ids.sort();
-        organism_ids.dedup();
-        let mut organisms: Vec<OrganismSeed> = Vec::new();
-        for id in &organism_ids {
-            organisms.extend(k.organism(id).await?);
+    /// The ports [`plan_context`] reads, from the pipeline's.
+    fn plan_ports(&self) -> PlanPorts<'_> {
+        PlanPorts {
+            store: self.deps.store.as_ref(),
+            knowledge: self.deps.knowledge.as_ref(),
+            memory: self.deps.memory.as_ref(),
+            beliefs: self.deps.beliefs.as_ref(),
+            embedder: self.deps.embedder.as_ref(),
+            beliefs_read_timeout: self.deps.config.beliefs_read_timeout,
         }
-        let species: Option<SpeciesSeed> = match &snap.working_species {
-            Some(s) => k.species(s).await?,
-            None => None,
-        };
-        // The belief read and the farm-record search run beside the memory read and never fail:
-        // Agent Memory off, down or slower than its timeout gives no beliefs, and a garden
-        // without farm records, or a failed or slow search, gives no records ([connectors 7]);
-        // the plan is written without them.
-        let farm_query = farm_query(&snap.plant.name, diagnosis);
-        let (memories, beliefs, farm_records) = tokio::join!(
-            self.deps
-                .memory
-                .shared_for_plan(snap.garden.id, snap.plant.id),
-            current_beliefs(
-                self.deps.beliefs.as_ref(),
-                snap.garden.id,
-                Some(snap.plant.id),
-                self.deps.config.beliefs_read_timeout,
-            ),
-            plan_farm_records(
-                self.deps.store.as_ref(),
-                self.deps.embedder.as_ref(),
-                snap.garden.id,
-                &farm_query,
-                FARM_SEARCH_TIMEOUT,
-            ),
-        );
-        let memories = memories?;
-        let constraints = snap
-            .plan
-            .as_ref()
-            .map(|p| p.constraints.clone())
-            .unwrap_or_default();
-
-        // Neighbours from the current map ([contracts 7]): healthy diagnoses get none.
-        let neighbours =
-            if diagnosis.status == DiagnosisStatus::Healthy || snap.garden.map_version == 0 {
-                Vec::new()
-            } else if let Some(map) = self.deps.store.current_map(snap.garden.id).await? {
-                let plants = self.deps.store.garden_plants(snap.garden.id).await?;
-                let mut names: Vec<(SpeciesId, String)> = Vec::new();
-                for p in &plants {
-                    if let Some(s) = &p.species
-                        && !names.iter().any(|(id, _)| id == &s.id)
-                    {
-                        names.push((s.id.clone(), s.common_name.clone()));
-                    }
-                }
-                let views: Vec<NeighbourPlant<'_>> = plants
-                    .iter()
-                    .map(|p| {
-                        let species = p.species.as_ref().map(|s| &s.id);
-                        NeighbourPlant {
-                            plant: p,
-                            species,
-                            species_name: p.species.as_ref().map(|s| s.common_name.as_str()),
-                        }
-                    })
-                    .collect();
-                let refs: Vec<_> = problems.iter().collect();
-                neighbours(snap.plant.id, &map.pins, &views, &refs)
-            } else {
-                Vec::new()
-            };
-
-        let mut known_sources: Vec<SourceId> = problems
-            .iter()
-            .flat_map(|p| p.sources.iter().cloned())
-            .chain(treatments.iter().flat_map(|t| t.sources.iter().cloned()))
-            .chain(organisms.iter().flat_map(|o| o.sources.iter().cloned()))
-            .chain(species.iter().flat_map(|s| s.sources.iter().cloned()))
-            .collect();
-        known_sources.sort();
-        known_sources.dedup();
-
-        Ok(PlanContext {
-            problems,
-            treatments,
-            organisms,
-            species,
-            memories,
-            beliefs,
-            constraints,
-            neighbours,
-            known_sources,
-            farm_records,
-        })
     }
 
     /// The pipeline's memory after a scan ([architecture 7], memory): a short summary,

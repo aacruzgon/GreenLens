@@ -50,6 +50,9 @@ pub struct Question {
     /// Chat (absent) or the plan writer's plan.
     #[serde(default)]
     pub target: Target,
+    /// With `target = "plan"`: the `garden.json` scan whose plan the writer writes.
+    #[serde(default)]
+    pub scan: Option<String>,
     /// What kind of fact the answer is.
     pub kind: Kind,
     /// The expected fact; empty for `refusal` and `behaviour`.
@@ -122,7 +125,7 @@ pub enum Target {
     /// A chat answer.
     #[default]
     Chat,
-    /// The plan writer's plan (E5.4).
+    /// The plan writer's plan for the question's `scan` (E5.4, E8.1).
     Plan,
 }
 
