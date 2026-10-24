@@ -2765,3 +2765,41 @@ async fn chat_usage_adds_raw_counts_and_the_budget_weight() {
     );
     assert_eq!(store.usage(f.user, day).await.unwrap(), after);
 }
+
+/// A usage row from before `chat_budget` existed, as the deployment had on 2026-10-24: the
+/// next scan writes it and its budget reads 0. Only a write that doesn't set the field could
+/// fail; a chat's `chat_budget += n` sets it, so it passed even before `DEFAULT ALWAYS`.
+#[tokio::test]
+async fn a_usage_row_from_before_chat_budget_takes_the_next_scan() {
+    use domain::ports::UsageRepo;
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let day = t0().utc_day();
+    exec(
+        &store,
+        "REMOVE FIELD chat_budget ON usage_daily; UPDATE usage_daily UNSET chat_budget;",
+    )
+    .await;
+    store::apply_schema_with(store.db()).await.unwrap();
+    let mut r = exec(&store, "SELECT VALUE chat_budget FROM usage_daily;").await;
+    assert_eq!(
+        r.take::<Vec<Option<i64>>>(0).unwrap(),
+        vec![None],
+        "the row has no chat_budget"
+    );
+
+    store
+        .create_scan(
+            f.editor,
+            domain::ports::NewScan {
+                id: f.ids.id(),
+                plant: domain::ports::NewScanPlant::Existing(f.plant),
+                created_by: f.user,
+                created_at: t0(),
+            },
+        )
+        .await
+        .expect("the scan's usage write");
+    let after = store.usage(f.user, day).await.unwrap();
+    assert_eq!((after.scans, after.chat_budget), (2, 0));
+}
