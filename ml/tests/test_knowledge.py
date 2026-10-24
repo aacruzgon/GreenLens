@@ -111,6 +111,7 @@ def test_label_set_version_matches_the_formats_vector():
      "'neem oil' is listed 2 times"),
     (lambda s: s.chunks[0].update(id="other_source.1"), "must be <source_id>.<n>"),
     (lambda s: by_id(s.species, 'tomato').update(sources=["nowhere"]), "source 'nowhere' is not a known source"),
+    (lambda s: s.soil_conditions[0].update(value="mold"), "'mold' isn't a"),
 ])
 def test_each_check_fails(seed, break_it, expected):
     break_it(seed)
