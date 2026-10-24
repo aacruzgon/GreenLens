@@ -234,9 +234,10 @@ fn score(p: f64) -> f64 {
     }
 }
 
-/// The answers as per-label scores, highest first. Only the labels asked count; a label whose
-/// answer is missing or of another type scores 0, like a label the LLM leaves out. `None` when
-/// no label was answered at all.
+/// The answers as per-label scores, highest first. Only the labels asked count, and every one
+/// of them must be answered with the type asked: `None` otherwise, which the caller reports as
+/// `InvalidOutput` and the router routes as a care question. Scoring a missing label 0 could
+/// let a lone `off_topic` answer win and skip the safety route.
 fn scores(task: ClassifierTask, answers: &BTreeMap<String, Answer>) -> Option<Vec<LabelScore>> {
     let noul = |label: &str| match answers.get(label) {
         Some(Answer::Noul { noul }) => Some(score(*noul)),
@@ -249,16 +250,15 @@ fn scores(task: ClassifierTask, answers: &BTreeMap<String, Answer>) -> Option<Ve
             } else {
                 &ROUTE_LABELS
             };
-            if !labels.iter().any(|l| noul(l).is_some()) {
-                return None;
-            }
             labels
                 .iter()
-                .map(|l| LabelScore {
-                    label: (*l).to_owned(),
-                    score: noul(l).unwrap_or(0.0),
+                .map(|l| {
+                    noul(l).map(|score| LabelScore {
+                        label: (*l).to_owned(),
+                        score,
+                    })
                 })
-                .collect()
+                .collect::<Option<_>>()?
         }
         ClassifierTask::MemoryWorthy => {
             let [remember, skip] = MEMORY_LABELS;
@@ -280,11 +280,13 @@ fn scores(task: ClassifierTask, answers: &BTreeMap<String, Answer>) -> Option<Ve
             };
             TOPIC_LABELS
                 .iter()
-                .map(|l| LabelScore {
-                    label: (*l).to_owned(),
-                    score: probabilities.get(*l).copied().map_or(0.0, score),
+                .map(|l| {
+                    probabilities.get(*l).map(|p| LabelScore {
+                        label: (*l).to_owned(),
+                        score: score(*p),
+                    })
                 })
-                .collect()
+                .collect::<Option<_>>()?
         }
     };
     out.sort_by(|a, b| b.score.total_cmp(&a.score));
@@ -460,6 +462,9 @@ mod tests {
                 ("farm_records", 0.97),
                 ("safety_sensitive", 0.1),
                 ("off_topic", 0.2),
+                ("care_question", 0.0),
+                ("diagnosis_question", 0.0),
+                ("task_change", 0.0),
             ])))
             .expect(1)
             .mount(&server)
@@ -472,9 +477,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(s[0].label, "farm_records");
-        // Every label asked is scored; the unanswered ones 0.
         assert_eq!(s.len(), FARM_ROUTE_LABELS.len());
-        assert!(s[3..].iter().all(|l| l.score == 0.0));
         let body = sent_body(&server).await;
         let questions = &body["questions"];
         assert_eq!(questions.as_object().unwrap().len(), 6);
@@ -535,7 +538,8 @@ mod tests {
                     "type": "choice",
                     "choice": "management",
                     "confidence": 0.7,
-                    "probabilities": {"symptoms": 0.1, "management": 0.8, "care": 0.1},
+                    "probabilities": {"symptoms": 0.1, "conditions": 0.0, "management": 0.8,
+                                      "care": 0.1, "recognition": 0.0},
                 }},
                 "usage": {"input_tokens": 400, "output_tokens": 10},
             })))
@@ -563,26 +567,69 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unasked_and_odd_answers_do_not_count() {
+    async fn unasked_answers_are_dropped_and_probabilities_clamped() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "model": DEFAULT_MODEL,
-                "answers": {
-                    "farm_records": {"type": "noul", "noul": 0.99},
-                    "care_question": {"type": "noul", "noul": 1.4},
-                    "off_topic": {"type": "score", "score": 1.0, "confidence": 1.0,
-                                  "legend": {}, "probabilities": {}},
-                },
-                "usage": {"input_tokens": 1, "output_tokens": 1},
-            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(nouls(&[
+                ("farm_records", 0.99),
+                ("care_question", 1.4),
+                ("diagnosis_question", -0.2),
+                ("task_change", 0.1),
+                ("safety_sensitive", 0.1),
+                ("off_topic", 0.1),
+            ])))
             .mount(&server)
             .await;
         let s = jev(&server).classify(ROUTE, "any notes?").await.unwrap();
         assert!(s.iter().all(|l| l.label != "farm_records"));
         assert_eq!(s[0].label, "care_question");
         assert!((s[0].score - 1.0).abs() < f64::EPSILON);
-        assert!(s[1..].iter().all(|l| l.score == 0.0));
+        assert_eq!(s.last().unwrap().score, 0.0);
+    }
+
+    /// A partial answer must not route: scoring the missing labels 0 would send a poisoning
+    /// message off-topic on a lone `off_topic` answer, skipping the safety route.
+    #[tokio::test]
+    async fn a_partial_or_mistyped_answer_is_invalid_output() {
+        let mut full: Vec<(&str, f64)> = ROUTE_LABELS.iter().map(|l| (*l, 0.1)).collect();
+        let score_typed = {
+            let mut body = nouls(&full);
+            body["answers"]["safety_sensitive"] = json!({"type": "score", "score": 1.0,
+                "confidence": 1.0, "legend": {}, "probabilities": {}});
+            body
+        };
+        full.retain(|(l, _)| *l == "off_topic");
+        for body in [nouls(&full), score_typed] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
+            let e = jev(&server)
+                .classify(ROUTE, "My dog ate some slug pellets")
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(e, ModelError::InvalidOutput { model: "jev", .. }),
+                "{e:?}"
+            );
+        }
+        // A topic choice missing a topic is invalid too.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "model": DEFAULT_MODEL,
+                "answers": {"topic": {"type": "choice", "choice": "care", "confidence": 0.9,
+                                      "probabilities": {"care": 0.9}}},
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            })))
+            .mount(&server)
+            .await;
+        let e = jev(&server)
+            .classify(ClassifierTask::ChunkTopic, "Water deeply.")
+            .await
+            .unwrap_err();
+        assert!(matches!(e, ModelError::InvalidOutput { model: "jev", .. }));
     }
 
     #[tokio::test]
