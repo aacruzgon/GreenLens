@@ -3,6 +3,7 @@
 
 use crate::{
     authz::{Editor, Membership, Viewer},
+    chat::BlockPlant,
     garden::plants::{GrowthQuantity, MeasurementPoint, TimelineEntry, UpdatePlantRequest},
     id::{GardenId, PlantId, ScanId, SpeciesId},
     ports::StoreError,
@@ -43,6 +44,16 @@ pub struct SpeciesConfirmation {
     pub plant: Plant<Stored>,
     /// Its most recent live scan.
     pub recent_scan: Option<RecentScan>,
+}
+
+/// A live plant as an answer block shows it, with its species for the frost planner
+/// ([contracts 8], answer blocks).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlantSummary {
+    /// Its id, name, status and latest height.
+    pub plant: BlockPlant,
+    /// Its working species, suggested or confirmed.
+    pub species: Option<SpeciesId>,
 }
 
 /// The `plant` table and the reads built on it.
@@ -144,4 +155,12 @@ pub trait PlantRepo: Send + Sync {
 
     /// The plant's whole height series, for fusion's `growth_stalled` rule.
     async fn heights(&self, plant: PlantId) -> Result<Vec<MeasurementPoint>, StoreError>;
+
+    /// Every live plant of the member's garden, by name, with its latest `plant_height_cm`
+    /// point (the newest scan's, of medium confidence or more), in one read: what an answer
+    /// block fills in ([contracts 8], answer blocks).
+    async fn plant_summaries(
+        &self,
+        member: Membership<Viewer>,
+    ) -> Result<Vec<PlantSummary>, StoreError>;
 }
