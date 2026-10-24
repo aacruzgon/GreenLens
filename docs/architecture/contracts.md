@@ -1,6 +1,6 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.11.3, 2026-10-24. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.11.4, 2026-10-24. Companion to the [architecture document](README.md).
 > **v0.11.4**: the disease classifier's call counts in a candidate's score as `CandidateScore.classifier_weight` (3 at high confidence, 2 at medium), and `confirmed` needs at least one matched indicator, so the classifier ranks but never confirms alone (section 7); open questions 3 (the margin stays 2) and 29 (a plan-writer outage on a first plan fails the scan) are settled in backend roadmap S4.
 > **v0.11.3**: answer blocks: each tool result's `data` element carries its `call_id`, the id `show_block` names, and `call_id` may name the tool when it ran once with success in the turn (section 8, answer blocks); live, the model never saw an id and named the tool, so no block ever showed; no wire change.
 > **v0.11.2**: the write tools (`create_task`, `complete_task`, `revise_plan`) are sent to the model under strict tool use with every argument required, so `null`, or `[]` for a list, means none (section 8, tool return shapes); the live S5 checks found the hosted model never filled an optional argument; no wire change.
