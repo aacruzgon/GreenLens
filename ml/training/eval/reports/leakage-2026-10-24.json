@@ -1,0 +1,2550 @@
+{
+  "date": "2026-10-24",
+  "manifest": "ml/training/eval/manifest.jsonl",
+  "manifest_sha256": "938ea08deba81f37c379f266d27f760276549a29fd712080a16923255c72aaf3",
+  "photos": 359,
+  "training_images": 61591,
+  "training_images_by_folder": {
+    "coco_train2017_bg": 852,
+    "coco_train2017_holdout": 1000,
+    "coco_train2017_probe": 1770,
+    "coco_val2017": 5000,
+    "ibean": 1295,
+    "inat_species": 2605,
+    "maize_makerere": 10605,
+    "maize_pretoria": 1270,
+    "plantcity": 14321,
+    "plantdoc_cls": 2579,
+    "plantdoc_det": 2596,
+    "tom2024": 10498,
+    "tomato_pakistan_2026": 7200
+  },
+  "unreadable_training_images": [],
+  "hamming_max": 4,
+  "cosine_min": 0.98,
+  "matches": [
+    {
+      "photo": "inat/389981240-714407985.jpg",
+      "training": "inat_species/tomato/113989783-192529074.jpg",
+      "hamming": 24,
+      "cosine": 0.9832,
+      "allowed": true
+    }
+  ],
+  "per_photo": [
+    {
+      "photo": "commons/2021-11-05-11-52-19-tomato-plants-killed-by-frost-along-indale-court-in-the-franklin-farm-section-of-oak-hill-fairfax-county-virginia.jpg",
+      "nearest_hash": "tom2024/maize_diseases/Virosis-D/1646213625_1661329845325.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/tomato/45612312-72332700.jpg",
+      "cosine": 0.9317
+    },
+    {
+      "photo": "commons/2021-11-06-15-02-37-pepper-plants-killed-by-frost-along-old-dairy-court-in-the-franklin-farm-section-of-oak-hill-fairfax-county-virginia.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621759003200.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/pepper/245285650-437665381.jpg",
+      "cosine": 0.9055
+    },
+    {
+      "photo": "commons/2021-11-06-15-02-46-tomato-plants-killed-by-frost-along-old-dairy-court-in-the-franklin-farm-section-of-oak-hill-fairfax-county-virginia.jpg",
+      "nearest_hash": "inat_species/pepper/70655714-114904319.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/tomato/276650480-496789264.jpg",
+      "cosine": 0.9419
+    },
+    {
+      "photo": "commons/5411486-ppt-suncald-on-exposed-bell-pepper-fruit.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000114871.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/138578354-236878994.jpg",
+      "cosine": 0.9325
+    },
+    {
+      "photo": "commons/apple-hail-damage10b.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621753728678.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple leaf/Apple-Leaves-Diabetes.jpg",
+      "cosine": 0.9686
+    },
+    {
+      "photo": "commons/blossomendrot.jpg",
+      "nearest_hash": "inat_species/gourds/63845638-102538235.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/Blossom_end_rot_d/1356945245_1660910156937.jpg",
+      "cosine": 0.8977
+    },
+    {
+      "photo": "commons/grape-leaf-showing-nutrient-deficiency.jpg",
+      "nearest_hash": "inat_species/gourds/231754485-411650662.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/piano%20gully%20spray%20seed%20damage%2006%20%289%29.JPG.jpg",
+      "cosine": 0.919
+    },
+    {
+      "photo": "commons/hagelschaden-maisblatt.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621682920270.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/MLB_2/1621692047705.jpg",
+      "cosine": 0.9619
+    },
+    {
+      "photo": "commons/hagelschaden-maisfeld.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000071226.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/corn/52860551-84051130.jpg",
+      "cosine": 0.9117
+    },
+    {
+      "photo": "commons/hail-damage-on-tomatoes-2634477599.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000223182.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/healthy_fruit/657773140_1660066966130.jpg",
+      "cosine": 0.9441
+    },
+    {
+      "photo": "commons/hail-damage-on-tomatoes.jpg",
+      "nearest_hash": "plantcity/test/tomato_bacterial_spot/tomato_301.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf yellow virus/1342017-162221-44540.jpg",
+      "cosine": 0.9576
+    },
+    {
+      "photo": "commons/k-deficient-maize-on-cedara-2-2003-01-13.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/534ddf3a932e62dd929a3ac1b29bfa29_jpg.rf.8f587ec1873456dc3184fe45d24204b5_aug_209.jpg",
+      "hamming": 10,
+      "nearest_cosine": "maize_pretoria/NCLB/IMG_20190227_112759.jpg",
+      "cosine": 0.9514
+    },
+    {
+      "photo": "commons/mg-deficiency-vulindlela-1995-3-30-2018-01-23-2235.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls12_hight_aug_272.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/Healthy_2/1622093626662.jpg",
+      "cosine": 0.9422
+    },
+    {
+      "photo": "commons/tomate-blatt-kalimangel.jpg",
+      "nearest_hash": "ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.19.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_leaf_mold/tomato_885.jpg",
+      "cosine": 0.9153
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot1052.jpg",
+      "nearest_hash": "plantcity/test/tomato_healthy_leaf/tomato_069.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_916.jpg",
+      "cosine": 0.92
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot113.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000411754.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_leaf_mold/tomato_360.jpg",
+      "cosine": 0.8838
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot1143.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000328959.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_septoria_leaf/tomato_863.jpg",
+      "cosine": 0.9043
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot1297.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Potato leaf early blight/IMG_0022.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_septoria_leaf/tomato_867.jpg",
+      "cosine": 0.8842
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot1544.jpg",
+      "nearest_hash": "plantcity/test/tomato_early_blight/45.JPG",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf/Bacterial-leaf-spot-transplants1.jpg",
+      "cosine": 0.9053
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot1693.jpg",
+      "nearest_hash": "coco_train2017_probe/000000173580.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/leaf_mold_tomato5x1200_jpg.rf.b37de3a21105576e1884690598ae0b61_aug_1186.jpg",
+      "cosine": 0.9064
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot1738.jpg",
+      "nearest_hash": "plantcity/test/tomato_septoria_leaf/tomato_315.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_leaf_mold/tomato_1057.jpg",
+      "cosine": 0.9134
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot1741.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/car-apple9.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_1284.jpg",
+      "cosine": 0.8985
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot1804.jpg",
+      "nearest_hash": "inat_species/cacti/307121421-553917311.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_early_blight/tomato_475.jpg",
+      "cosine": 0.9068
+    },
+    {
+      "photo": "fieldsets/ccmt-2023/septoria-leaf-spot/septoria-leaf-spot1910-ko9m8s.jpg",
+      "nearest_hash": "inat_species/grape/98220163-163488604.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato Early blight leaf/Tomato-blight-large.jpg",
+      "cosine": 0.8765
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/common-rust/img-202.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000006421.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/MLB_1/1621320186721.jpg",
+      "cosine": 0.8879
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/common-rust/img-234.jpg",
+      "nearest_hash": "maize_pretoria/GLS/2012_03_DSC1783_maize_diverse-C-AC-DK-273.JPG",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/Healthy_2/1622093596564.jpg",
+      "cosine": 0.9342
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/common-rust/img-250.jpg",
+      "nearest_hash": "inat_species/apple/228066739-404626810.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_pretoria/GLS/2012_03_IMG_6283_maize_diverse JM-C-Ac.JPG",
+      "cosine": 0.8984
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/common-rust/img-261.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000476770.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/maize_diseases/Abiotic_disease-D/918415943_1659948453903.jpg",
+      "cosine": 0.8298
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/common-rust/img-284.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621583661594.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1024112157_1661783742715.jpg",
+      "cosine": 0.8904
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/common-rust/img-928.jpg",
+      "nearest_hash": "coco_train2017_bg/000000446881.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Corn rust leaf/disease.JPG.jpg",
+      "cosine": 0.9273
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/common-rust/img-946.jpg",
+      "nearest_hash": "coco_train2017_bg/000000344033.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_pretoria/GLS/152_CIMG3888_1-10-2.JPG",
+      "cosine": 0.9331
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/common-rust/img-960.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/alternaria_d/1658139063_1659978983497.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_pretoria/GLS/49_CIMG3784_1-70-2.JPG",
+      "cosine": 0.9287
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/corn-leaf-blight/img-552.jpg",
+      "nearest_hash": "inat_species/apple/264745210-475424752.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/MLB_2/1621669842136.jpg",
+      "cosine": 0.9127
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/corn-leaf-blight/img-560.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621421424027.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/Healthy_1/1621588337555.jpg",
+      "cosine": 0.9164
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/corn-leaf-blight/img-597.jpg",
+      "nearest_hash": "coco_train2017_bg/000000363640.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_pretoria/NoFoliarSymptoms/2012_03_DSC1748_maize_diverse-C-AC-DK-273.JPG",
+      "cosine": 0.9204
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/corn-leaf-blight/img-649.jpg",
+      "nearest_hash": "inat_species/corn/154739457-267382070.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Healthy_leaf/2077842617_1677152278402_640x480.jpg",
+      "cosine": 0.853
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/corn-leaf-blight/img-680.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000540816.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/MLB_2/1622019220141.jpg",
+      "cosine": 0.9379
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/corn-leaf-blight/img-700.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621326250324.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_pretoria/NoFoliarSymptoms/2019-03-13--Cedara-(DKB)-DSC_0243.JPG",
+      "cosine": 0.9239
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/corn-leaf-blight/img-977.jpg",
+      "nearest_hash": "coco_train2017_bg/000000011316.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_pretoria/GLS/2012_03_DSC1700_maize_diverse-C-AC-DK-273.JPG",
+      "cosine": 0.8609
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/gray-leaf-spot/img-410.jpg",
+      "nearest_hash": "inat_species/mints/317308750-573358347.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_pretoria/NoFoliarSymptoms/2012_03_DSC1748_maize_diverse-C-AC-DK-273.JPG",
+      "cosine": 0.8596
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/gray-leaf-spot/img-467.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls41_hight_aug_514.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/MLB_2/1621844077394.jpg",
+      "cosine": 0.9504
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/gray-leaf-spot/img-487.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000216516.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_pretoria/GLS/79_CIMG3814_1-381-2.JPG",
+      "cosine": 0.93
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/gray-leaf-spot/img-498.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000550939.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/MLB_2/1621844077394.jpg",
+      "cosine": 0.913
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/gray-leaf-spot/img-500.jpg",
+      "nearest_hash": "coco_train2017_probe/000000247925.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/Healthy_2/1621669168393.jpg",
+      "cosine": 0.8904
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-100.jpg",
+      "nearest_hash": "inat_species/corn/188019584-328951333.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_pretoria/NoFoliarSymptoms/2012_03_DSC1748_maize_diverse-C-AC-DK-273.JPG",
+      "cosine": 0.871
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-2.jpg",
+      "nearest_hash": "coco_train2017_bg/000000156416.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/Healthy_1/1621330056254.jpg",
+      "cosine": 0.9044
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-20.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000479912.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/Healthy_2/1621669168393.jpg",
+      "cosine": 0.9341
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-28.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621499065013.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/Healthy_1/1621499273047.jpg",
+      "cosine": 0.9364
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-35.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621852106538.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/Healthy_1/1621338752118.jpg",
+      "cosine": 0.9337
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-41.jpg",
+      "nearest_hash": "inat_species/gourds/190758707-334480770.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Healthy_leaf/1627549372_1678124313063_640x480.jpg",
+      "cosine": 0.9101
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-43.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000270122.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/Healthy_2/1621751848511.jpg",
+      "cosine": 0.9048
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-5.jpg",
+      "nearest_hash": "tom2024/maize_pests/Spodoptera_frugiperda-P/1335165209_1660385234872.jpg",
+      "hamming": 8,
+      "nearest_cosine": "plantcity/test/Corn Normal leaf/138.jpg",
+      "cosine": 0.9268
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-78.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621759597452.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1059532990_1660817770421.jpg",
+      "cosine": 0.9192
+    },
+    {
+      "photo": "fieldsets/maize-bd-2026/healthy-leaf/img-918.jpg",
+      "nearest_hash": "coco_train2017_bg/000000423782.jpg",
+      "hamming": 16,
+      "nearest_cosine": "maize_makerere/Healthy_1/1621338889577.jpg",
+      "cosine": 0.9393
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/magnessium/1-17.jpg",
+      "nearest_hash": "plantcity/train/tomato_septoria_leaf/tomato_872.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/MLB_1/1621334404977.jpg",
+      "cosine": 0.9387
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/magnessium/1-31.jpg",
+      "nearest_hash": "coco_train2017_probe/000000080788.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1102850407_1661063742856.jpg",
+      "cosine": 0.919
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/magnessium/1-39.jpg",
+      "nearest_hash": "coco_train2017_bg/000000370851.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1193149261_1662394633937.jpg",
+      "cosine": 0.8833
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/magnessium/1-50.jpg",
+      "nearest_hash": "coco_train2017_probe/000000224053.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/MLB_2/1621844088824.jpg",
+      "cosine": 0.8913
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/magnessium/1-57.jpg",
+      "nearest_hash": "tom2024/onion_diseases/Healthy_leaf/549245219_1661502229652.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/MLB_1/1621590958226.jpg",
+      "cosine": 0.9383
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/magnessium/1-65.jpg",
+      "nearest_hash": "tom2024/maize_diseases/Healthy_leaf/1399348782_1660724821788.jpg",
+      "hamming": 10,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1630654011_1661338662639.jpg",
+      "cosine": 0.9301
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/magnessium/1-81.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato Septoria leaf spot/x3-most-common-types-tomato-blight.jpg.pagespeed.ic.5cLJi6TXEi.jpg",
+      "hamming": 10,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1193149261_1662394633937.jpg",
+      "cosine": 0.8836
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/nitrogen/2-18.jpg",
+      "nearest_hash": "inat_species/grape/32630623-51195508.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1614609336_1659436540216.jpg",
+      "cosine": 0.8908
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/nitrogen/2-3.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1622012121106.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Rust-D/1396147622_1661267386233.jpg",
+      "cosine": 0.9028
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/nitrogen/2-64.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato Early blight leaf/3606630.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1244503739_1662382905411.jpg",
+      "cosine": 0.9004
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/nitrogen/2-68.jpg",
+      "nearest_hash": "tom2024/maize_diseases/Virosis-D/1501946834_1660550429142.jpg",
+      "hamming": 10,
+      "nearest_cosine": "maize_makerere/MLB_2/1621927309624.jpg",
+      "cosine": 0.9078
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/nitrogen/2-75.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621927391229.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Curvularia-D/859812447_1677659859327_640x480.jpg",
+      "cosine": 0.9188
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/nitrogen/2-94.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000084362.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/MLB_1/1621577053879.jpg",
+      "cosine": 0.9274
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/phosphorous/3-1.jpg",
+      "nearest_hash": "ibean/data/train/train/healthy/healthy_train.266.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_pretoria/GLS/2012_03_IMG_6412_maize_diverse JM-R-Pn.JPG",
+      "cosine": 0.8759
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/phosphorous/3-16.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621587841078.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/MLB_2/1621927071331.jpg",
+      "cosine": 0.9182
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/phosphorous/3-36.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621678368141.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/Healthy_1/1621577799457.jpg",
+      "cosine": 0.9446
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/phosphorous/3-7.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000308587.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/MLB_1/1621590649394.jpg",
+      "cosine": 0.9184
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/phosphorous/3-79.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621330555721.jpg",
+      "hamming": 12,
+      "nearest_cosine": "maize_makerere/Healthy_2/1621860285934.jpg",
+      "cosine": 0.934
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/phosphorous/3-90.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621325887097.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/MLB_1/1621330909238.jpg",
+      "cosine": 0.9273
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/phosphorous/3-97.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621759300746.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Rust-D/1865326625_1660647553026.jpg",
+      "cosine": 0.9352
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/pottasium/4-28.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621748934832.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/Corn gray leaf spot/384.jpg",
+      "cosine": 0.9486
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/pottasium/4-33.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000253835.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/MLB_2/1622017545720.jpg",
+      "cosine": 0.9438
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/pottasium/4-37.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621576842200.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1173988689_1659956791954.jpg",
+      "cosine": 0.8997
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/pottasium/4-4.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621749464047.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/Corn gray leaf spot/228.jpg",
+      "cosine": 0.9473
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/pottasium/4-40.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621490215197.jpg",
+      "hamming": 14,
+      "nearest_cosine": "maize_makerere/Healthy_2/1622009981499.jpg",
+      "cosine": 0.9492
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/pottasium/4-50.jpg",
+      "nearest_hash": "ibean/data/train/train/healthy/healthy_train.340.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/Corn gray leaf spot/266.jpg",
+      "cosine": 0.9387
+    },
+    {
+      "photo": "fieldsets/maize-in-2025/pottasium/4-51.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000140203.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/maize_diseases/Stripe-D/1247142803_1661344434668.jpg",
+      "cosine": 0.934
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025-mg/magnesium-deficiency/magnesium-deficiency-22.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000532071.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/test/tomato_bacterial_spot/tomato_237.jpg",
+      "cosine": 0.835
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025-mg/magnesium-deficiency/magnesium-deficiency-34.jpg",
+      "nearest_hash": "coco_train2017_probe/000000066800.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h8_lower_aug_1049.jpg",
+      "cosine": 0.8308
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025-mg/magnesium-deficiency/magnesium-deficiency-540.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000148783.jpg",
+      "hamming": 8,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h8_lower_aug_1049.jpg",
+      "cosine": 0.8489
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025-mg/magnesium-deficiency/magnesium-deficiency-614.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000151962.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls78_change_90_aug_636.jpg",
+      "cosine": 0.8828
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/bacteiral-spot/bacteiral-spot-10.jpg",
+      "nearest_hash": "tom2024/onion_pests/Caterpillar-P/1936091887_1666339950212_640x480.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_626.jpg",
+      "cosine": 0.8732
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/bacteiral-spot/bacteiral-spot-118.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000121673.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/test/tomato_bacterial_spot/tomato_012.jpg",
+      "cosine": 0.8556
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/bacteiral-spot/bacteiral-spot-31.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000264335.jpg",
+      "hamming": 10,
+      "nearest_cosine": "tom2024/tomato_diseases/healthy_leaf/846027019_1660758931157.jpg",
+      "cosine": 0.8692
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/bacteiral-spot/bacteiral-spot-42.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000493864.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_777.jpg",
+      "cosine": 0.9004
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/bacteiral-spot/bacteiral-spot-47.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Soyabean leaf/fresh-soy-leaves-isolated-on-260nw-667193923.jpg",
+      "hamming": 6,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_790.jpg",
+      "cosine": 0.8823
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/bacteiral-spot/bacteiral-spot-7.jpg",
+      "nearest_hash": "coco_train2017_probe/000000232761.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_leaf_mold/tomato_1373.jpg",
+      "cosine": 0.8899
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/bacteiral-spot/bacteiral-spot-78.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/healthy_leaf/230932721_1678186147938_640x480.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_531.jpg",
+      "cosine": 0.886
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/bacteiral-spot/bacteiral-spot-8.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000372577.jpg",
+      "hamming": 8,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h103_change_180_aug_181.jpg",
+      "cosine": 0.8814
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-168.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000338325.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_septoria_leaf/tomato_457.jpg",
+      "cosine": 0.8854
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-173.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000201555.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_early_blight/tomato_928.jpg",
+      "cosine": 0.843
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-258.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/d7b79dbc0bca0eb3e63fbe5dfb256ccd53d90a4eb1413_1260x1260.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_leaf_curl/tomato_1426.jpg",
+      "cosine": 0.8354
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-27.jpg",
+      "nearest_hash": "coco_train2017_bg/000000363640.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_septoria_leaf/tomato_893.jpg",
+      "cosine": 0.8666
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-304.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/039b47d574bc4bb8a14259a1cd96a741.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Healthy_leaf/102642836_1660818131119.jpg",
+      "cosine": 0.8842
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-35.jpg",
+      "nearest_hash": "tom2024/maize_pests_activities/Spodotera_frugiperda- A/873974979_1660111887774.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_early_blight/tomato_721.jpg",
+      "cosine": 0.906
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-368.jpg",
+      "nearest_hash": "inat_species/gourds/89144526-147177212.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Potato leaf early blight/f204d9b6516c961f48502e0b7ae3f746.jpg",
+      "cosine": 0.8746
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-410.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000229747.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_336.jpg",
+      "cosine": 0.8095
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-465.jpg",
+      "nearest_hash": "coco_train2017_bg/000000110480.jpg",
+      "hamming": 8,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/tomato_late-blight_03_zoom_jpg.rf.625ee3a4e00cebfde37bf340a5993281_aug_1015_aug_815.jpg",
+      "cosine": 0.8749
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-474.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000365642.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato spider mites/tomato_060.jpg",
+      "cosine": 0.8983
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/early-blight/early-blight-73.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000274460.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_early_blight/tomato_1514.jpg",
+      "cosine": 0.8477
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-150.jpg",
+      "nearest_hash": "tom2024/maize_pests_activities/Spodotera_frugiperda- A/1025971899_1678621997789_640x480.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_915.jpg",
+      "cosine": 0.8926
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-171.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/alternaria_d/211968534_1669569598949_640x480.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_541.jpg",
+      "cosine": 0.8833
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-178.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000491665.jpg",
+      "hamming": 8,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_1453.jpg",
+      "cosine": 0.8944
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-191.jpg",
+      "nearest_hash": "coco_train2017_bg/000000402931.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_leaf_mold/tomato_012.jpg",
+      "cosine": 0.827
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-215.jpg",
+      "nearest_hash": "tom2024/maize_pests/Spodoptera_frugiperda-P/1469493681_1662123446731.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_716.jpg",
+      "cosine": 0.8791
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-231.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000229747.jpg",
+      "hamming": 8,
+      "nearest_cosine": "plantcity/test/tomato_septoria_leaf/tomato_186.jpg",
+      "cosine": 0.8646
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-296.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000151393.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_900.jpg",
+      "cosine": 0.8691
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-31.jpg",
+      "nearest_hash": "coco_train2017_probe/000000531253.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_1428.jpg",
+      "cosine": 0.9068
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-310.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000081061.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_septoria_leaf/tomato_969.jpg",
+      "cosine": 0.856
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-314.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Bell_pepper leaf spot/file.php?id=5336&t=1.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_early_blight/tomato_475.jpg",
+      "cosine": 0.8943
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/healthy/healthy-380.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000180188.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_544.jpg",
+      "cosine": 0.9325
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-111.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000553094.jpg",
+      "hamming": 10,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls82_hight_aug_603.jpg",
+      "cosine": 0.7931
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-24.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000149770.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_967.jpg",
+      "cosine": 0.8654
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-30.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/healthy_fruit/1005535435_1659431336345.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_early_blight/tomato_1085.jpg",
+      "cosine": 0.9003
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-31.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000167148.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_late_blight/tomato_823.jpg",
+      "cosine": 0.9
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-41.jpg",
+      "nearest_hash": "coco_train2017_probe/000000399528.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_late_blight/tomato_320.jpg",
+      "cosine": 0.9041
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-5.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000182202.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_leaf_mold/tomato_865.jpg",
+      "cosine": 0.927
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-7.jpg",
+      "nearest_hash": "coco_train2017_bg/000000363640.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_late_blight/tomato_831.jpg",
+      "cosine": 0.9063
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-80.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000202228.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_late_blight/tomato_1052.jpg",
+      "cosine": 0.8792
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-94.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000154000.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/tomato-early-blight-1_jpg.rf.8b480156e5d50b37f7de7031d6663c32_aug_221.jpg",
+      "cosine": 0.9108
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/late-blight/late-blight-98.jpg",
+      "nearest_hash": "inat_species/cacti/154505764-266975192.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_early_blight/tomato_889.jpg",
+      "cosine": 0.828
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/yellow-leaf-curl-virus/curl-1.jpg",
+      "nearest_hash": "coco_train2017_bg/000000094877.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h8_lower_aug_1049.jpg",
+      "cosine": 0.8194
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/yellow-leaf-curl-virus/curl-134.jpg",
+      "nearest_hash": "coco_train2017_bg/000000114061.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_leaf_curl/tomato_1132.jpg",
+      "cosine": 0.8823
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/yellow-leaf-curl-virus/curl-171.jpg",
+      "nearest_hash": "coco_train2017_bg/000000363640.jpg",
+      "hamming": 10,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h8_lower_aug_1049.jpg",
+      "cosine": 0.8671
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/yellow-leaf-curl-virus/curl-187.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000343453.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h8_hight_aug_1012.jpg",
+      "cosine": 0.8198
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/yellow-leaf-curl-virus/curl-60.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/alternaria_d/356146490_1660553361310.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_leaf_curl/tomato_1426.jpg",
+      "cosine": 0.7761
+    },
+    {
+      "photo": "fieldsets/tomato-bd-2025/yellow-leaf-curl-virus/curl-61.jpg",
+      "nearest_hash": "tom2024/maize_pests_activities/Spodotera_frugiperda- A/282140574_1659169286978.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_349.jpg",
+      "cosine": 0.8501
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/bacterial-spot/img-3652-02d.jpg",
+      "nearest_hash": "coco_train2017_bg/000000037502.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato mold leaf/TomatoLeafMold2-50QUALITY-1b89zfs.jpg",
+      "cosine": 0.898
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/bacterial-spot/img-3679-02d.jpg",
+      "nearest_hash": "coco_train2017_bg/000000094877.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_530.jpg",
+      "cosine": 0.8642
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/bacterial-spot/img-3717-02d.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000502953.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_903.jpg",
+      "cosine": 0.9018
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/bacterial-spot/img-3761-02d.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Cherry leaf/1b9155649757248759cdbe7d83cc94c0.jpg",
+      "hamming": 10,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Septoria_Leaf_Spot_of_Tomato2241-450x300_jpg.rf.a5213e82880b36835a5309c528c2d1cb_aug_940.jpg",
+      "cosine": 0.9195
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/bacterial-spot/img-4497-02d.jpg",
+      "nearest_hash": "tom2024/maize_pests_activities/Spodotera_frugiperda- A/1483050944_1659790445143.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato spider mites/tomato_468.jpg",
+      "cosine": 0.8953
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/bacterial-spot/img-5647-02d.jpg",
+      "nearest_hash": "coco_train2017_bg/000000402931.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_early_blight/tomato_475.jpg",
+      "cosine": 0.9036
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/early-blight/img-2624.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000263163.jpg",
+      "hamming": 16,
+      "nearest_cosine": "plantcity/train/tomato_late_blight/tomato_258.jpg",
+      "cosine": 0.8946
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/early-blight/img-4257-02d.jpg",
+      "nearest_hash": "coco_train2017_probe/000000236049.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_late_blight/tomato_196.jpg",
+      "cosine": 0.9159
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/early-blight/img-5844-02d.jpg",
+      "nearest_hash": "tom2024/maize_pests/Spodoptera_frugiperda-P/1176434931_1660205032651.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_777.jpg",
+      "cosine": 0.8904
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/healthy/img-3472-02d.jpg",
+      "nearest_hash": "coco_train2017_probe/000000128644.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_371.jpg",
+      "cosine": 0.8719
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/healthy/img-3504-02d.jpg",
+      "nearest_hash": "coco_train2017_probe/000000432144.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_371.jpg",
+      "cosine": 0.8835
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/healthy/img-3513-02d.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000095951.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_454.jpg",
+      "cosine": 0.883
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/healthy/img-3558-02d.jpg",
+      "nearest_hash": "coco_train2017_probe/000000571498.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_371.jpg",
+      "cosine": 0.9171
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/late-blight/img-5537-02d.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000399968.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/Gls4_mirror_aug_535.jpg",
+      "cosine": 0.8594
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/leaf-mold/img-4233-02d.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Strawberry leaf/13400strawberry_leaves.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_1112.jpg",
+      "cosine": 0.9042
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/leaf-mold/img-4295-02d.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple leaf/malus-floribunda-le-amoro2-a.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/train/tomato_leaf_mold/tomato_1374.jpg",
+      "cosine": 0.9126
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/spider-mites/img-3827-02d.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621678853191.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_leaf_mold/tomato_1322.jpg",
+      "cosine": 0.8918
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/spider-mites/img-3841-02d.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/peach-leaf-16690421.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0019_aug_618.jpg",
+      "cosine": 0.8685
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/spider-mites/img-3876-02d.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf/17371378-tomato-leaf.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_healthy_leaf/tomato_363.jpg",
+      "cosine": 0.9036
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/spider-mites/img-3926-02d.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000519522.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/leafmoldtomato1_jpg.rf.8fd3cb804b497243063ae379717801b8_aug_916.jpg",
+      "cosine": 0.8988
+    },
+    {
+      "photo": "fieldsets/tomato-bd-iphone-2025/spider-mites/img-3979-02d.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000484739.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf late blight/lb2.jpg",
+      "cosine": 0.8939
+    },
+    {
+      "photo": "inat/338400963-615410010.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621489721487.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240724-WA0099_aug_219.jpg",
+      "cosine": 0.9261
+    },
+    {
+      "photo": "inat/338400963-615410052.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1622011259931.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/test/tomato_septoria_leaf/tomato_183.jpg",
+      "cosine": 0.8927
+    },
+    {
+      "photo": "inat/354572954-646801680.jpg",
+      "nearest_hash": "coco_train2017_probe/000000488927.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/35589125035_662dd5b258_b.jpg",
+      "cosine": 0.8699
+    },
+    {
+      "photo": "inat/354572954-646801689.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621582699629.jpg",
+      "hamming": 12,
+      "nearest_cosine": "ibean/data/train/train/bean_rust/bean_rust_train.64.jpg",
+      "cosine": 0.8393
+    },
+    {
+      "photo": "inat/355200726-647864655.jpg",
+      "nearest_hash": "inat_species/aroids/24632753-38088256.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/alternaria_d/417102977_1661596840599.jpg",
+      "cosine": 0.8767
+    },
+    {
+      "photo": "inat/355200726-647864671.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621756156471.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/alternaria_d/1397869707_1662046311892.jpg",
+      "cosine": 0.8719
+    },
+    {
+      "photo": "inat/356309869-649773366.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621836401310.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/black_rot_1.jpg",
+      "cosine": 0.883
+    },
+    {
+      "photo": "inat/367580279-671290341.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/healthy_fruit/11660036_1672248620548_640x480.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/35589125035_662dd5b258_b.jpg",
+      "cosine": 0.9331
+    },
+    {
+      "photo": "inat/371068837-677944539.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621672245133.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/02gb.jpg",
+      "cosine": 0.8637
+    },
+    {
+      "photo": "inat/371068837-677944566.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621338720198.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/Black%20rot%20on%20foliage.jpg",
+      "cosine": 0.915
+    },
+    {
+      "photo": "inat/372783105-681224631.jpg",
+      "nearest_hash": "plantcity/train/tomato_bacterial_spot/tomato_062.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/fungus_rust.jpg",
+      "cosine": 0.8492
+    },
+    {
+      "photo": "inat/372783105-681224684.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000092416.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/grape/120496764-203811139.jpg",
+      "cosine": 0.8648
+    },
+    {
+      "photo": "inat/372783105-681224734.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000104455.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/3_21_14-Caption-Black-Rot-leaf-infection..jpg",
+      "cosine": 0.8632
+    },
+    {
+      "photo": "inat/373251150-682117523.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621494008801.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/P1130286.jpg",
+      "cosine": 0.9084
+    },
+    {
+      "photo": "inat/373251150-682117594.jpg",
+      "nearest_hash": "tom2024/maize_diseases/Curvularia-D/334358182_1678616295141_640x480.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/Black_Rot_of_Grapes152.jpg",
+      "cosine": 0.8165
+    },
+    {
+      "photo": "inat/373251150-682117645.jpg",
+      "nearest_hash": "inat_species/pepper/184397780-321872589.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/Tomato_20early_20blight_20target_20like_20leaf_20spot_aug_257.jpg",
+      "cosine": 0.8495
+    },
+    {
+      "photo": "inat/374488455-684501961.jpg",
+      "nearest_hash": "coco_train2017_bg/000000074982.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/Blossom_end_rot_d/1289590096_1677747897867_640x480.jpg",
+      "cosine": 0.7569
+    },
+    {
+      "photo": "inat/374488455-684501986.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000425112.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/grape/309918684-559310754.jpg",
+      "cosine": 0.8665
+    },
+    {
+      "photo": "inat/375693027-686842468.jpg",
+      "nearest_hash": "inat_species/gourds/196010272-344977887.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/Malus-Scab-disease-225x300.jpg",
+      "cosine": 0.8727
+    },
+    {
+      "photo": "inat/375746037-686951174.jpg",
+      "nearest_hash": "tom2024/maize_diseases/Stripe-D/1002168002_1659436891123.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf/Wild_Grape_Leaf.jpg",
+      "cosine": 0.8898
+    },
+    {
+      "photo": "inat/375746037-686951210.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000172571.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/black_rot_1.jpg",
+      "cosine": 0.913
+    },
+    {
+      "photo": "inat/378868919-692920095.jpg",
+      "nearest_hash": "ibean/data/validation/validation/angular_leaf_spot/angular_leaf_spot_val.29.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple leaf/apple-tree-branch-plant-fruit-leaf-flower-food-green-produce-flora-immature-apple-tree-flowering-plant-wild-apple-tree-apple-gear-land-plant-606389.jpg",
+      "cosine": 0.8398
+    },
+    {
+      "photo": "inat/378868919-692920118.jpg",
+      "nearest_hash": "ibean/data/train/train/healthy/healthy_train.239.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/applescableaf.jpg",
+      "cosine": 0.8604
+    },
+    {
+      "photo": "inat/380682525-696477360.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1622011555586.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/black-rot-leaves.jpg",
+      "cosine": 0.8714
+    },
+    {
+      "photo": "inat/380682525-696477415.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621927481523.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/black-rot-leaves.jpg",
+      "cosine": 0.8377
+    },
+    {
+      "photo": "inat/380682525-696477540.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000135907.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/Tomato_20early_20blight_20target_20like_20leaf_20spot_aug_260.jpg",
+      "cosine": 0.7924
+    },
+    {
+      "photo": "inat/380970128-697039744.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000162989.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/grape/138160071-236083880.jpg",
+      "cosine": 0.9478
+    },
+    {
+      "photo": "inat/380970128-697039754.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000037689.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/grape/138160071-236083880.jpg",
+      "cosine": 0.8477
+    },
+    {
+      "photo": "inat/381828732-698700783.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621576278427.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/233720045-415396110.jpg",
+      "cosine": 0.7918
+    },
+    {
+      "photo": "inat/381828732-698700823.jpg",
+      "nearest_hash": "coco_train2017_bg/000000147941.jpg",
+      "hamming": 16,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/venturia.jpg",
+      "cosine": 0.8604
+    },
+    {
+      "photo": "inat/382707209-700397545.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/healthy_fruit/1130294345_1675927967312_640x480.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantcity/test/tomato_early_blight/194.JPG",
+      "cosine": 0.8898
+    },
+    {
+      "photo": "inat/382707209-700397604.jpg",
+      "nearest_hash": "maize_pretoria/CR/IMG_20190316_093644.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0183_aug_839.jpg",
+      "cosine": 0.9308
+    },
+    {
+      "photo": "inat/385104027-705004674.jpg",
+      "nearest_hash": "inat_species/aroids/140076487-239716850.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/3_21_14-Caption-Black-Rot-leaf-infection..jpg",
+      "cosine": 0.9061
+    },
+    {
+      "photo": "inat/388061909-710679007.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621836500857.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Bell_pepper leaf/5493139683d035a18fd0dfa12893f38b--outdoor-decor-worms.jpg",
+      "cosine": 0.8302
+    },
+    {
+      "photo": "inat/388410969-711358321.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000034257.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/Blossom_end_rot_d/1356945245_1660910156937.jpg",
+      "cosine": 0.9379
+    },
+    {
+      "photo": "inat/388410969-711358332.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621407324027.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/tomato_late_blight_d/254027665_1660904287854.jpg",
+      "cosine": 0.9362
+    },
+    {
+      "photo": "inat/388487073-711511601.jpg",
+      "nearest_hash": "coco_train2017_bg/000000513389.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/1-Cedar-apple-rust-infections-and-rust-induced-leafspot-on-Ginger-Gold-4-Jun-08-2d4hi2k.jpg",
+      "cosine": 0.904
+    },
+    {
+      "photo": "inat/388487073-711511689.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621749117081.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/129980724-220975665.jpg",
+      "cosine": 0.8647
+    },
+    {
+      "photo": "inat/388487073-711511923.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621838219508.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/53600653-85258324.jpg",
+      "cosine": 0.8067
+    },
+    {
+      "photo": "inat/388547158-711630984.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000403353.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/sunburn_d/1946418900_1678270688102_640x360.jpg",
+      "cosine": 0.8288
+    },
+    {
+      "photo": "inat/388547158-711631044.jpg",
+      "nearest_hash": "plantcity/test/tomato_leaf_mold/107.JPG",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/Mite_d/300559388_1680606917918_640x480.jpg",
+      "cosine": 0.854
+    },
+    {
+      "photo": "inat/389981240-714407985.jpg",
+      "nearest_hash": "plantcity/train/Corn Normal leaf/257.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/tomato/113989783-192529074.jpg",
+      "cosine": 0.9832
+    },
+    {
+      "photo": "inat/389981240-714408017.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000048555.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_928.jpg",
+      "cosine": 0.8835
+    },
+    {
+      "photo": "inat/389981240-714408054.jpg",
+      "nearest_hash": "tom2024/maize_diseases/Stripe-D/1335231548_1659769050388.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_bacterial_spot/tomato_1150.jpg",
+      "cosine": 0.9
+    },
+    {
+      "photo": "inat/391075570-716546076.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621338363679.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/DCDl_p8UQAAf2hP.jpg",
+      "cosine": 0.9135
+    },
+    {
+      "photo": "inat/391075570-716546078.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000162989.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/DCDl_p8UQAAf2hP.jpg",
+      "cosine": 0.896
+    },
+    {
+      "photo": "inat/391389211-717154056.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621589787579.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0183_aug_838.jpg",
+      "cosine": 0.9453
+    },
+    {
+      "photo": "inat/391631249-717631762.jpg",
+      "nearest_hash": "tom2024/maize_diseases/Stripe-D/1809964778_1661324077614.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/Black_Rot_of_Grapes1154.jpg",
+      "cosine": 0.8114
+    },
+    {
+      "photo": "inat/391631249-717631768.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621850707919.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf/Wild_Grape_Leaf.jpg",
+      "cosine": 0.8551
+    },
+    {
+      "photo": "inat/391631249-717631770.jpg",
+      "nearest_hash": "ibean/data/train/train/healthy/healthy_train.239.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/Black_Rot_of_Grapes1154.jpg",
+      "cosine": 0.9194
+    },
+    {
+      "photo": "inat/391631249-717631771.jpg",
+      "nearest_hash": "plantcity/train/tomato_early_blight/tomato_1301.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/Black_Rot_of_Grapes1153.jpg",
+      "cosine": 0.8168
+    },
+    {
+      "photo": "inat/391635768-717640888.jpg",
+      "nearest_hash": "plantcity/train/tomato_bacterial_spot/tomato_442.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf/Wild_Grape_Leaf.jpg",
+      "cosine": 0.8057
+    },
+    {
+      "photo": "inat/391635768-717640889.jpg",
+      "nearest_hash": "tom2024/maize_pests_activities/Spodotera_frugiperda- A/1389207777_1659945616676.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf/Wild_Grape_Leaf.jpg",
+      "cosine": 0.8479
+    },
+    {
+      "photo": "inat/391635768-717640898.jpg",
+      "nearest_hash": "ibean/data/train/train/healthy/healthy_train.82.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/Black_Rot_of_Grapes1153.jpg",
+      "cosine": 0.7839
+    },
+    {
+      "photo": "inat/391635768-717640900.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/EB_(978)_aug_1154.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/grape/331613431-601616435.jpg",
+      "cosine": 0.8042
+    },
+    {
+      "photo": "inat/391923141-718184605.jpg",
+      "nearest_hash": "plantcity/train/tomato_leaf_mold/tomato_1088.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/DCDl_p8UQAAf2hP.jpg",
+      "cosine": 0.938
+    },
+    {
+      "photo": "inat/391923141-718184671.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000543171.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/DCDl_p8UQAAf2hP.jpg",
+      "cosine": 0.9194
+    },
+    {
+      "photo": "inat/391923141-718184715.jpg",
+      "nearest_hash": "tom2024/maize_pests/Spodoptera_frugiperda-P/1370974878_1661340777734.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/black_rot_1.jpg",
+      "cosine": 0.8964
+    },
+    {
+      "photo": "inat/393492628-721253784.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621749518520.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/grape/189346919-331666701.jpg",
+      "cosine": 0.9212
+    },
+    {
+      "photo": "inat/393492628-721471332.jpg",
+      "nearest_hash": "coco_train2017_probe/000000316342.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/bad_grapes21.jpg",
+      "cosine": 0.88
+    },
+    {
+      "photo": "inat/393492628-721471795.jpg",
+      "nearest_hash": "coco_train2017_probe/000000061215.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/grape/189346919-331666701.jpg",
+      "cosine": 0.9271
+    },
+    {
+      "photo": "inat/394716840-723654843.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/tomato_late_blight_d/1984988801_1661359654212.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/june-9-0181.jpg",
+      "cosine": 0.8934
+    },
+    {
+      "photo": "inat/397445368-728963371.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_160039_aug_1046.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/DSCF1248-1gz1wpc.jpg",
+      "cosine": 0.8925
+    },
+    {
+      "photo": "inat/397445368-728963419.jpg",
+      "nearest_hash": "tom2024/tomato_pests/tuta_absoluta_p/1128649162_1678794262918_640x480.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/apple-scab_figure-2.jpg",
+      "cosine": 0.8696
+    },
+    {
+      "photo": "inat/397445368-728963558.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000319127.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/Apple-Scab-image-02.jpg",
+      "cosine": 0.9042
+    },
+    {
+      "photo": "inat/397780399-729587376.jpg",
+      "nearest_hash": "tom2024/maize_diseases/Healthy_leaf/1777824763_1678123337954_640x480.jpg",
+      "hamming": 12,
+      "nearest_cosine": "ibean/data/train/train/bean_rust/bean_rust_train.119.jpg",
+      "cosine": 0.7999
+    },
+    {
+      "photo": "inat/397780399-729587420.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000167067.jpg",
+      "hamming": 14,
+      "nearest_cosine": "ibean/data/test/test/healthy/healthy_test.6.jpg",
+      "cosine": 0.927
+    },
+    {
+      "photo": "inat/397780399-729587424.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621342136023.jpg",
+      "hamming": 14,
+      "nearest_cosine": "ibean/data/test/test/healthy/healthy_test.6.jpg",
+      "cosine": 0.9426
+    },
+    {
+      "photo": "inat/397780399-729587454.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000476215.jpg",
+      "hamming": 12,
+      "nearest_cosine": "ibean/data/train/train/healthy/healthy_train.146.jpg",
+      "cosine": 0.8474
+    },
+    {
+      "photo": "inat/398528678-731076279.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621837967698.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/grape/138160071-236083880.jpg",
+      "cosine": 0.7764
+    },
+    {
+      "photo": "inat/398528678-731076344.jpg",
+      "nearest_hash": "coco_train2017_bg/000000252738.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/grape/138160071-236083880.jpg",
+      "cosine": 0.9036
+    },
+    {
+      "photo": "inat/398579573-731175272.jpg",
+      "nearest_hash": "coco_train2017_probe/000000407739.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf/Wild_Grape_Leaf.jpg",
+      "cosine": 0.8151
+    },
+    {
+      "photo": "inat/398580763-731181178.jpg",
+      "nearest_hash": "plantcity/train/Corn Normal leaf/14.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/black_rot_1.jpg",
+      "cosine": 0.8346
+    },
+    {
+      "photo": "inat/398580763-731181229.jpg",
+      "nearest_hash": "ibean/data/test/test/healthy/healthy_test.22.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/black_rot_1.jpg",
+      "cosine": 0.8596
+    },
+    {
+      "photo": "inat/398714520-731445599.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000137106.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/schurft.jpg",
+      "cosine": 0.8896
+    },
+    {
+      "photo": "inat/398919682-731848097.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621403860883.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/corn/190173169-333298046.jpg",
+      "cosine": 0.759
+    },
+    {
+      "photo": "inat/398919688-731848131.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000278848.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/20130802_111648.jpg",
+      "cosine": 0.7442
+    },
+    {
+      "photo": "inat/398919688-731848140.jpg",
+      "nearest_hash": "plantcity/train/tomato_leaf_curl/tomato_759.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_late_blight/tomato_894.jpg",
+      "cosine": 0.7296
+    },
+    {
+      "photo": "inat/398919688-731848142.jpg",
+      "nearest_hash": "inat_species/corn/137192930-234260347.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/11NovMW_W4-A_4b.jpg",
+      "cosine": 0.755
+    },
+    {
+      "photo": "inat/398988089-731975909.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000275791.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/35589125035_662dd5b258_b.jpg",
+      "cosine": 0.9153
+    },
+    {
+      "photo": "inat/399062007-732117436.jpg",
+      "nearest_hash": "coco_train2017_probe/000000547617.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/233450151-414888516.jpg",
+      "cosine": 0.7536
+    },
+    {
+      "photo": "inat/399062007-732117484.jpg",
+      "nearest_hash": "coco_train2017_bg/000000555101.jpg",
+      "hamming": 16,
+      "nearest_cosine": "inat_species/apple/61858817-99037181.jpg",
+      "cosine": 0.7598
+    },
+    {
+      "photo": "inat/399243420-732469011.jpg",
+      "nearest_hash": "ibean/data/train/train/angular_leaf_spot/angular_leaf_spot_train.9.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/Malus-Scab-disease-225x300.jpg",
+      "cosine": 0.9132
+    },
+    {
+      "photo": "inat/399640559-733234725.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621333831335.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/corn/190173169-333298046.jpg",
+      "cosine": 0.7951
+    },
+    {
+      "photo": "inat/399640559-733234742.jpg",
+      "nearest_hash": "coco_train2017_bg/000000202784.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/corn/190173169-333298046.jpg",
+      "cosine": 0.7967
+    },
+    {
+      "photo": "inat/399884254-733721137.jpg",
+      "nearest_hash": "coco_train2017_probe/000000402528.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/01Apple-scab-2-Venturia-inaequalis.ashx?w=600&h=408&bc=ffffff.jpg",
+      "cosine": 0.902
+    },
+    {
+      "photo": "inat/399884254-733724144.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000124659.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/apple-scab-obst-krankheit-m7akxy.jpg",
+      "cosine": 0.8966
+    },
+    {
+      "photo": "inat/399952712-733849549.jpg",
+      "nearest_hash": "inat_species/cacti/217073462-383973835.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/black-rot-leaves.jpg",
+      "cosine": 0.8619
+    },
+    {
+      "photo": "inat/400242717-734428373.jpg",
+      "nearest_hash": "coco_train2017_probe/000000352389.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/cedar-apple-rust_fig-2.jpg",
+      "cosine": 0.8964
+    },
+    {
+      "photo": "inat/400242717-734428374.jpg",
+      "nearest_hash": "tom2024/onion_pests/Caterpillar-P/29708277_1666251673962_640x480.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Potato leaf early blight/potato_early-blight_04_zoom.jpg",
+      "cosine": 0.8514
+    },
+    {
+      "photo": "inat/400242717-734428438.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato Septoria leaf spot/Septoria-leaf-spot-on-tomato-FOR-WEB.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/apples_black-rot_01_zoom.jpg",
+      "cosine": 0.9222
+    },
+    {
+      "photo": "inat/400834931-735624084.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000247806.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/corn/190173169-333298046.jpg",
+      "cosine": 0.7824
+    },
+    {
+      "photo": "inat/400921447-735803763.jpg",
+      "nearest_hash": "coco_train2017_probe/000000316342.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/corn/190173169-333298046.jpg",
+      "cosine": 0.7895
+    },
+    {
+      "photo": "inat/401153163-736258297.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000042591.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/grape/170615287-295947531.jpg",
+      "cosine": 0.7898
+    },
+    {
+      "photo": "inat/401153163-736258367.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000147729.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/grape/120496764-203811139.jpg",
+      "cosine": 0.8137
+    },
+    {
+      "photo": "inat/401153163-736258385.jpg",
+      "nearest_hash": "inat_species/aroids/41362274-65610713.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/Black%20rot%20on%20foliage2.jpg",
+      "cosine": 0.7685
+    },
+    {
+      "photo": "inat/401228814-736404660.jpg",
+      "nearest_hash": "coco_train2017_bg/000000062272.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_early_blight/tomato_345.jpg",
+      "cosine": 0.9084
+    },
+    {
+      "photo": "inat/401311005-736556275.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621320627852.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/02gb.jpg",
+      "cosine": 0.8273
+    },
+    {
+      "photo": "inat/401327155-736588288.jpg",
+      "nearest_hash": "inat_species/stonecrops/40537001-64239290.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/black_rot_1.jpg",
+      "cosine": 0.8545
+    },
+    {
+      "photo": "inat/401345730-736623744.jpg",
+      "nearest_hash": "coco_train2017_probe/000000197384.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Squash Powdery mildew leaf/5HttOvj.jpg",
+      "cosine": 0.9352
+    },
+    {
+      "photo": "inat/401347282-736626708.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000121591.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/219945525-389356724.jpg",
+      "cosine": 0.9075
+    },
+    {
+      "photo": "inat/401728510-737375348.jpg",
+      "nearest_hash": "coco_train2017_probe/000000555368.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/324736835-587806007.jpg",
+      "cosine": 0.9084
+    },
+    {
+      "photo": "inat/401735866-737391448.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf yellow virus/18071.img.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/apples_black-rot_01_zoom.jpg",
+      "cosine": 0.9123
+    },
+    {
+      "photo": "inat/401735945-737391636.jpg",
+      "nearest_hash": "inat_species/stonecrops/27223732-42334637.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/32924980-51676245.jpg",
+      "cosine": 0.8967
+    },
+    {
+      "photo": "inat/401742038-737403199.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621420580911.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/apples_black-rot_01_zoom.jpg",
+      "cosine": 0.9176
+    },
+    {
+      "photo": "inat/401743982-737406713.jpg",
+      "nearest_hash": "maize_pretoria/NoFoliarSymptoms/2019-03-13--Cedara-(DKB)-DSC_0174.JPG",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/venturia.jpg",
+      "cosine": 0.8737
+    },
+    {
+      "photo": "inat/401855015-737628983.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621506125126.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/alternaria_d/355131847_1669880519218_640x480.jpg",
+      "cosine": 0.8206
+    },
+    {
+      "photo": "inat/402177099-738271014.jpg",
+      "nearest_hash": "inat_species/pepper/108472384-182636600.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/tomato_diseases/exces_nitrogen_d/568853313_1661595456060.jpg",
+      "cosine": 0.9269
+    },
+    {
+      "photo": "inat/402177099-738271037.jpg",
+      "nearest_hash": "plantcity/train/tomato_leaf_curl/tomato_128.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf bacterial spot/bacterial-leaf-spot.jpg",
+      "cosine": 0.9101
+    },
+    {
+      "photo": "inat/402180921-738046047.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000165387.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/cedar-apple-rust_fig-2.jpg",
+      "cosine": 0.8793
+    },
+    {
+      "photo": "inat/402180921-738046062.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621852649489.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/apples_apple-scab_02_zoom.jpg",
+      "cosine": 0.9038
+    },
+    {
+      "photo": "inat/402180921-738046075.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621587851679.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/s-l300.jpg",
+      "cosine": 0.8558
+    },
+    {
+      "photo": "inat/402203493-738322516.jpg",
+      "nearest_hash": "coco_train2017_probe/000000111043.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/AppleScab03.jpg",
+      "cosine": 0.85
+    },
+    {
+      "photo": "inat/402203493-738322519.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000107851.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/AppleScab03.jpg",
+      "cosine": 0.8669
+    },
+    {
+      "photo": "inat/402405034-738725402.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000516316.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/alternaria_d/1168235836_1666606180713_640x480.jpg",
+      "cosine": 0.882
+    },
+    {
+      "photo": "inat/402514941-738932157.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000424340.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/test/tomato_leaf_curl/22.jpg",
+      "cosine": 0.8235
+    },
+    {
+      "photo": "inat/403249486-740367920.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000479280.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf black rot/DSCN1228.jpg",
+      "cosine": 0.8646
+    },
+    {
+      "photo": "inat/403561903-740981913.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000257928.jpg",
+      "hamming": 14,
+      "nearest_cosine": "ibean/data/train/train/healthy/healthy_train.82.jpg",
+      "cosine": 0.8528
+    },
+    {
+      "photo": "inat/403561903-740981965.jpg",
+      "nearest_hash": "plantcity/test/tomato_healthy_leaf/tomato_019.jpg",
+      "hamming": 12,
+      "nearest_cosine": "ibean/data/validation/validation/healthy/healthy_val.12.jpg",
+      "cosine": 0.802
+    },
+    {
+      "photo": "inat/403684309-741218156.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000442480.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/233450151-414888516.jpg",
+      "cosine": 0.9264
+    },
+    {
+      "photo": "inat/403684309-741218190.jpg",
+      "nearest_hash": "coco_train2017_bg/000000178048.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/apples_apple-scab_02_zoom.jpg",
+      "cosine": 0.8911
+    },
+    {
+      "photo": "inat/403684309-741218198.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621838456748.jpg",
+      "hamming": 10,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/apples_apple-scab_02_zoom.jpg",
+      "cosine": 0.908
+    },
+    {
+      "photo": "inat/403684309-741218203.jpg",
+      "nearest_hash": "coco_train2017_bg/000000441577.jpg",
+      "hamming": 10,
+      "nearest_cosine": "inat_species/apple/249663203-446339146.jpg",
+      "cosine": 0.8934
+    },
+    {
+      "photo": "inat/404699245-743241852.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621678264491.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/324736835-587806007.jpg",
+      "cosine": 0.8921
+    },
+    {
+      "photo": "inat/404699245-743241884.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h3_change_90_aug_524.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/apple/84680516-139204795.jpg",
+      "cosine": 0.9034
+    },
+    {
+      "photo": "inat/404699245-743241918.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621321523187.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/34474413-54262797.jpg",
+      "cosine": 0.8619
+    },
+    {
+      "photo": "inat/405304518-744437181.jpg",
+      "nearest_hash": "coco_train2017_probe/000000576792.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/maize_diseases/Virosis-D/1322766122_1660209576600.jpg",
+      "cosine": 0.8287
+    },
+    {
+      "photo": "inat/405494442-744821044.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000270244.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/cedapp04_lg.jpg",
+      "cosine": 0.8154
+    },
+    {
+      "photo": "inat/405494442-744821083.jpg",
+      "nearest_hash": "coco_train2017_probe/000000174749.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/32924980-51676245.jpg",
+      "cosine": 0.7923
+    },
+    {
+      "photo": "inat/405494442-744821157.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000392228.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/cedapp04_lg.jpg",
+      "cosine": 0.8141
+    },
+    {
+      "photo": "inat/405521026-744874921.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000020059.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_septoria_leaf/tomato_917.jpg",
+      "cosine": 0.7871
+    },
+    {
+      "photo": "inat/405575476-744879694.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/healthy_fruit/1959641936_1660757525349.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/grape leaf/grapes+003.JPG.jpg",
+      "cosine": 0.828
+    },
+    {
+      "photo": "inat/405793833-745661366.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621421557331.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/324736835-587806007.jpg",
+      "cosine": 0.8872
+    },
+    {
+      "photo": "inat/405793833-745661441.jpg",
+      "nearest_hash": "plantcity/test/tomato_healthy_leaf/182.JPG",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/apple-scab-5366820.jpg",
+      "cosine": 0.8902
+    },
+    {
+      "photo": "inat/405793833-745661570.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000071855.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/324736835-587806007.jpg",
+      "cosine": 0.9248
+    },
+    {
+      "photo": "inat/405952971-745750469.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000359423.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/20130802_111632.jpg",
+      "cosine": 0.8573
+    },
+    {
+      "photo": "inat/405952971-745750473.jpg",
+      "nearest_hash": "inat_species/pepper/84459628-138819661.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/rust-0450.jpg",
+      "cosine": 0.8784
+    },
+    {
+      "photo": "inat/405952971-745750474.jpg",
+      "nearest_hash": "inat_species/aroids/39948540-63433278.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_late_blight/tomato_1036.jpg",
+      "cosine": 0.813
+    },
+    {
+      "photo": "inat/406136528-746117141.jpg",
+      "nearest_hash": "tom2024/onion_diseases/Alternaria_D/456486507_1677577792232_640x480 - Copie - Copie.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/corn/190173169-333298046.jpg",
+      "cosine": 0.7868
+    },
+    {
+      "photo": "inat/406136528-746117142.jpg",
+      "nearest_hash": "coco_train2017_probe/000000088987.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/corn/190173169-333298046.jpg",
+      "cosine": 0.7962
+    },
+    {
+      "photo": "inat/406142377-746132045.jpg",
+      "nearest_hash": "coco_train2017_bg/000000502456.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/274110501-492842636.jpg",
+      "cosine": 0.863
+    },
+    {
+      "photo": "inat/406142377-746132185.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000233567.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/124123038-210334672.jpg",
+      "cosine": 0.9372
+    },
+    {
+      "photo": "inat/406188529-746226334.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/alternaria_d/1887049544_1661435492537.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/tomato/249357358-445732962.jpg",
+      "cosine": 0.8665
+    },
+    {
+      "photo": "inat/406640904-747136884.jpg",
+      "nearest_hash": "coco_train2017_probe/000000395851.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/mints/138227366-236221916.jpg",
+      "cosine": 0.8376
+    },
+    {
+      "photo": "inat/406640904-747136938.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621588057025.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/mints/138227366-236221916.jpg",
+      "cosine": 0.8512
+    },
+    {
+      "photo": "inat/406649022-747155098.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000167067.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/11NovMW_W4-A_4b.jpg",
+      "cosine": 0.7476
+    },
+    {
+      "photo": "inat/407094587-748041523.jpg",
+      "nearest_hash": "coco_train2017_bg/000000318681.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/tomato/276650480-496789264.jpg",
+      "cosine": 0.8647
+    },
+    {
+      "photo": "inat/407094587-748041552.jpg",
+      "nearest_hash": "coco_train2017_bg/000000296188.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/1342017-162221-44540_aug_702.jpg",
+      "cosine": 0.8516
+    },
+    {
+      "photo": "inat/407096210-748044189.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000152771.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf/img_1028.jpg",
+      "cosine": 0.7995
+    },
+    {
+      "photo": "inat/407127260-748566672.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000418907.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/71408040-116257272.jpg",
+      "cosine": 0.8957
+    },
+    {
+      "photo": "inat/407338990-748534515.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000239318.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/gourds/28460201-44366895.jpg",
+      "cosine": 0.8905
+    },
+    {
+      "photo": "inat/407526575-748918540.jpg",
+      "nearest_hash": "inat_species/grape/256111035-459111944.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf/20160428_080421.jpg",
+      "cosine": 0.802
+    },
+    {
+      "photo": "inat/407694185-749260502.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000106912.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple rust leaf/apples_black-rot_01_zoom.jpg",
+      "cosine": 0.9162
+    },
+    {
+      "photo": "inat/407694185-749260615.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Squash Powdery mildew leaf/surface.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/apple/324736835-587806007.jpg",
+      "cosine": 0.9236
+    },
+    {
+      "photo": "inat/407827447-749533282.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000248810.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/84459628-138819661.jpg",
+      "cosine": 0.9017
+    },
+    {
+      "photo": "inat/407827447-749533426.jpg",
+      "nearest_hash": "maize_pretoria/CR/IMG_20190316_081413_BURST001_COVER.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/pepper/86733092-142932525.jpg",
+      "cosine": 0.9206
+    },
+    {
+      "photo": "inat/407881529-749647094.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000002587.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Squash Powdery mildew leaf/10_22-jul-11_f11.jpg",
+      "cosine": 0.8742
+    },
+    {
+      "photo": "inat/407881529-749647104.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000319848.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Squash Powdery mildew leaf/1895541545_8cfc6eabee_b.jpg",
+      "cosine": 0.8522
+    },
+    {
+      "photo": "inat/408100905-750092370.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000451571.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/mints/98092099-163250497.jpg",
+      "cosine": 0.7824
+    },
+    {
+      "photo": "inat/408100905-750092423.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/tomato-leaf-mold-2_aug_1119.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/mints/134795755-229821301.jpg",
+      "cosine": 0.8032
+    },
+    {
+      "photo": "inat/408169430-750235974.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/1723454501933_aug_139.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/Apple_scab_symptoms_on_leaf.jpg",
+      "cosine": 0.8627
+    },
+    {
+      "photo": "inat/408190475-750281834.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000376093.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/pepper/130895058-222659814.jpg",
+      "cosine": 0.8769
+    },
+    {
+      "photo": "inat/408211893-750328030.jpg",
+      "nearest_hash": "coco_train2017_probe/000000561931.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/350292854-639115172.jpg",
+      "cosine": 0.8686
+    },
+    {
+      "photo": "inat/408211893-750328031.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621861055518.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/71408040-116257272.jpg",
+      "cosine": 0.8552
+    },
+    {
+      "photo": "inat/408211929-750328051.jpg",
+      "nearest_hash": "plantcity/train/tomato_healthy_leaf/tomato_440.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/mints/97494807-162152650.jpg",
+      "cosine": 0.823
+    },
+    {
+      "photo": "inat/408211929-750328055.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621329246076.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/mints/97494807-162152650.jpg",
+      "cosine": 0.8161
+    },
+    {
+      "photo": "inat/408239465-750386869.jpg",
+      "nearest_hash": "coco_train2017_bg/000000201628.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/maize_diseases/Virosis-D/1322766122_1660209576600.jpg",
+      "cosine": 0.7896
+    },
+    {
+      "photo": "inat/408239465-750386905.jpg",
+      "nearest_hash": "tom2024/tomato_pests/helicoverpa_armigera_p/1914210440_1660755622104.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/maize_diseases/Virosis-D/1322766122_1660209576600.jpg",
+      "cosine": 0.799
+    },
+    {
+      "photo": "inat/408239568-750387079.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/alternaria_d/913162236_1661097571842.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Virosis-D/1322766122_1660209576600.jpg",
+      "cosine": 0.8029
+    },
+    {
+      "photo": "inat/408239624-750387208.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621752163329.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tom2024/maize_diseases/Virosis-D/1322766122_1660209576600.jpg",
+      "cosine": 0.8648
+    },
+    {
+      "photo": "inat/408734239-751367530.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/EB_(973)_aug_433.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/Apple-scab-on-crab-apple.jpg",
+      "cosine": 0.8533
+    },
+    {
+      "photo": "inat/408734239-751367550.jpg",
+      "nearest_hash": "maize_makerere/Healthy_1/1621338855262.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/apple/230979351-410184420.jpg",
+      "cosine": 0.8068
+    },
+    {
+      "photo": "inat/408756932-751431381.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000126216.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/324347084-587034045.jpg",
+      "cosine": 0.8733
+    },
+    {
+      "photo": "inat/408756932-751431390.jpg",
+      "nearest_hash": "maize_pretoria/GLS/20190313_114821.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/pepper/139264204-238162999.jpg",
+      "cosine": 0.9131
+    },
+    {
+      "photo": "inat/408787041-751528299.jpg",
+      "nearest_hash": "tom2024/tomato_diseases/Bacterial_floundering_d/1181898658_1668683038348_640x480.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/pepper/273936982-492565324.jpg",
+      "cosine": 0.8549
+    },
+    {
+      "photo": "inat/408956748-751833255.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621751367538.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/tomato_diseases/sunburn_d/2024308218_1668180200305_640x480.jpg",
+      "cosine": 0.8741
+    },
+    {
+      "photo": "inat/408956748-751833315.jpg",
+      "nearest_hash": "maize_makerere/Healthy_2/1621923126407.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Apple Scab Leaf/apple-scab-obst-krankheit-m7akxy.jpg",
+      "cosine": 0.8946
+    },
+    {
+      "photo": "inat/409040494-752002937.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Raspberry leaf/yellow-raspberry-leaf-chlorosis-nutrient-deficiency-probably-lack-iron-gardening-problem-72461965.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf/Basil%2Binfected%2Bby%2BTomato%2BSpotted%2BWilt%2BVirus.jpg",
+      "cosine": 0.8514
+    },
+    {
+      "photo": "inat/409099323-752129156.jpg",
+      "nearest_hash": "coco_train2017_probe/000000385050.jpg",
+      "hamming": 12,
+      "nearest_cosine": "inat_species/pepper/43508248-69028820.jpg",
+      "cosine": 0.8843
+    },
+    {
+      "photo": "inat/409099323-752129168.jpg",
+      "nearest_hash": "coco_train2017_probe/000000123674.jpg",
+      "hamming": 16,
+      "nearest_cosine": "inat_species/pepper/69923618-113575203.jpg",
+      "cosine": 0.8404
+    },
+    {
+      "photo": "inat/409099323-752129203.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000001000.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/24216509-37446969.jpg",
+      "cosine": 0.881
+    },
+    {
+      "photo": "inat/409103896-752137917.jpg",
+      "nearest_hash": "ibean/data/train/train/bean_rust/bean_rust_train.116.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/36453435-57623917.jpg",
+      "cosine": 0.9618
+    },
+    {
+      "photo": "inat/409307250-752547945.jpg",
+      "nearest_hash": "inat_species/corn/99582569-166035170.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/Basil_2Binfected_2Bby_2BTomato_2BSpotted_2BWilt_2BVirus_aug_70.jpg",
+      "cosine": 0.7926
+    },
+    {
+      "photo": "inat/409307250-752547998.jpg",
+      "nearest_hash": "plantcity/test/tomato_septoria_leaf/tomato_184.jpg",
+      "hamming": 12,
+      "nearest_cosine": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/Basil_2Binfected_2Bby_2BTomato_2BSpotted_2BWilt_2BVirus_aug_70.jpg",
+      "cosine": 0.8287
+    },
+    {
+      "photo": "inat/409375217-752694436.jpg",
+      "nearest_hash": "tom2024/onion_diseases/Fusarium-D/788059748_1659800386121.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantcity/train/tomato_leaf_curl/tomato_1290.jpg",
+      "cosine": 0.7879
+    },
+    {
+      "photo": "inat/409375217-752694438.jpg",
+      "nearest_hash": "coco_train2017_probe/000000008568.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_leaf_curl/tomato_1164.jpg",
+      "cosine": 0.8301
+    },
+    {
+      "photo": "inat/409375217-752694439.jpg",
+      "nearest_hash": "coco_train2017_bg/000000184358.jpg",
+      "hamming": 16,
+      "nearest_cosine": "plantcity/train/tomato_leaf_curl/tomato_1386.jpg",
+      "cosine": 0.8102
+    },
+    {
+      "photo": "inat/409379381-752703272.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000009891.jpg",
+      "hamming": 14,
+      "nearest_cosine": "coco_train2017_probe/000000210693.jpg",
+      "cosine": 0.8163
+    },
+    {
+      "photo": "inat/409421388-752786596.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000356432.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantcity/train/tomato_septoria_leaf/tomato_970.jpg",
+      "cosine": 0.8101
+    },
+    {
+      "photo": "inat/409421388-752786630.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621409903482.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Bell_pepper leaf/DSC04477.JPG.jpg",
+      "cosine": 0.8648
+    },
+    {
+      "photo": "inat/409421388-752786670.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000013004.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Bell_pepper leaf/bell%20pepper%20rain%20590x330.jpg",
+      "cosine": 0.8724
+    },
+    {
+      "photo": "inat/409530849-753009585.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000006012.jpg",
+      "hamming": 12,
+      "nearest_cosine": "coco_train2017_probe/000000210693.jpg",
+      "cosine": 0.8444
+    },
+    {
+      "photo": "inat/409677023-753315342.jpg",
+      "nearest_hash": "ibean/data/train/train/bean_rust/bean_rust_train.187.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Bell_pepper leaf/5493139683d035a18fd0dfa12893f38b--outdoor-decor-worms.jpg",
+      "cosine": 0.8661
+    },
+    {
+      "photo": "inat/409854353-753674526.jpg",
+      "nearest_hash": "maize_makerere/MLB_1/1621329903299.jpg",
+      "hamming": 14,
+      "nearest_cosine": "tom2024/maize_diseases/Virosis-D/1322766122_1660209576600.jpg",
+      "cosine": 0.8004
+    },
+    {
+      "photo": "inat/410035908-754041481.jpg",
+      "nearest_hash": "tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/tomato.early.blightH_aug_1101_aug_901.jpg",
+      "hamming": 10,
+      "nearest_cosine": "inat_species/aroids/196217161-345391269.jpg",
+      "cosine": 0.7946
+    },
+    {
+      "photo": "inat/410035908-754041496.jpg",
+      "nearest_hash": "coco_train2017_probe/000000400166.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/aroids/196217161-345391269.jpg",
+      "cosine": 0.7741
+    },
+    {
+      "photo": "inat/410073605-754118877.jpg",
+      "nearest_hash": "plantcity/test/tomato_leaf_curl/tomato_080.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Strawberry leaf/depositphotos_1090254-Strawberry-leaves.jpg",
+      "cosine": 0.8178
+    },
+    {
+      "photo": "inat/410400928-754780770.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000181753.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Bell_pepper leaf/5493139683d035a18fd0dfa12893f38b--outdoor-decor-worms.jpg",
+      "cosine": 0.793
+    },
+    {
+      "photo": "inat/410400928-754780783.jpg",
+      "nearest_hash": "coco_val2017/val2017/000000015517.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Bell_pepper leaf/5493139683d035a18fd0dfa12893f38b--outdoor-decor-worms.jpg",
+      "cosine": 0.7669
+    },
+    {
+      "photo": "inat/410400928-754802115.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000335433.jpg",
+      "hamming": 16,
+      "nearest_cosine": "inat_species/tomato/30839492-48206923.jpg",
+      "cosine": 0.8591
+    },
+    {
+      "photo": "inat/410475581-754936697.jpg",
+      "nearest_hash": "coco_train2017_probe/000000283502.jpg",
+      "hamming": 12,
+      "nearest_cosine": "coco_train2017_probe/000000490471.jpg",
+      "cosine": 0.8122
+    },
+    {
+      "photo": "inat/410475581-754936792.jpg",
+      "nearest_hash": "coco_train2017_holdout/000000244674.jpg",
+      "hamming": 16,
+      "nearest_cosine": "coco_train2017_probe/000000490471.jpg",
+      "cosine": 0.7989
+    },
+    {
+      "photo": "inat/410516317-755013605.jpg",
+      "nearest_hash": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Corn leaf blight/stock-photo-northern-corn-leaf-blight-nclb-is-a-foliar-disease-of-corn-maize-caused-by-exserohilum-turcicum-592778840.jpg",
+      "hamming": 12,
+      "nearest_cosine": "coco_train2017_probe/000000210693.jpg",
+      "cosine": 0.8172
+    },
+    {
+      "photo": "inat/410535723-755041045.jpg",
+      "nearest_hash": "ibean/data/train/train/healthy/healthy_train.217.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/256319408-459536120.jpg",
+      "cosine": 0.7845
+    },
+    {
+      "photo": "inat/410535791-755041465.jpg",
+      "nearest_hash": "coco_train2017_probe/000000075002.jpg",
+      "hamming": 14,
+      "nearest_cosine": "inat_species/pepper/196691427-346230750.jpg",
+      "cosine": 0.7745
+    },
+    {
+      "photo": "inat/410535794-755041486.jpg",
+      "nearest_hash": "maize_makerere/MLB_2/1621929990148.jpg",
+      "hamming": 12,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Strawberry leaf/270412tglr-wild-strawberry-leaf.jpg",
+      "cosine": 0.819
+    },
+    {
+      "photo": "inat/410535795-755041500.jpg",
+      "nearest_hash": "coco_train2017_bg/000000168834.jpg",
+      "hamming": 14,
+      "nearest_cosine": "plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Blueberry leaf/blueberry-goanp-nps.jpg",
+      "cosine": 0.8198
+    }
+  ],
+  "calibration": null
+}

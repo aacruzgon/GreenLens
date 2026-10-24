@@ -19,8 +19,8 @@ cases:
     outcome: diagnosed
     problems: []
     look_alike: frost_damage
-    confidence: sure
-    keep: false
+    confidence: probable
+    keep: true
     note: the photographer's own title says killed by frost, in early November
   - case: tomato-frost-old-dairy
     files: [{title: "2021-11-06 15 02 46 Tomato plants killed by frost along Old Dairy Court in the Franklin Farm section of Oak Hill, Fairfax County, Virginia.jpg", kind: whole_plant}]
@@ -28,15 +28,15 @@ cases:
     outcome: diagnosed
     problems: []
     look_alike: frost_damage
-    confidence: sure
-    keep: false
+    confidence: probable
+    keep: true
   - case: pepper-frost-indale
     files: [{title: "2021-11-05 11 52 32 Pepper plants killed by frost along Indale Court in the Franklin Farm section of Oak Hill, Fairfax County, Virginia.jpg", kind: whole_plant}]
     species_id: pepper
     outcome: diagnosed
     problems: []
     look_alike: frost_damage
-    confidence: sure
+    confidence: probable
     keep: false
   - case: pepper-frost-old-dairy
     files: [{title: "2021-11-06 15 02 37 Pepper plants killed by frost along Old Dairy Court in the Franklin Farm section of Oak Hill, Fairfax County, Virginia.jpg", kind: whole_plant}]
@@ -44,8 +44,8 @@ cases:
     outcome: diagnosed
     problems: []
     look_alike: frost_damage
-    confidence: sure
-    keep: false
+    confidence: probable
+    keep: true
   # --- Hail ---------------------------------------------------------------------------------
   - case: tomato-hail
     files:
@@ -56,7 +56,7 @@ cases:
     problems: []
     look_alike: hail_damage
     confidence: probable
-    keep: false
+    keep: true
     note: white scars on stems and green fruit, both taken on 2008-07-03 by one photographer
   - case: corn-hail
     files:
@@ -67,7 +67,7 @@ cases:
     problems: []
     look_alike: hail_damage
     confidence: probable
-    keep: false
+    keep: true
     note: a shredded maize field and leaf, both 2008-07-11
   - case: apple-hail
     files: [{title: "Apple hail damage10b.JPG", kind: whole_plant}]
@@ -76,7 +76,7 @@ cases:
     problems: []
     look_alike: hail_damage
     confidence: probable
-    keep: false
+    keep: true
     note: dents on a fruit on the tree; could pass for scab or bitter pit at a glance
   # --- Sunscald -----------------------------------------------------------------------------
   - case: pepper-sunscald
@@ -85,8 +85,8 @@ cases:
     outcome: diagnosed
     problems: []
     look_alike: sunscald
-    confidence: sure
-    keep: false
+    confidence: probable
+    keep: true
     note: Don Ferrin, LSU AgCenter, via Bugwood; an extension pathologist's caption
   - case: apple-sunburn
     files: [{title: "Apple sunburn1.jpg", kind: whole_plant}]
@@ -114,7 +114,7 @@ cases:
     problems: []
     look_alike: potassium_deficiency
     confidence: probable
-    keep: false
+    keep: true
     note: yellowing from the leaf margins; Kalimangel is German for potassium deficiency
   - case: corn-potassium
     files: [{title: "K-deficient maize on Cedara 2 2003-01-13.jpg", kind: whole_plant}]
@@ -122,8 +122,8 @@ cases:
     outcome: diagnosed
     problems: []
     look_alike: potassium_deficiency
-    confidence: sure
-    keep: false
+    confidence: probable
+    keep: true
     note: a soil scientist's trial plot (Alan Manson, Cedara, South Africa)
   - case: corn-magnesium
     files: [{title: "Mg deficiency Vulindlela 1995-3-30 2018 01 23 2235.jpg", kind: whole_plant}]
@@ -131,8 +131,8 @@ cases:
     outcome: diagnosed
     problems: []
     look_alike: magnesium_deficiency
-    confidence: sure
-    keep: false
+    confidence: probable
+    keep: true
     note: interveinal striping, the same soil scientist; small (1018 px wide)
   - case: grape-deficiency
     files: [{title: "Grape leaf showing nutrient deficiency.jpg", kind: whole_plant}]
@@ -141,7 +141,7 @@ cases:
     problems: []
     look_alike: nutrient_deficiency
     confidence: probable
-    keep: false
+    keep: true
     note: red margins on a red cultivar; leafroll virus looks the same, so probable at best
   - case: grape-deficiency-lagrein
     files: [{title: "Lagrein leaf with nutrient deficiency at Gisborne Peak.jpg", kind: whole_plant}]
@@ -167,5 +167,5 @@ cases:
     outcome: diagnosed
     problems: [tomato_blossom_end_rot]
     confidence: probable
-    keep: false
+    keep: true
     note: a green fruit on the vine
