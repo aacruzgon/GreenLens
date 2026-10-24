@@ -112,6 +112,7 @@ Day 8 of 10 (Oct 23). **The models are trained, calibrated and frozen (M17), and
 | [#213](https://github.com/aacruzgon/GreenLens/pull/213) (Alan) | `fix/p11-damage-trace` | `main` | Merged (384c212) | P11's laptop half: `findings@6` asks each damage finding for the animal or its trace, and decode drops one that names none; the rig re-run is [#216](https://github.com/aacruzgon/GreenLens/issues/216) |
 | [#214](https://github.com/aacruzgon/GreenLens/pull/214) | `fix/indicators-reason-length` | `main` | Open | The worker caps the indicator reason at 100 characters, above the prompt's 60 |
 | [#215](https://github.com/aacruzgon/GreenLens/pull/215) | `fix/untrack-data-symlinks` | `main` | Merged (f81cc8f) | Stops tracking the five data-folder symlinks #210 committed, which deleted the real folders on checkout |
+| [#217](https://github.com/aacruzgon/GreenLens/pull/217) | `docs/vision-tracker-d12` | `main` | Open | The trackers to Oct 24 (M4, P6, J4, this table, the rig) and D12's corrections from [#14](https://github.com/aacruzgon/GreenLens/issues/14) |
 | [#31](https://github.com/aacruzgon/GreenLens/pull/31) | `docs/roadmap-day1-wrap` | `main` | Merged (691bb40) | This file at the end of day 1 |
 
 ## 3. Tracker by build-plan period
