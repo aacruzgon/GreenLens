@@ -187,6 +187,20 @@ pub const FARM_ROUTE_LABELS: [&str; 6] = [
     "off_topic",
 ];
 
+/// The labels of [`ClassifierTask::MemoryWorthy`]: the exchange holds a fact worth remembering,
+/// or it doesn't. `agent`'s memory gate compares the two; its classifier and Jev share them.
+pub const MEMORY_LABELS: [&str; 2] = ["remember", "skip"];
+
+/// The labels of [`ClassifierTask::ChunkTopic`]: the chunk topics ([contracts 10],
+/// `ChunkSeed.topic`), shared by `agent`'s classifier and Jev.
+pub const TOPIC_LABELS: [&str; 5] = [
+    "symptoms",
+    "conditions",
+    "management",
+    "care",
+    "recognition",
+];
+
 /// One label's score. Scores are compared with each other, not read as probabilities.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LabelScore {
@@ -194,6 +208,25 @@ pub struct LabelScore {
     pub label: String,
     /// Its score.
     pub score: f64,
+}
+
+/// The conversation's last exchange before the message being routed: context for
+/// [`ClassifierTask::Route`], so a follow-up such as "what did you just tell me about the
+/// forecast?" is routed with what it refers to, not on its own words. The caller cuts each text
+/// to its limit; both are absent in a conversation's first message.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PriorExchange {
+    /// The gardener's previous message.
+    pub user: Option<String>,
+    /// The assistant's previous reply.
+    pub assistant: Option<String>,
+}
+
+impl PriorExchange {
+    /// Whether there is nothing to give.
+    pub const fn is_empty(&self) -> bool {
+        self.user.is_none() && self.assistant.is_none()
+    }
 }
 
 /// The fast text classifier: Jev, or the cheapest LLM with structured output.
@@ -206,6 +239,19 @@ pub trait TextClassifier: Send + Sync {
         task: ClassifierTask,
         text: &str,
     ) -> Result<Vec<LabelScore>, ModelError>;
+
+    /// [`classify`](Self::classify) with the conversation's last exchange as context, which only
+    /// the route reads: the router calls this. An empty exchange asks exactly as `classify`
+    /// does; the default ignores the context.
+    async fn classify_with_context(
+        &self,
+        task: ClassifierTask,
+        text: &str,
+        prior: &PriorExchange,
+    ) -> Result<Vec<LabelScore>, ModelError> {
+        let _ = prior;
+        self.classify(task, text).await
+    }
 }
 
 /// The pinned text-embedding model (architecture 10): its name, version and dimension, which
@@ -413,6 +459,62 @@ pub enum StopReason {
     Refusal,
 }
 
+/// One call's token counts as the provider bills them: [`Usage`] (every input token, cached or
+/// not, as `message_completed` and the stored message carry it) with the part of the input
+/// read from and written to the prompt cache. Only the daily chat budget reads the split
+/// ([`CallUsage::budget_tokens`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CallUsage {
+    /// All input and output tokens.
+    pub usage: Usage,
+    /// Of `usage.tokens_in`, the tokens read from the prompt cache.
+    pub cache_read: u32,
+    /// Of `usage.tokens_in`, the tokens written to the prompt cache.
+    pub cache_write: u32,
+}
+
+impl CallUsage {
+    /// A cache read counts as this fraction of an input token in the budget: Anthropic's
+    /// usual ratio (0.1×; Opus 5.5 bills 0.05×, so the budget errs high).
+    pub const CACHE_READ_WEIGHT: (u64, u64) = (1, 10);
+    /// A cache write counts as 1.25 input tokens: Anthropic's price for the 5-minute cache,
+    /// the one the agent uses.
+    pub const CACHE_WRITE_WEIGHT: (u64, u64) = (5, 4);
+    /// An output token (thinking included) counts as 5 input tokens: Opus 5.5's $20 to $4 per
+    /// million, so a budget token costs about an input token's price (US$4 per million).
+    pub const OUTPUT_WEIGHT: u64 = 5;
+
+    /// Counts that carry no cache split (a provider that reports none, a test).
+    #[must_use]
+    pub const fn plain(usage: Usage) -> Self {
+        Self {
+            usage,
+            cache_read: 0,
+            cache_write: 0,
+        }
+    }
+
+    /// The call's weight in the daily chat budget, in input-token prices: uncached input at 1,
+    /// cache reads at 0.1, cache writes at 1.25 (each rounded up) and output at 5. Anthropic's
+    /// prices, from the claude-api skill (cache reads 0.1× the input price, 5-minute writes
+    /// 1.25×, Opus 5.5 output 5×), so the budget is a cost cap: most of a tool turn's input is
+    /// the cached prefix read again on each call.
+    #[must_use]
+    pub fn budget_tokens(&self) -> u64 {
+        let read = u64::from(self.cache_read);
+        let write = u64::from(self.cache_write);
+        let uncached = u64::from(self.usage.tokens_in)
+            .saturating_sub(read)
+            .saturating_sub(write);
+        let (rn, rd) = Self::CACHE_READ_WEIGHT;
+        let (wn, wd) = Self::CACHE_WRITE_WEIGHT;
+        uncached
+            + (read * rn).div_ceil(rd)
+            + (write * wn).div_ceil(wd)
+            + u64::from(self.usage.tokens_out) * Self::OUTPUT_WEIGHT
+    }
+}
+
 /// One piece of a streamed answer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatChunk {
@@ -432,7 +534,7 @@ pub enum ChatChunk {
     /// Token counts, once known. The counts are cumulative for the call: a later `Usage`
     /// replaces an earlier one (it is not added to it), and the last one before `Done` is the
     /// call's total.
-    Usage(Usage),
+    Usage(CallUsage),
     /// The end.
     Done(StopReason),
 }
@@ -589,6 +691,49 @@ pub trait SpotSegmenter: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The live card turn of the S5 checks as one call with its totals: 8 uncached, 25,792
+    /// written and 44,005 read of 69,805 input tokens, and 2,070 out, weighs 46,999 budget
+    /// tokens (input prices; output at 5), not 71,875.
+    #[test]
+    fn the_budget_weighs_reads_writes_and_output_by_price() {
+        let call = CallUsage {
+            usage: Usage {
+                tokens_in: 69_805,
+                tokens_out: 2_070,
+            },
+            cache_read: 44_005,
+            cache_write: 25_792,
+        };
+        assert_eq!(call.budget_tokens(), 8 + 4_401 + 32_240 + 5 * 2_070);
+        let plain = CallUsage::plain(Usage {
+            tokens_in: 100,
+            tokens_out: 7,
+        });
+        assert_eq!(
+            plain.budget_tokens(),
+            100 + 35,
+            "no cache split: input in full, output at 5"
+        );
+        let odd = CallUsage {
+            usage: Usage {
+                tokens_in: 3,
+                tokens_out: 0,
+            },
+            cache_read: 1,
+            cache_write: 1,
+        };
+        assert_eq!(odd.budget_tokens(), 1 + 1 + 2, "each part rounds up");
+        let bad = CallUsage {
+            cache_read: 10,
+            ..CallUsage::default()
+        };
+        assert_eq!(
+            bad.budget_tokens(),
+            1,
+            "a split larger than the input saturates"
+        );
+    }
 
     #[test]
     fn views_check_their_sizes() {

@@ -3,8 +3,8 @@
 use crate::{
     authz::{ConversationOwner, Editor, Membership, Viewer},
     chat::{
-        Anchor, ChatRoute, ConfirmResult, Conversation, ConversationDetail, ConversationQuery,
-        Message, MessageFeedbackRequest, MessageRole, PendingAction,
+        Anchor, AnswerBlock, ChatRoute, ConfirmResult, Conversation, ConversationDetail,
+        ConversationQuery, Message, MessageFeedbackRequest, MessageRole, PendingAction,
     },
     connectors::FarmCitation,
     id::{ChatImageId, ConversationId, MessageId, PendingActionId, UserId},
@@ -59,6 +59,9 @@ pub struct NewMessage {
     ///
     /// [connectors 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#7-the-agent
     pub farm_citations: Vec<FarmCitation>,
+    /// The answer blocks an assistant message sent, in order ([contracts 8], answer blocks);
+    /// empty for a user message.
+    pub blocks: Vec<AnswerBlock>,
     /// Tool calls and results, in order.
     pub tool_calls: Vec<ContentPart>,
     /// The classifier's route.
@@ -169,7 +172,12 @@ pub trait ChatRepo: Send + Sync {
         summary: String,
     ) -> Result<(), StoreError>;
 
-    /// A write tool's card. Editors and owners only.
+    /// A write tool's card. Editors and owners only. Its message is the turn's assistant
+    /// message, which the turn stores only after its tool loop, so it need not exist yet; a
+    /// message of another conversation is `NotFound`. If that message is never stored (its
+    /// write failed, or the turn task died), the card is an orphan: it stays `proposed` until
+    /// it expires and can still be confirmed or rejected from the client's copy of the
+    /// `pending_action` event, but no message lists it after a reload.
     async fn create_pending_action(
         &self,
         owner: ConversationOwner<Editor>,

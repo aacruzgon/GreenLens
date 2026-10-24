@@ -5,8 +5,8 @@ is a copy of a training image would measure memory, not generalisation.
 
 Every photo the manifest names is compared with every image file under `ml/training/data/raw`,
 which holds every source any of our models trained or was tuned on, all splits. The run stops
-first when a dataset in `sources.yaml`, or a COCO folder the detector or the plant check uses,
-has no images there: the check would quietly cover less.
+first when a dataset in `sources.yaml`, or a COCO folder the detector, the plant probe or the
+plant check uses, has no images there: the check would quietly cover less.
 
 - **Perceptual hash:** a 64-bit DCT hash of the photo and of its 8 rotations and flips. A training
   image within `--hamming` bits of any of them is a copy: resized, recompressed, rotated or flipped.
@@ -65,9 +65,10 @@ ALLOWED = EVAL / "leakage_allowed.tsv"
 COSINE = 0.98  # training 4's duplicate threshold
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 NO_IMAGES = {"coco_annotations_2017", "openimages_v7_faces"}  # datasets in sources.yaml that are annotations only
-# COCO photos fetched outside sources.yaml: the detector's backgrounds (detector/background.py)
-# and the plant check's hold-out negatives (data/negatives_holdout.py).
-COCO_FOLDERS = ("coco_train2017_bg", "coco_train2017_holdout")
+# COCO photos fetched outside sources.yaml: the detector's backgrounds (detector/background.py),
+# the plant check's hold-out negatives (data/negatives_holdout.py) and the trained plant probe's
+# licence-clean photos without a plant (data/negatives_probe.py).
+COCO_FOLDERS = ("coco_train2017_bg", "coco_train2017_holdout", "coco_train2017_probe")
 
 
 # --- perceptual hash ----------------------------------------------------------------------------
@@ -133,8 +134,8 @@ def skipped_folders(sources: Path = SOURCES) -> set[str]:
 
 def required_folders(sources: Path = SOURCES) -> list[str]:
     """The folders under `raw` that must hold images: every dataset in sources.yaml that has
-    images, less those marked `leakage: false`, and the COCO photos the detector trains on and
-    the plant check is tuned on."""
+    images, less those marked `leakage: false`, and the COCO photos the detector and the plant
+    probe train on and the plant check is tuned on."""
     names = [d["name"] for d in yaml.safe_load(sources.read_text())["datasets"]]
     skipped = skipped_folders(sources)
     return [n for n in names if n not in NO_IMAGES and n not in skipped] + list(COCO_FOLDERS)

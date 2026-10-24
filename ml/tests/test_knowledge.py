@@ -187,6 +187,16 @@ def test_the_migration_is_deterministic_and_complete(seed):
     assert max(Image.open(io.BytesIO(data)).size) == 1024
 
 
+def test_frost_is_written_only_when_the_seed_says_it(seed):
+    seed = copy.deepcopy(seed)
+    by_id(seed.species, "tomato")["frost"] = "tender"
+    lines = build(seed)[0].splitlines()
+    tomato, = [l for l in lines if l.startswith("UPSERT species:`tomato`")]
+    strawberry, = [l for l in lines if l.startswith("UPSERT species:`strawberry`")]
+    assert "frost: 'tender'" in tomato
+    assert "frost" not in strawberry
+
+
 def test_reference_photos_are_turned_upright_and_lose_their_metadata(tmp_path):
     from PIL import Image
     import io

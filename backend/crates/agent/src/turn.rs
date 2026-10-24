@@ -21,22 +21,28 @@
 //! **Tool results are data.** A successful result goes back to the model inside a `data` block
 //! ([`crate::prompt::tool_result`]), like every other text the server didn't write; the stored
 //! copy keeps the tool's JSON. A refusal stays plain: the server wrote it for the model to act on.
+//!
+//! **Answer blocks.** `show_block` is the one call the turn runs itself ([`crate::tools::blocks`]):
+//! it reads the turn's own tool results and the blocks already sent, which the reply holds, so
+//! only a call of this turn can be a block's anchor. It sends no `tool_started` or
+//! `tool_finished`; a built block goes out as `answer_block`, after its anchor's
+//! `tool_finished`, and is stored in `Message.blocks`.
 
 use std::sync::Arc;
 
 use domain::{
     authz::{ConversationOwner, Membership, Viewer},
     chat::{
-        Anchor, ChatErrorEvent, ChatEvent, ChatRoute, CitationEvent, MemorySaved, Message,
-        MessageCompleted, MessageRole, MessageStarted, PendingActionEvent, RescanRequested,
-        SendMessageRequest, TextDelta, ToolFinished, ToolStarted, Usage,
+        Anchor, AnswerBlock, AnswerBlockEvent, ChatErrorEvent, ChatEvent, ChatRoute, CitationEvent,
+        MemorySaved, Message, MessageCompleted, MessageRole, MessageStarted, PendingActionEvent,
+        RescanRequested, SendMessageRequest, TextDelta, ToolFinished, ToolName, ToolStarted, Usage,
     },
     connectors::FarmCitation,
     error::{Budget, DomainError, ErrorCode},
     id::{ChatImageId, MessageId},
     ports::{
-        ChatChunk, ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask, ContentPart,
-        IdGenExt as _, ModelError, NewMessage, ObjectKey, StopReason,
+        CallUsage, ChatChunk, ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask,
+        ContentPart, IdGenExt as _, ModelError, NewMessage, ObjectKey, PriorExchange, StopReason,
     },
     records::diagnosis::Citation,
     rules::limits::{MESSAGE_MAX_CHARS, MESSAGE_MAX_IMAGES},
@@ -60,7 +66,11 @@ use crate::{
     safety::{
         REPLACED_SENTENCE, RouteDecision, SAFETY_POLICY, SentenceSplitter, decide_route, dose_check,
     },
-    tools::{Offer, ToolCtx, ToolEffect, ToolRegistry},
+    tools::{
+        Offer, ToolCtx, ToolEffect, ToolRegistry,
+        blocks::{self, ShowBlockArgs},
+        tool_name,
+    },
 };
 
 /// Events buffered between the turn task and the response body. Small: the body drains it as
@@ -194,7 +204,7 @@ impl ChatAgent {
             .usage
             .usage(member.user(), now.utc_day())
             .await?;
-        let spent = used.tokens_in.saturating_add(used.tokens_out);
+        let spent = used.chat_budget;
         let budget = deps.config.daily_chat_tokens;
         if spent >= budget {
             return Err(DomainError::BudgetExceeded {
@@ -204,17 +214,14 @@ impl ChatAgent {
             .into());
         }
 
-        let first = PageRequest {
+        // The two newest messages: the anchor, and the exchange the router reads as context.
+        let newest = PageRequest {
             cursor: None,
-            limit: Some(1),
+            limit: Some(2),
         };
-        let anchor = deps
-            .stores
-            .chats
-            .conversation_detail(owner, first)
-            .await?
-            .conversation
-            .anchor;
+        let detail = deps.stores.chats.conversation_detail(owner, newest).await?;
+        let anchor = detail.conversation.anchor;
+        let prior = prior_exchange(&detail.messages.items).unwrap_or_default();
 
         let mut image_keys = Vec::with_capacity(image_ids.len());
         for id in &image_ids {
@@ -227,7 +234,7 @@ impl ChatAgent {
             image_keys.push(object.key);
         }
 
-        let (decision, farm_records) = route(deps, member, &text).await;
+        let (decision, farm_records) = route(deps, member, &text, &prior).await;
 
         let user_message = deps.ids.id();
         deps.stores
@@ -241,6 +248,7 @@ impl ChatAgent {
                     attachments: image_ids,
                     citations: Vec::new(),
                     farm_citations: Vec::new(),
+                    blocks: Vec::new(),
                     tool_calls: Vec::new(),
                     route: Some(decision.route()),
                     interrupted: false,
@@ -279,16 +287,83 @@ impl ChatAgent {
     }
 }
 
+/// The longest previous user message the router reads, in characters.
+pub const ROUTE_CONTEXT_USER_CHARS: usize = 300;
+
+/// The longest previous assistant reply the router reads, in characters.
+pub const ROUTE_CONTEXT_ASSISTANT_CHARS: usize = 1_000;
+
+/// The first `max` characters of `text`, marked with `…` when cut.
+fn cut_start(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((end, _)) => format!("{}…", text[..end].trim_end()),
+        None => text.to_owned(),
+    }
+}
+
+/// The last `max` characters of `text`, marked with `…` when cut: a long question usually
+/// ends with what it asks.
+fn cut_end(text: &str, max: usize) -> String {
+    let count = text.chars().count();
+    if count <= max {
+        return text.to_owned();
+    }
+    let start = text.char_indices().nth(count - max).map_or(0, |(i, _)| i);
+    format!("…{}", text[start..].trim_start())
+}
+
+/// The exchange before this message, from the conversation's newest messages (newest first),
+/// so a follow-up is routed with what it refers to. `None` in a conversation's first message.
+///
+/// - The assistant half is the last reply, its first [`ROUTE_CONTEXT_ASSISTANT_CHARS`]. It is
+///   left out when empty, and when the reply cites farm records: such a reply can quote Slack
+///   messages or Drive files that people outside PDM wrote, which must not reach a classifier
+///   that has no data framing (Jev's `state`).
+/// - The user half is the user message before it, or the newest message itself when no reply
+///   followed it (an interrupted turn): its last [`ROUTE_CONTEXT_USER_CHARS`].
+pub fn prior_exchange<U: domain::url::UrlState>(newest: &[Message<U>]) -> Option<PriorExchange> {
+    fn said<U: domain::url::UrlState>(m: &Message<U>) -> Option<&str> {
+        Some(m.text.trim()).filter(|t| !t.is_empty())
+    }
+    let user_half = |m: Option<&Message<U>>| {
+        m.filter(|m| m.role == MessageRole::User)
+            .and_then(said)
+            .map(|t| cut_end(t, ROUTE_CONTEXT_USER_CHARS))
+    };
+    let first = newest.first()?;
+    let prior = if first.role == MessageRole::Assistant {
+        PriorExchange {
+            assistant: said(first)
+                .filter(|_| first.farm_citations.is_empty())
+                .map(|t| cut_start(t, ROUTE_CONTEXT_ASSISTANT_CHARS)),
+            user: user_half(newest.get(1)),
+        }
+    } else {
+        PriorExchange {
+            assistant: None,
+            user: user_half(Some(first)),
+        }
+    };
+    (!prior.is_empty()).then_some(prior)
+}
+
 /// Routes the message. Whether the garden has farm records is read first, once per turn: the
 /// classifier is asked for the `farm_records` label only then, so a question about the garden's
 /// own records is on topic only then (gap G10), and the same fact offers `search_farm_records`
-/// (gap G6). A classifier that fails or is slower than `classifier_timeout` leaves no scores.
-async fn route(deps: &AgentDeps, member: Membership<Viewer>, text: &str) -> (RouteDecision, bool) {
+/// (gap G6). The exchange before the message goes with it, so a follow-up such as "what did you
+/// just tell me?" is routed as the conversation it continues. A classifier that fails or is
+/// slower than `classifier_timeout` leaves no scores.
+async fn route(
+    deps: &AgentDeps,
+    member: Membership<Viewer>,
+    text: &str,
+    prior: &PriorExchange,
+) -> (RouteDecision, bool) {
     let farm_records = context::has_farm_records(deps, member).await;
     let scores = tokio::time::timeout(
         deps.config.classifier_timeout,
         deps.classifier
-            .classify(ClassifierTask::Route { farm_records }, text),
+            .classify_with_context(ClassifierTask::Route { farm_records }, text, prior),
     )
     .await
     .ok()
@@ -372,19 +447,25 @@ struct Reply {
     farm_citations: Vec<FarmCitation>,
     /// Tool calls and results, in order (stored, never sent to the app).
     tool_calls: Vec<ContentPart>,
+    /// The answer blocks sent, in order (`Message.blocks`).
+    blocks: Vec<AnswerBlock>,
     usage: Usage,
+    /// The calls' weight in the daily budget (`CallUsage::budget_tokens`, summed).
+    budget: u64,
     purpose: Option<ChatPurpose>,
     prompt_version: &'static str,
 }
 
 impl Reply {
-    fn add_usage(&mut self, u: Usage) {
-        self.usage.tokens_in = self.usage.tokens_in.saturating_add(u.tokens_in);
-        self.usage.tokens_out = self.usage.tokens_out.saturating_add(u.tokens_out);
+    fn add_usage(&mut self, u: CallUsage) {
+        self.usage.tokens_in = self.usage.tokens_in.saturating_add(u.usage.tokens_in);
+        self.usage.tokens_out = self.usage.tokens_out.saturating_add(u.usage.tokens_out);
+        self.budget = self.budget.saturating_add(u.budget_tokens());
     }
 
-    fn spent(&self) -> u64 {
-        u64::from(self.usage.tokens_in) + u64::from(self.usage.tokens_out)
+    /// What the turn has spent of the daily budget.
+    const fn spent(&self) -> u64 {
+        self.budget
     }
 }
 
@@ -446,7 +527,7 @@ async fn run(
     if let Err(e) = deps
         .stores
         .usage
-        .add_chat_usage(member.user(), turn.now.utc_day(), reply.usage)
+        .add_chat_usage(member.user(), turn.now.utc_day(), reply.usage, reply.budget)
         .await
     {
         tracing::warn!(error = %e, "chat usage not recorded");
@@ -545,6 +626,7 @@ async fn store_reply(
                 attachments: Vec::new(),
                 citations: reply.citations.clone(),
                 farm_citations: reply.farm_citations.clone(),
+                blocks: reply.blocks.clone(),
                 tool_calls: reply.tool_calls.clone(),
                 route: Some(route),
                 interrupted,
@@ -632,13 +714,20 @@ async fn stream_call(
 ) -> Result<CallResult, Ended> {
     let mut result = CallResult::default();
     let mut raw = String::new();
-    let mut usage = Usage::default();
+    let mut usage = CallUsage::default();
     let mut stream = deps.chat.stream(request);
     loop {
+        // A call cut short still counts: what it reported so far goes into the budget.
         let next = tokio::select! {
             biased;
-            () = turn.shutdown.cancelled() => return Err(Ended::Interrupted),
-            () = out.tx.closed() => return Err(Ended::Interrupted),
+            () = turn.shutdown.cancelled() => {
+                reply.add_usage(usage);
+                return Err(Ended::Interrupted);
+            }
+            () = out.tx.closed() => {
+                reply.add_usage(usage);
+                return Err(Ended::Interrupted);
+            }
             next = stream.next() => next,
         };
         let chunk = match next {
@@ -852,6 +941,9 @@ async fn run_tool(
     name: String,
     arguments: serde_json::Value,
 ) -> Option<(ContentPart, Vec<ContentPart>)> {
+    if name == tool_name(ToolName::ShowBlock) {
+        return show_block(ctx, out, reply, call_id, arguments).await;
+    }
     let tool = inner.tools.find(&name, offer);
     let label = tool.map_or("Working", |t| t.label());
     let started = ToolStarted {
@@ -899,7 +991,7 @@ async fn run_tool(
         content.clone()
     } else {
         let kind = tool.map_or(DataKind::ToolResult, crate::tools::DynTool::data_kind);
-        tool_result(kind, &content)
+        tool_result(kind, &call_id, &content)
     };
     reply.tool_calls.push(ContentPart::ToolResult {
         call_id: call_id.clone(),
@@ -920,6 +1012,67 @@ async fn run_tool(
         return None;
     }
     Some((part, images))
+}
+
+/// `show_block` ([`blocks`]): built from the turn's own results and the blocks already sent,
+/// which `reply` holds. It sends no `tool_started` or `tool_finished`, so the app shows no chip
+/// for it; a built block goes out as `answer_block` and into `Message.blocks`, and a refused one
+/// sends nothing and gives the model the reason. Its one string, `call_id`, is a call id the
+/// provider wrote or the name of a tool the answer called once, which `blocks::resolve` maps to
+/// that call's provider id; the block carries only that id, so no text of the model's reaches
+/// the app and there is nothing to dose-check. `None` when the client went away.
+async fn show_block(
+    ctx: &ToolCtx<'_>,
+    out: &mut Emitter,
+    reply: &mut Reply,
+    call_id: String,
+    arguments: serde_json::Value,
+) -> Option<(ContentPart, Vec<ContentPart>)> {
+    reply.after_tool_round = true;
+    let built = match serde_json::from_value::<ShowBlockArgs>(arguments.clone()) {
+        Ok(args) => blocks::build(ctx, &reply.tool_calls, &reply.blocks, args).await,
+        Err(e) => Err(crate::error::ToolError::Rejected(format!(
+            "The arguments are invalid: {e}."
+        ))),
+    };
+    reply.tool_calls.push(ContentPart::ToolCall {
+        call_id: call_id.clone(),
+        name: tool_name(ToolName::ShowBlock).to_owned(),
+        arguments,
+    });
+    let (content, is_error) = match built {
+        Ok(block) => {
+            let content = serde_json::json!({ "ok": true, "kind": block.kind().as_str() });
+            // Stored only once sent, so `Message.blocks` is exactly what the app received.
+            let event = ChatEvent::AnswerBlock(AnswerBlockEvent {
+                v: V1,
+                block: block.clone(),
+            });
+            if !out.send(event).await {
+                return None;
+            }
+            reply.blocks.push(block);
+            (content, false)
+        }
+        Err(e) => {
+            tracing::info!(error = %e, "show_block refused");
+            (serde_json::json!({ "error": e.for_model() }), true)
+        }
+    };
+    reply.tool_calls.push(ContentPart::ToolResult {
+        call_id: call_id.clone(),
+        content: content.clone(),
+        is_error,
+    });
+    // The server wrote both answers, so neither goes in a `data` block.
+    Some((
+        ContentPart::ToolResult {
+            call_id,
+            content,
+            is_error,
+        },
+        Vec::new(),
+    ))
 }
 
 async fn send_effect(out: &mut Emitter, reply: &mut Reply, effect: ToolEffect) -> bool {

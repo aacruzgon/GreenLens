@@ -23,6 +23,7 @@
 //! into the call; [`Erased::call`] checks them all before `run`, so a failing call creates no
 //! card, task, memory or event, and the model gets the reason as an `is_error` result.
 
+pub mod blocks;
 pub mod read;
 pub mod revise;
 pub mod ui;
@@ -207,6 +208,9 @@ pub trait DynTool: Send + Sync {
     fn needs_farm_records(&self) -> bool;
     /// The spec sent to the model.
     fn spec(&self) -> &ToolSpec;
+    /// The argument type's own JSON Schema, before a strict tool's properties are all made
+    /// required: which of them may be left out.
+    fn args_schema(&self) -> Value;
     /// Parses, dose-checks and runs a call.
     ///
     /// One lifetime `'a` for the tool, the context and the context's own borrows: the boxed
@@ -229,18 +233,54 @@ pub struct Erased<T: Tool> {
 impl<T: Tool> Erased<T> {
     /// Wraps a tool, generating its spec from `T::Args` once.
     pub fn new(tool: T) -> Self {
-        let parameters =
+        let mut parameters =
             serde_json::to_value(schemars::schema_for!(T::Args)).unwrap_or(Value::Null);
+        // A change proposed with wrong arguments would reach a card; reads are parsed and
+        // refused with a reason anyway.
+        let strict = T::KIND == ToolKind::Write;
+        if strict {
+            require_every_property(&mut parameters);
+        }
         Self {
             tool,
             spec: ToolSpec {
                 name: tool_name(T::NAME).to_owned(),
                 description: T::DESCRIPTION.to_owned(),
                 parameters,
-                // A change proposed with wrong arguments would reach a card; reads are parsed
-                // and refused with a reason anyway.
-                strict: T::KIND == ToolKind::Write,
+                strict,
             },
+        }
+    }
+}
+
+/// Puts every property of every object in a strict tool's schema in its `required`. Under
+/// strict tool use the hosted model never fills an optional property: `revise_plan` came with
+/// only its summary and no steps, and `create_task` never with a plant, a date or a repeat
+/// (live S5 checks, 2026-10-23). An optional argument is an `Option` (nullable in the schema)
+/// or a list (sent empty), so the model can always give "none"; the arguments still parse when
+/// one is missing. It walks only schema positions, as the adapter's `sanitize_schema` does, so
+/// a `default`, `const` or `examples` value that holds a `properties` key is left alone.
+pub(crate) fn require_every_property(schema: &mut Value) {
+    let Value::Object(o) = schema else {
+        return;
+    };
+    if let Some(Value::Object(props)) = o.get("properties") {
+        let all = props.keys().cloned().map(Value::String).collect();
+        o.insert("required".to_owned(), Value::Array(all));
+    }
+    for key in ["properties", "$defs", "definitions"] {
+        if let Some(Value::Object(map)) = o.get_mut(key) {
+            map.values_mut().for_each(require_every_property);
+        }
+    }
+    for key in ["items", "additionalProperties", "not", "contains"] {
+        if let Some(child) = o.get_mut(key) {
+            require_every_property(child);
+        }
+    }
+    for key in ["anyOf", "allOf", "oneOf", "prefixItems"] {
+        if let Some(Value::Array(children)) = o.get_mut(key) {
+            children.iter_mut().for_each(require_every_property);
         }
     }
 }
@@ -268,6 +308,10 @@ impl<T: Tool> DynTool for Erased<T> {
 
     fn spec(&self) -> &ToolSpec {
         &self.spec
+    }
+
+    fn args_schema(&self) -> Value {
+        serde_json::to_value(schemars::schema_for!(T::Args)).unwrap_or(Value::Null)
     }
 
     fn call<'a>(
@@ -306,6 +350,7 @@ pub const fn tool_name(name: ToolName) -> &'static str {
         ToolName::SearchFarmRecords => "search_farm_records",
         ToolName::Remember => "remember",
         ToolName::RequestRescan => "request_rescan",
+        ToolName::ShowBlock => "show_block",
         ToolName::CreateTask => "create_task",
         ToolName::CompleteTask => "complete_task",
         ToolName::RevisePlan => "revise_plan",
@@ -313,14 +358,18 @@ pub const fn tool_name(name: ToolName) -> &'static str {
 }
 
 /// Every tool, erased, sorted by name: built once at start-up and shared by every turn.
+/// `show_block` is offered beside them but run by the turn ([`blocks`]), so only its spec is
+/// kept here.
 pub struct ToolRegistry {
     tools: Vec<Box<dyn DynTool>>,
+    show_block: ToolSpec,
 }
 
 impl std::fmt::Debug for ToolRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
             .entries(self.tools.iter().map(|t| tool_name(t.name())))
+            .entry(&self.show_block.name)
             .finish()
     }
 }
@@ -332,7 +381,7 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
-    /// The twenty tools of architecture 7 and connectors 7.
+    /// The twenty tools of architecture 7 and connectors 7, and `show_block`'s spec.
     pub fn standard() -> Self {
         let mut tools: Vec<Box<dyn DynTool>> = vec![
             Box::new(Erased::new(read::GetScan)),
@@ -357,13 +406,22 @@ impl ToolRegistry {
             Box::new(Erased::new(revise::RevisePlan)),
         ];
         tools.sort_by_key(|t| tool_name(t.name()));
-        Self { tools }
+        Self {
+            tools,
+            show_block: blocks::spec(),
+        }
     }
 
     /// The specs offered, sorted by name (a stable tool list keeps the provider's prompt cache;
-    /// a garden's first synced record changes it once).
+    /// a garden's first synced record changes it once). `show_block` is offered to every role.
     pub fn specs_for(&self, offer: Offer) -> Vec<ToolSpec> {
-        self.offered(offer).map(|t| t.spec().clone()).collect()
+        let mut specs: Vec<ToolSpec> = self
+            .offered(offer)
+            .map(|t| t.spec().clone())
+            .chain(std::iter::once(self.show_block.clone()))
+            .collect();
+        specs.sort_by(|a, b| a.name.cmp(&b.name));
+        specs
     }
 
     /// The tools offered: by the role, and by whether the garden has farm records (gap G6).

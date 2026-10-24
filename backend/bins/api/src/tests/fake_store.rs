@@ -194,8 +194,8 @@ mod chat_repo {
     use domain::{
         authz::{ConversationOwner, Editor, Membership, Viewer},
         chat::{
-            Anchor, ChatRoute, ConfirmResult, Conversation, ConversationDetail, ConversationQuery,
-            Message, MessageFeedbackRequest, MessageRole, PendingAction,
+            Anchor, AnswerBlock, ChatRoute, ConfirmResult, Conversation, ConversationDetail,
+            ConversationQuery, Message, MessageFeedbackRequest, MessageRole, PendingAction,
         },
         connectors::FarmCitation,
         id::{ChatImageId, ConversationId, MessageId, PendingActionId, UserId},
@@ -962,8 +962,11 @@ mod usage_repo {
             user: UserId,
             day: chrono::NaiveDate,
             usage: Usage,
+            budget_tokens: u64,
         ) -> Result<UsageTotals, StoreError> {
-            self.usage_repo.add_chat_usage(user, day, usage).await
+            self.usage_repo
+                .add_chat_usage(user, day, usage, budget_tokens)
+                .await
         }
     }
 }
@@ -1273,6 +1276,7 @@ mod plant_repo {
     #![allow(unused_imports, reason = "copied from the trait's module")]
     use domain::{
         authz::{Editor, Membership, Viewer},
+        chat::BlockPlant,
         garden::plants::{GrowthQuantity, MeasurementPoint, TimelineEntry, UpdatePlantRequest},
         id::{GardenId, PlantId, ScanId, SpeciesId},
         ports::StoreError,
@@ -1372,6 +1376,12 @@ mod plant_repo {
         }
         async fn heights(&self, plant: PlantId) -> Result<Vec<MeasurementPoint>, StoreError> {
             self.plant_repo.heights(plant).await
+        }
+        async fn plant_summaries(
+            &self,
+            member: Membership<Viewer>,
+        ) -> Result<Vec<PlantSummary>, StoreError> {
+            self.plant_repo.plant_summaries(member).await
         }
     }
 }

@@ -20,7 +20,7 @@ fn the_registry_has_every_tool_sorted_and_filters_by_role() {
         .into_iter()
         .map(|s| s.name)
         .collect();
-    assert_eq!(all.len(), 20);
+    assert_eq!(all.len(), 21, "twenty tools and show_block");
     let mut sorted = all.clone();
     sorted.sort();
     assert_eq!(all, sorted, "a stable order keeps the prompt cache");
@@ -31,7 +31,7 @@ fn the_registry_has_every_tool_sorted_and_filters_by_role() {
             .into_iter()
             .map(|s| s.name)
             .collect();
-        assert_eq!(names.len(), 17);
+        assert_eq!(names.len(), 18);
         for write in ["create_task", "complete_task", "revise_plan"] {
             assert!(
                 !names.iter().any(|n| n == write),
@@ -42,6 +42,9 @@ fn the_registry_has_every_tool_sorted_and_filters_by_role() {
         assert!(names.iter().any(|n| n == "remember"));
         assert!(names.iter().any(|n| n == "request_rescan"));
         assert!(names.iter().any(|n| n == "search_farm_records"));
+        // A read and UI tool for every role, run by the turn, not found in the registry.
+        assert!(names.iter().any(|n| n == "show_block"));
+        assert!(r.find("show_block", Offer::everything(role)).is_none());
     }
     assert!(
         r.find("revise_plan", Offer::everything(Role::Editor))
@@ -269,6 +272,176 @@ fn only_the_tools_that_propose_changes_are_strict() {
         .map(|s| s.name)
         .collect();
     assert_eq!(strict, ["complete_task", "create_task", "revise_plan"]);
+}
+
+/// The properties of every object in a schema that aren't in its `required`, with their schemas.
+fn optional_properties(v: &serde_json::Value, path: &str) -> Vec<(String, serde_json::Value)> {
+    let mut out = Vec::new();
+    match v {
+        serde_json::Value::Object(o) => {
+            if let Some(serde_json::Value::Object(props)) = o.get("properties") {
+                let required: Vec<&str> = o
+                    .get("required")
+                    .and_then(|r| r.as_array())
+                    .map(|r| r.iter().filter_map(|x| x.as_str()).collect())
+                    .unwrap_or_default();
+                out.extend(
+                    props
+                        .iter()
+                        .filter(|(k, _)| !required.contains(&k.as_str()))
+                        .map(|(k, s)| (format!("{path}.{k}"), s.clone())),
+                );
+            }
+            for (k, x) in o {
+                out.extend(optional_properties(x, &format!("{path}/{k}")));
+            }
+        }
+        serde_json::Value::Array(a) => a
+            .iter()
+            .for_each(|x| out.extend(optional_properties(x, path))),
+        _ => {}
+    }
+    out
+}
+
+/// Every object property in a strict tool's schema, as sent, is in its `required`: under strict
+/// tool use the hosted model never fills an optional property, so `revise_plan` came with only
+/// its summary and `create_task` never with a plant or a date (live S5 checks, 2026-10-23).
+#[test]
+fn strict_tool_schemas_require_every_property() {
+    let specs = ToolRegistry::standard().specs_for(Offer::everything(Role::Owner));
+    let mut optional = Vec::new();
+    for spec in specs.iter().filter(|s| s.strict) {
+        let sent = integrations::anthropic::sanitize_schema(&spec.parameters).schema;
+        optional.extend(optional_properties(&sent, &spec.name));
+    }
+    assert!(
+        optional.is_empty(),
+        "optional in strict schemas: {optional:?}"
+    );
+    let revise = specs.iter().find(|s| s.name == "revise_plan").unwrap();
+    for field in ["changed_steps", "removed_step_ids", "constraints"] {
+        assert!(
+            revise.parameters["required"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(field))
+        );
+    }
+    // Not the read tools: their optional arguments stay optional.
+    let remember = specs.iter().find(|s| s.name == "remember").unwrap();
+    assert_eq!(remember.parameters["required"], json!(["fact"]));
+}
+
+/// What `require_every_property` makes required was optional in the arguments, so the model
+/// must be able to say "none": each such property of every write tool (from the registry, so a
+/// new write tool or field is covered) is nullable or a list (sent empty). And the arguments
+/// still parse with those values, or with them missing.
+#[test]
+fn strict_tools_optional_arguments_are_nullable_or_lists() {
+    let registry = ToolRegistry::standard();
+    let raw: Vec<(String, serde_json::Value)> = registry
+        .offered(Offer::everything(Role::Owner))
+        .filter(|t| t.kind() == ToolKind::Write)
+        .map(|t| (t.spec().name.clone(), t.args_schema()))
+        .collect();
+    assert_eq!(raw.len(), 3, "every write tool");
+    let nullable = |s: &serde_json::Value| {
+        s["type"] == "array"
+            || s["type"]
+                .as_array()
+                .is_some_and(|t| t.contains(&json!("null")))
+            || s["anyOf"]
+                .as_array()
+                .is_some_and(|a| a.iter().any(|x| x["type"] == "null"))
+    };
+    let bad: Vec<String> = raw
+        .iter()
+        .flat_map(|(name, s)| optional_properties(s, name))
+        .filter(|(_, s)| !nullable(s))
+        .map(|(p, _)| p)
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "optional and neither nullable nor a list: {bad:?}"
+    );
+
+    let task: write::CreateTaskArgs = serde_json::from_value(json!({
+        "title": "Water the tomato", "detail": null, "plant_id": null, "due": null,
+        "repeat_every_days": null
+    }))
+    .unwrap();
+    assert!(task.plant_id.is_none() && task.due.is_none());
+    let revise: revise::RevisePlanArgs = serde_json::from_value(json!({
+        "scan_id": "01JAX3K9T6R2B8V0QZ4M7D1E50", "summary": "Same plan.",
+        "changed_steps": [], "removed_step_ids": [], "constraints": []
+    }))
+    .unwrap();
+    assert_eq!(revise.changed_steps.len(), 0);
+    let revise: revise::RevisePlanArgs = serde_json::from_value(json!({
+        "scan_id": "01JAX3K9T6R2B8V0QZ4M7D1E50", "summary": "Same plan."
+    }))
+    .unwrap();
+    assert_eq!(revise.constraints, Vec::<String>::new());
+}
+
+/// `require_every_property` changes schema positions only: a `default` (or `const`) value that
+/// holds a `properties` key is left as it was.
+#[test]
+fn require_every_property_walks_schema_positions_only() {
+    let mut schema = json!({
+        "type": "object",
+        "properties": {
+            "a": {"type": "string"},
+            "b": {"type": "object", "properties": {"c": {"type": "integer"}},
+                  "default": {"properties": {"x": 1}}}
+        },
+        "$defs": {"D": {"type": "object", "properties": {"e": {"type": "string"}}}}
+    });
+    require_every_property(&mut schema);
+    assert_eq!(schema["required"], json!(["a", "b"]));
+    assert_eq!(schema["properties"]["b"]["required"], json!(["c"]));
+    assert_eq!(schema["$defs"]["D"]["required"], json!(["e"]));
+    assert_eq!(
+        schema["properties"]["b"]["default"],
+        json!({"properties": {"x": 1}})
+    );
+}
+
+/// A required `detail` invites `""` for none: `create_task` stores a blank detail as none.
+#[tokio::test]
+async fn create_task_stores_a_blank_detail_as_none() {
+    use crate::testing::{GARDEN, garden_deps, now, owner};
+    let mut deps = garden_deps(
+        domain::ports::MockMemoryStore::new(),
+        std::sync::Arc::new(domain::ports::NoBeliefs),
+    );
+    let mut chats = domain::ports::MockChatRepo::new();
+    chats
+        .expect_create_pending_action()
+        .returning(|_, a| Ok(a.action));
+    deps.stores.chats = std::sync::Arc::new(chats);
+    let ctx = ToolCtx {
+        deps: &deps,
+        owner: owner(Role::Editor).await,
+        anchor: domain::chat::Anchor::Garden(GARDEN.parse().unwrap()),
+        plant: None,
+        message_id: "01JAX3K9T6R2B8V0QZ4M7D1E72".parse().unwrap(),
+        now: now(),
+    };
+    let args: write::CreateTaskArgs = serde_json::from_value(json!({
+        "title": "Water the tomato", "detail": "  ", "plant_id": null, "due": null,
+        "repeat_every_days": null
+    }))
+    .unwrap();
+    let out = write::CreateTask.run(&ctx, args).await.unwrap();
+    let Some(ToolEffect::PendingAction(card)) = out.effects.first() else {
+        panic!("a card")
+    };
+    let Preview::Task { task } = &card.preview else {
+        panic!("a task card")
+    };
+    assert_eq!(task.detail, None);
 }
 
 mod search_memory {
@@ -775,6 +948,224 @@ fn the_strict_tool_schemas_stay_inside_anthropics_budget() {
         );
     }
     assert!(cost.patterns <= 8, "{cost:?}");
-    assert!(cost.optional <= 12, "{cost:?}");
+    assert_eq!(cost.optional, 0, "{cost:?}");
     assert!(cost.unions <= 10, "{cost:?}");
+}
+
+/// `show_block`'s kinds the turn tests don't reach: `weather_hours` from a scan's snapshot,
+/// `measurement_trend` and `candidates`, each built from the turn's results and the store.
+mod show_block {
+    use std::sync::Arc;
+
+    use domain::{
+        chat::{Anchor, AnswerBlock, AnswerBlockKind, BlockBody},
+        ports::{MockKnowledgeStore, MockMemoryStore, MockPlantRepo, NoBeliefs},
+    };
+
+    use super::*;
+    use crate::{
+        error::ToolError,
+        testing::{GARDEN, garden_deps, now, owner},
+        tools::blocks::{ShowBlockArgs, build},
+    };
+
+    const PLANT: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5F";
+    const SCAN: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5H";
+
+    fn calls(
+        name: &str,
+        arguments: serde_json::Value,
+        result: serde_json::Value,
+    ) -> Vec<ContentPart> {
+        vec![
+            ContentPart::ToolCall {
+                call_id: "toolu_1".to_owned(),
+                name: name.to_owned(),
+                arguments,
+            },
+            ContentPart::ToolResult {
+                call_id: "toolu_1".to_owned(),
+                content: result,
+                is_error: false,
+            },
+        ]
+    }
+
+    fn point(quantity: &str, value: f64) -> serde_json::Value {
+        json!({"scan_id": SCAN, "created_at": "2026-10-11T15:00:00Z", "quantity": quantity,
+               "value": value, "confidence_band": "high"})
+    }
+
+    async fn show(
+        deps: &AgentDeps,
+        kind: AnswerBlockKind,
+        calls: &[ContentPart],
+    ) -> Result<AnswerBlock, ToolError> {
+        let ctx = ToolCtx {
+            deps,
+            owner: owner(Role::Viewer).await,
+            anchor: Anchor::Garden(GARDEN.parse().unwrap()),
+            plant: None,
+            message_id: "01JAX3K9T6R2B8V0QZ4M7D1E72".parse().unwrap(),
+            now: now(),
+        };
+        let args = ShowBlockArgs {
+            kind,
+            call_id: "toolu_1".to_owned(),
+            focus_plant_ids: None,
+        };
+        build(&ctx, calls, &[], args).await
+    }
+
+    fn deps() -> AgentDeps {
+        let mut deps = garden_deps(MockMemoryStore::new(), Arc::new(NoBeliefs));
+        let mut plants = MockPlantRepo::new();
+        plants.expect_plant().returning(|_, id| {
+            Ok(serde_json::from_value(json!({
+                "id": id, "garden_id": GARDEN, "name": "Tomato 1", "species_status": "unknown",
+                "species_candidates": [], "status": "watch", "created_at": "2026-10-01T00:00:00Z"
+            }))
+            .unwrap())
+        });
+        deps.stores.plants = Arc::new(plants);
+        let mut knowledge = MockKnowledgeStore::new();
+        knowledge
+            .expect_problem()
+            .returning(|_| Ok(fixtures::problems().into_iter().next()));
+        deps.knowledge = Arc::new(knowledge);
+        deps
+    }
+
+    #[tokio::test]
+    async fn weather_hours_from_a_scan_takes_its_snapshot_and_names_the_scan() {
+        let day = json!({"date": "2026-10-11", "t_min_c": 12.0, "t_max_c": 21.0, "precip_mm": 3.0,
+                         "mean_rh_pct": 91.0, "hours_rh_over_90": 14, "frost_risk": false});
+        let deps = deps();
+        let result = json!({"id": SCAN, "status": "planned", "weather": {"forecast": [day]}});
+        let block = show(
+            &deps,
+            AnswerBlockKind::WeatherHours,
+            &calls("get_scan", json!({"scan_id": SCAN}), result),
+        )
+        .await
+        .unwrap();
+        let BlockBody::WeatherHours { days, scan_id } = block.body else {
+            panic!()
+        };
+        assert_eq!(scan_id.map(|s| s.to_string()).as_deref(), Some(SCAN));
+        assert_eq!(days.len(), 1);
+        assert_eq!(days[0].hours_rh_over_90, 14);
+
+        let bare = json!({"id": SCAN, "status": "planned"});
+        let refused = show(
+            &deps,
+            AnswerBlockKind::WeatherHours,
+            &calls("get_scan", json!({"scan_id": SCAN}), bare),
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.for_model().contains("no weather"), "{refused}");
+    }
+
+    #[tokio::test]
+    async fn a_measurement_trend_names_its_plant_and_refuses_mixed_quantities() {
+        let deps = deps();
+        let one = json!([point("plant_height_cm", 38.5)]);
+        let block = show(
+            &deps,
+            AnswerBlockKind::MeasurementTrend,
+            &calls("get_plant_measurements", json!({"plant_id": PLANT}), one),
+        )
+        .await
+        .unwrap();
+        let BlockBody::MeasurementTrend {
+            plant_id,
+            plant_name,
+            quantity,
+            points,
+        } = block.body
+        else {
+            panic!()
+        };
+        assert_eq!(plant_id.to_string(), PLANT);
+        assert_eq!(plant_name, "Tomato 1");
+        assert_eq!(
+            quantity,
+            domain::garden::plants::GrowthQuantity::PlantHeightCm
+        );
+        assert_eq!(points.len(), 1);
+
+        let mixed = json!([
+            point("plant_height_cm", 38.5),
+            point("canopy_width_cm", 30.0)
+        ]);
+        let refused = show(
+            &deps,
+            AnswerBlockKind::MeasurementTrend,
+            &calls("get_plant_measurements", json!({"plant_id": PLANT}), mixed),
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.for_model().contains("mix"), "{refused}");
+        // With the call's quantity, the points are taken as returned.
+        let asked = calls(
+            "get_plant_measurements",
+            json!({"plant_id": PLANT, "quantity": "canopy_width_cm"}),
+            json!([point("canopy_width_cm", 30.0)]),
+        );
+        assert!(
+            show(&deps, AnswerBlockKind::MeasurementTrend, &asked)
+                .await
+                .is_ok()
+        );
+        let none = calls(
+            "get_plant_measurements",
+            json!({"plant_id": PLANT}),
+            json!([]),
+        );
+        assert!(
+            show(&deps, AnswerBlockKind::MeasurementTrend, &none)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn candidates_name_the_problem_from_the_knowledge_base() {
+        let deps = deps();
+        let lookalikes = json!([{"problem_id": "septoria_leaf_spot", "name": "Septoria leaf spot",
+                                 "how_to_tell": "Smaller spots with grey centres."}]);
+        let block = show(
+            &deps,
+            AnswerBlockKind::Candidates,
+            &calls(
+                "compare_lookalikes",
+                json!({"disease": "tomato_early_blight"}),
+                lookalikes,
+            ),
+        )
+        .await
+        .unwrap();
+        let BlockBody::Candidates {
+            disease,
+            lookalikes,
+        } = block.body
+        else {
+            panic!()
+        };
+        assert_eq!(disease.problem_id.to_string(), "tomato_early_blight");
+        assert_eq!(disease.name, "tomato_early_blight", "the fixture's name");
+        assert_eq!(lookalikes.len(), 1);
+
+        let none = calls(
+            "compare_lookalikes",
+            json!({"disease": "tomato_early_blight"}),
+            json!([]),
+        );
+        assert!(
+            show(&deps, AnswerBlockKind::Candidates, &none)
+                .await
+                .is_err()
+        );
+    }
 }

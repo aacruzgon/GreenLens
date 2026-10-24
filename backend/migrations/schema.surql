@@ -444,6 +444,7 @@ DEFINE FIELD OVERWRITE text           ON message TYPE string;
 DEFINE FIELD OVERWRITE attachments    ON message TYPE array<record<chat_image>> DEFAULT [];
 DEFINE FIELD OVERWRITE citations      ON message TYPE array<object> FLEXIBLE DEFAULT [];
 DEFINE FIELD OVERWRITE farm_citations ON message TYPE array<object> FLEXIBLE DEFAULT [];   -- FarmCitation[] (connectors 7); kept when a record is deleted
+DEFINE FIELD OVERWRITE blocks         ON message TYPE array<object> FLEXIBLE DEFAULT [];   -- AnswerBlock[] (contracts 8), at most 3, every kind tagged by `kind`
 DEFINE FIELD OVERWRITE tool_calls     ON message TYPE array<object> FLEXIBLE DEFAULT [];   -- stored, never sent to the app
 DEFINE FIELD OVERWRITE route          ON message TYPE option<"diagnosis_question" | "care_question" | "task_change" | "safety_sensitive" | "off_topic">;
 DEFINE FIELD OVERWRITE interrupted    ON message TYPE bool DEFAULT false;
@@ -578,6 +579,8 @@ DEFINE FIELD OVERWRITE scientific_name      ON species TYPE string;
 DEFINE FIELD OVERWRITE common_names         ON species TYPE array<string>;
 DEFINE FIELD OVERWRITE profile              ON species TYPE "full" | "label_only";
 DEFINE FIELD OVERWRITE care                 ON species TYPE option<object> FLEXIBLE;
+-- frost tenderness (contracts 10): tender is damaged by a light frost, hardy stands one; none when the sources don't say
+DEFINE FIELD OVERWRITE frost                ON species TYPE option<"tender" | "hardy">;
 DEFINE FIELD OVERWRITE classifier_supported ON species TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE bioclip_label        ON species TYPE string;
 DEFINE FIELD OVERWRITE sources              ON species TYPE array<record<source>> DEFAULT [];
@@ -730,6 +733,8 @@ DEFINE FIELD OVERWRITE scans      ON usage_daily TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE requests   ON usage_daily TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE tokens_in  ON usage_daily TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE tokens_out ON usage_daily TYPE int DEFAULT 0;
+-- the daily chat budget's count: cache reads at 0.1 and cache writes at 1.25 of an input token
+DEFINE FIELD OVERWRITE chat_budget ON usage_daily TYPE int DEFAULT 0;
 
 -- id = idempotency_key:[user, "METHOD /path", key]. CREATE fails when the key exists, which is
 -- the race-free "first request wins" (contracts 1, Idempotency).

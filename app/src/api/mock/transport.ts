@@ -13,7 +13,7 @@ import { answerRun, guidedCheck, scriptFor, speciesRerun, startRun, takeOutcome 
 import { scenario } from "./scenario";
 import { mockStore, type MockStore } from "./store";
 import { MOCK_IMAGE_SIZE, mockImageUrl, type MockImageName } from "./images";
-import { emptyResponse, errorResponse, jsonResponse, MOCK_ORIGIN, nowTs, paginate, type S } from "./util";
+import { emptyResponse, errorResponse, jsonResponse, MOCK_ORIGIN, MOCK_TIME_ZONE, nowTs, paginate, type S } from "./util";
 
 // ---- request context
 
@@ -252,7 +252,7 @@ route("POST", "/gardens", async (c) => {
     name,
     location_label: place.label,
     location_precision: place.precision,
-    time_zone: "America/Toronto",
+    time_zone: MOCK_TIME_ZONE,
     member_count: 1,
     my_role: "owner",
     soil_profile_status: "pending",
