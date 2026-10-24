@@ -1189,6 +1189,7 @@ mod tests {
             author: None,
             at: "2026-10-12T07:30:00Z".parse().unwrap(),
             link: "https://docs.google.com/document/d/1aBcD/edit".to_owned(),
+            text: None,
         };
         let m = message(vec![citation]);
         let v = serde_json::to_value(&m).unwrap();

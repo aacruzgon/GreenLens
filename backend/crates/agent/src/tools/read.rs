@@ -888,7 +888,16 @@ impl Tool for SearchFarmRecords {
             merge_kinds(messages, documents, FARM_RECORD_HITS, FARM_KIND_RESERVED)
         };
         let hits: Vec<FarmRecordHit> = matches.into_iter().map(|m| m.hit).collect();
-        let mut out = ToolOutput::json(&hits);
+        // The model reads each record's text once: an `era` citation's copy is for the app.
+        let seen_by_model: Vec<FarmRecordHit> = hits
+            .iter()
+            .cloned()
+            .map(|mut h| {
+                h.citation.text = None;
+                h
+            })
+            .collect();
+        let mut out = ToolOutput::json(&seen_by_model);
         out.effects = hits
             .into_iter()
             .map(|h| ToolEffect::FarmCitation(h.citation))

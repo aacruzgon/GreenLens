@@ -1777,9 +1777,19 @@ impl PlanWriter {
             content.push(ContentPart::Text(data_json(DataKind::Beliefs, &beliefs)));
         }
         if !input.farm_records.is_empty() {
+            // The model reads each record's text once: an `era` citation's copy is for the app.
+            let seen_by_model: Vec<FarmRecordHit> = input
+                .farm_records
+                .iter()
+                .cloned()
+                .map(|mut h| {
+                    h.citation.text = None;
+                    h
+                })
+                .collect();
             content.push(ContentPart::Text(data_json(
                 DataKind::FarmRecords,
-                input.farm_records,
+                &seen_by_model,
             )));
         }
         content.push(ContentPart::Text(

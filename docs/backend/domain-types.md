@@ -6503,6 +6503,12 @@ pub struct FarmCitation {
     pub at: Timestamp,
     /// Opens the record in Slack or Drive (or, for an `era` connector, the simulator).
     pub link: String,
+    /// The record as the farm wrote it, rates included: one stored chunk, at most 2,000
+    /// characters. Set only for a record of an `era` connector, whose data is synthetic; the app
+    /// shows it in a sheet, labelled as Era's demo data. A vendor record's citation never has it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub text: Option<String>,
 }
 
 /// One `search_farm_records` result: the record's text, framed as data for the model, and its
@@ -6526,6 +6532,7 @@ fn a_farm_citation_is_exactly_its_contract() {
         author: Some("Sam".to_owned()),
         at: "2026-10-12T07:30:00Z".parse().unwrap(),
         link: "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100".to_owned(),
+        text: None,
     };
     assert_eq!(
         serde_json::to_value(&citation).unwrap(),
@@ -6548,6 +6555,14 @@ fn a_farm_citation_is_exactly_its_contract() {
             .get("author")
             .is_none()
     );
+    // An `era` record's citation carries its text, rates included.
+    let era = FarmCitation {
+        text: Some("Sprayed bed 3 at 2.5 L/ha.".to_owned()),
+        ..citation.clone()
+    };
+    let v = serde_json::to_value(&era).unwrap();
+    assert_eq!(v["text"], "Sprayed bed 3 at 2.5 L/ha.");
+    assert_eq!(serde_json::from_value::<FarmCitation>(v).unwrap(), era);
     let hit = FarmRecordHit {
         text: "Rings on bed 3 again.".to_owned(),
         citation,
