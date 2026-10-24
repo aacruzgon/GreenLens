@@ -391,14 +391,15 @@ Work 8–11 are the contract changes the app's chat needs (app roadmap [F6](../f
 
 **Found and not fixed** (in [#200](https://github.com/aacruzgon/GreenLens/pull/200)): the dev database's soil task fails every 15 minutes on a garden from before connectors (`connector_rev` is `NONE`); a failed classifier call falls back to a care question without a log; one turn saved two near-duplicate memories through two `remember` calls; Jev routed a memory note as `task_change`.
 
-**For the rig.** Deploy `main` to the control plane, then:
+**For the rig** (the list from [#200](https://github.com/aacruzgon/GreenLens/pull/200)). Deploy `main` to the control plane, then:
 1. Set `POISON_CONTROL_TEXT`, `JEV_URL`, `JEV_API_KEY`, `JEV_MODEL` and the three `AGENT_MEMORY_*` (the production context, [database: Agent Memory](../database/agent-memory.md)) in `.env.api`.
-2. Run `s5.py` against the control plane with `--scan-id` of the early-blight scan, `--expect-problem tomato_early_blight` and `--cleanup` (its README has the flags and the Clerk dev instance's key).
-3. The frost check needs the seed's `frost` values for tomato and lettuce (knowledge track), then a redeploy so `api` applies `knowledge.surql`.
-4. The farm record's text on E9.2's demo garden (EON E9.3).
-5. A mapping session from the iPhone, and the spacing warning in the next scan's plan.
+2. Run `s5.py` against the control plane with `--photo` of an early-blight leaf, `--expect-problem tomato_early_blight`, `--restart-without-agent-memory`, `--restore-cmd` and `--cleanup` (its [README](../../backend/tools/smoke/README.md) has the command and the Clerk dev instance's key). It drives a scan through the rig's models, then runs every check on it, `unset` included; a later run can reuse the scan with `--scan-id`. That run also covers Jev on the deployment's `JEV_*`, and Agent Memory's grants (`GET /me`), `beliefs` and `beliefs-erase` on the production context.
+3. The frost check needs the seed's `frost` values for tomato (`tender`) and lettuce (`hardy`), each with a source and a review (knowledge track), then a redeploy so `api` applies `knowledge.surql`. Run `frost` with `--frost-expect tomato=tender,lettuce=hardy`, or `lettuce=none` while it has no source.
+4. The farm record's text on E9.2's demo garden (EON E9.3): an answer citing an `era` connector's `#field-reports` message gives `FarmCitation.text`, and a vendor record has none. `s5.py` doesn't cover it yet.
+5. The `connector_rev` error (found above) in the deployed `api`'s log.
 6. Agent Memory's cost on Studio's Usage page.
 7. The dose check again, with a prompt that gets the model to state an amount, so the check is seen replacing a sentence.
+8. On the iPhone: cards confirmed in the app, `memory_saved` with Undo and Share, a mapping session and the spacing warning in the next scan's plan, and the `garden_map`, `frost_planner` and `weather_hours` blocks drawn by the app.
 
 ---
 
