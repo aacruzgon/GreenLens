@@ -25,7 +25,8 @@ pub struct Limits {
     pub other_description: usize,
     /// `other_name`.
     pub other_name: usize,
-    /// An indicator's `reason`.
+    /// An indicator's `reason`. Above what the prompt asks for (at most 60), so the grammar
+    /// doesn't cut the reason the answer follows from (#183).
     pub reason: usize,
     /// `organisms` and `damage`.
     pub max_items: usize,
@@ -37,7 +38,7 @@ impl Limits {
         notes: 200,
         other_description: 100,
         other_name: 60,
-        reason: 60,
+        reason: 100,
         max_items: 10,
     };
 }
@@ -360,6 +361,35 @@ mod tests {
             json!(["yes", "no", "unsure"])
         );
         assert_eq!(schema["additionalProperties"], json!(false));
+    }
+
+    #[test]
+    fn the_reason_cap_is_well_above_what_the_prompt_asks_for() {
+        // #183: when the prompt asked for the cap itself, the grammar cut reasons mid-thought.
+        // Asked for at most 60 with a cap of 80, Qwen3.5 still reached 80 on 10 of 648 reasons.
+        let ind = indicator(
+            "tomato_early_blight.concentric_rings",
+            &[ImageKind::LeafCloseup],
+        );
+        let qs = questions([&ind], &[ImageKind::LeafCloseup]);
+        let schema = indicators(1, &qs, Limits::CONTRACT);
+        assert_eq!(
+            schema["properties"]["q1_concentric_rings"]["properties"]["reason"]["maxLength"],
+            json!(Limits::CONTRACT.reason)
+        );
+        let text = super::super::prompt::indicators(&qs, false);
+        let asked: usize = text
+            .split("reason: first, at most ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(
+            asked + 40 <= Limits::CONTRACT.reason,
+            "the prompt asks for {asked}, the cap is {}",
+            Limits::CONTRACT.reason
+        );
     }
 
     #[test]

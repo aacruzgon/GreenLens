@@ -125,8 +125,11 @@ def test_indicators_schema():
     missing = valid_answers()
     missing.pop("q2_small_spots_dark_border")
     assert vc.validation_errors(schema, missing)
+    over_ask = valid_answers()
+    over_ask["q1_concentric_rings"]["reason"] = "x" * 61  # over the prompt's 60, under the cap
+    assert vc.validation_errors(schema, over_ask) == []
     long_reason = valid_answers()
-    long_reason["q1_concentric_rings"]["reason"] = "x" * 61
+    long_reason["q1_concentric_rings"]["reason"] = "x" * 101
     assert vc.validation_errors(schema, long_reason)
 
 

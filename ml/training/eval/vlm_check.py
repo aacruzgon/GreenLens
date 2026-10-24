@@ -274,7 +274,7 @@ def indicators_schema(indicators: list[str], n_images: int = 4,
     for i, ind in enumerate(indicators, 1):
         answers = ["unsure"] if ind in unsure_only else ["yes", "no", "unsure"]
         props[indicator_key(i, ind)] = _obj({
-            "reason": _text(60),
+            "reason": _text(100),  # above the prompt's "at most 60" (#183), as the worker
             "answer": {"type": "string", "enum": answers},
             "image": _nullable({"type": "string", "enum": aliases(n_images)}),
         })

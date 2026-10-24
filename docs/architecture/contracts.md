@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.11.3, 2026-10-24. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.11.4, 2026-10-24. Companion to the [architecture document](README.md).
+> **v0.11.4**: an indicator answer's `reason` has a `maxLength` of 100, above the 60 characters the prompt asks for, so the grammar no longer cuts the reason the answer follows from (section 6, indicators call; vision vlm.md 7, [#183](https://github.com/aacruzgon/GreenLens/issues/183)); the prompts are unchanged, and `IndicatorEvidence.reason` has no cap of its own.
 > **v0.11.3**: answer blocks: each tool result's `data` element carries its `call_id`, the id `show_block` names, and `call_id` may name the tool when it ran once with success in the turn (section 8, answer blocks); live, the model never saw an id and named the tool, so no block ever showed; no wire change.
 > **v0.11.2**: the write tools (`create_task`, `complete_task`, `revise_plan`) are sent to the model under strict tool use with every argument required, so `null`, or `[]` for a list, means none (section 8, tool return shapes); the live S5 checks found the hosted model never filled an optional argument; no wire change.
 > **v0.11.1**: open question 35 is settled: the Jev adapter follows TypeSafe's published System One API and ran against it on 2026-10-23, and `api` uses it when `JEV_*` is set (backend integrations 13); no wire shape changed.
@@ -1145,7 +1146,7 @@ Earthworms are reported as organisms, not as a soil aspect.
 ```ts
 // one required key per indicator in the payload, e.g. "q1_concentric_rings"
 type VlmIndicatorsRaw = Record<string, {
-  reason: string;               // maxLength 60; written first, so the answer follows from it
+  reason: string;               // maxLength 100, above the prompt's 60; written first, so the answer follows from it
   answer: "yes" | "no" | "unsure";
   image: ImageAlias | null;     // the shot that decided it
 }>;
@@ -2581,6 +2582,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.11.1: open question 35 settled, Jev's adapter on the real API | 10 (the Jev note), 15 (open decision 8) |
 | v0.11.2: the write tools' strict schemas require every argument, `null` or `[]` meaning none | none (7 doesn't describe the tools' schemas) |
 | v0.11.3: a tool result's `data` element carries its `call_id`; `show_block` may name a tool that ran once | none (7 doesn't describe the framing or the anchor rule) |
+| v0.11.4: an indicator answer's `reason` has `maxLength` 100, above the prompt's 60 | none (6.1 says only "a short reason") |
 
 ---
 
