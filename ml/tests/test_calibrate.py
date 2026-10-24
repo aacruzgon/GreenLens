@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from ml.training.eval import calibrate as cb
 
@@ -147,9 +148,19 @@ def test_the_agreement_threshold_counts_cases_outside_the_matrix_as_wrong():
 
 
 def test_no_threshold_holds_when_a_wrong_case_is_as_sure_as_the_right_ones():
-    same = [species_item([0.30, 0.0], f"n{i}", 0) for i in range(3)]
-    twin = [species_item([0.30, 0.0], "s0", None, "squash")]
-    assert cb.agreement_threshold(same, np.ones(3), twin, np.ones(1)) is None
+    alike = [species_item([0.30, 0.0], f"n{i}", 0) for i in range(10)]
+    twins = [species_item([0.30, 0.0], f"s{i}", None, "squash") for i in range(2)]
+    assert cb.agreement_threshold(alike, np.ones(10), twins, np.ones(2)) is None
+
+
+def test_a_threshold_needs_ten_cases_scored_that_high():
+    # Ten right cases at 0.88 and one wrong at 0.98: 0.89 would leave only the wrong case and
+    # 0.99 none, so no threshold holds (Alan's review of #156 found 0.99 returned with no cases).
+    right = [species_item([0.02, 0.0], f"n{i}", 0) for i in range(10)]
+    wrong = [species_item([0.04, 0.0], "s0", None, "squash")]
+    assert cb.agreement_threshold(right, np.ones(10), wrong, np.ones(1)) is None
+    # Nine right cases alone are too few to show 95%.
+    assert cb.agreement_threshold(right[:9], np.ones(9), [], np.zeros(0)) is None
 
 
 def test_the_report_inputs_give_back_the_same_fits():
@@ -166,25 +177,108 @@ def test_the_report_inputs_give_back_the_same_fits():
     assert abs(cb.fit_items(again) - cb.fit_items(items)) < 1e-6
 
 
-def test_the_committed_calibration_follows_from_its_inputs():
-    """M16's numbers can be checked without the photos: the newest committed report's inputs give
-    back its fitted temperatures, ECE and agreement counts."""
+def calibration_reports() -> list[dict]:
+    """Every committed calibration report that keeps its inputs, newest first by its own `date`
+    (a file name can sort a same-day rerun before the first run; review of #156)."""
     import json
 
-    reports = sorted(p for p in cb.REPORTS.glob("calibration-*.json")
-                     if "inputs" in json.loads(p.read_text())["species"])
+    reports = [{**json.loads(p.read_text()), "_file": p.name} for p in cb.REPORTS.glob("calibration-*.json")]
+    reports = [r for r in reports if "inputs" in r["species"]]
+    return sorted(reports, key=lambda r: (r["date"], r["_file"]), reverse=True)
+
+
+def tolerance(want) -> float:
+    """How far a recomputed number may sit from the report's. The inputs are stored rounded, so a
+    number rounded to 3 or 4 decimals can flip by one unit in its last decimal; an unrounded one
+    stays within 1e-5 here, and may move by less than 1e-4, the markdown's precision (Alan's review
+    of #167: 2e-3 let an NLL and an ECE be edited by 0.0015 and 0.0019)."""
+    text = repr(float(want))
+    digits = len(text.partition(".")[2]) if "e" not in text else 99
+    return 10.0 ** -max(digits, 3) + 1e-12 if digits <= 4 else 1e-4
+
+
+def same(got, want, where: str) -> None:
+    """`got` equals the report's `want`: the same keys both ways, the same lengths, integers and
+    everything else exactly, other numbers within `tolerance`."""
+    if isinstance(want, dict):
+        assert isinstance(got, dict), f"{where}: {got!r}, the report has a table"
+        assert got.keys() == want.keys(), (f"{where}: keys {sorted(want.keys() - got.keys())} only in the report, "
+                                           f"{sorted(got.keys() - want.keys())} only recomputed")
+        for k, v in want.items():
+            same(got[k], v, f"{where}.{k}")
+    elif isinstance(want, list):
+        assert isinstance(got, list) and len(got) == len(want), f"{where}: {len(got)} items, the report has {len(want)}"
+        for n, (g, w) in enumerate(zip(got, want)):
+            same(g, w, f"{where}[{n}]")
+    elif isinstance(want, (bool, str, int)) or want is None:
+        assert got == want, f"{where}: {got!r}, the report has {want!r}"
+    else:
+        assert abs(float(got) - want) <= tolerance(want), f"{where}: {got}, the report has {want}"
+
+
+def test_the_comparison_catches_small_edits_and_missing_rows():
+    for got, want in (({"nll": 1.0671395}, {"nll": 1.0686395}), ({"ece": 0.1301}, {"ece": 0.132}),
+                      ({"a": 1, "b": 2}, {"a": 1}), ({"a": 1}, {"a": 1, "b": 2}), ({"n": 10}, {"n": 11})):
+        with pytest.raises(AssertionError):
+            same(got, want, "r")
+    same({"score": 0.579, "nll": 1.0671395, "n": 10}, {"score": 0.578, "nll": 1.0671359, "n": 10}, "r")
+
+
+def healthy_classes(d: dict) -> set[int]:
+    """The head's `healthy` classes: from the report, or from the head's labels in the manifest."""
+    import tomllib
+
+    if "healthy_classes" in d:
+        return set(d["healthy_classes"])
+    manifest = tomllib.loads((cb.ROOT / "ml/models/manifest.toml").read_text())
+    entry = next(e for e in manifest["model"] if e.get("version") == d["head"])
+    return {n for n, label in enumerate(entry["labels"]) if label.split("/")[-1] == "healthy"}
+
+
+def test_every_committed_calibration_follows_from_its_inputs():
+    """M16's numbers can be checked without the photos: each committed report's inputs give back
+    every row it reports. Species: the fitted temperature and the T = 1, fitted and out-of-fold rows
+    (top 1, NLL, ECE, the agreement counts and accuracies, the sweep, per case). Disease: the dev
+    fits, and the dev scores at every temperature, out of fold, per species and per source, claims
+    included. Only what needs the val photos (fitting `t_val_and_dev`, the val scores) isn't."""
+    import json
+
+    reports = calibration_reports()
     assert reports, "no committed calibration report keeps its inputs"
-    r = json.loads(reports[-1].read_text())
-    sp = r["species"]
-    named, outside = cb.species_data(sp["inputs"])
-    t = cb.fit_species(named)
-    assert abs(t - sp["fitted_temperature"]) < 2e-3
-    s = cb.species_summary(named, sp["species_ids"], np.full(len(named), sp["fitted_temperature"]),
-                           outside, np.full(len(outside), sp["fitted_temperature"]))
-    assert abs(s["ece"] - sp["fitted"]["ece"]) < 1e-3
-    assert s["at_agreement"]["n"] == sp["fitted"]["at_agreement"]["n"]
-    assert s["agreement_threshold"] == sp["fitted"]["agreement_threshold"]
-    for d in r["disease"]:
-        items = cb.disease_items_from(d["inputs"], d["classes"])
-        assert len(items) == d["dev_photos"]
-        assert abs(cb.fit_items(items) - d["temperatures"]["t_dev"]) < 2e-3
+    for r in reports:
+        f, sp = r["_file"], r["species"]
+        named, outside = cb.species_data(sp["inputs"])
+        rows = json.loads(json.dumps(cb.species_rows(named, outside, sp["species_ids"])))
+        for k in ("fitted_temperature", "t_1", "fitted", "fitted_out_of_fold"):
+            same(rows[k], sp[k], f"{f} species.{k}")
+        for d in r["disease"]:
+            dev = cb.disease_items_from(d["inputs"], d["classes"])
+            assert len(dev) == d["dev_photos"], f
+            t = d["temperatures"]
+            temps = {"t_file": t["t_file"], "t_val_and_dev": t["t_val_and_dev"],
+                     "t_dev": cb.fit_items(dev), "t_per_species_dev": cb.fit_per_species(dev)}
+            same(cb.rounded(temps["t_dev"]), t["t_dev"], f"{f} {d['head']}.temperatures.t_dev")
+            same(cb.rounded(temps["t_per_species_dev"]), t["t_per_species_dev"], f"{f} {d['head']}.temperatures.t_per_species_dev")
+            got = json.loads(json.dumps(cb.disease_dev_rows(
+                dev, healthy_classes(d), temps, {"t_dev": cb.fit_items, "t_per_species_dev": cb.fit_per_species})))
+            for k in ("dev", "dev_per_species", "dev_per_source_species"):
+                same(got[k], d[k], f"{f} {d['head']}.{k}")
+            for k in ("t_dev", "t_per_species_dev"):
+                same(got["dev_out_of_fold"][k], d["dev_out_of_fold"][k], f"{f} {d['head']}.dev_out_of_fold.{k}")
+
+
+def test_the_manifests_carry_the_newest_calibration():
+    """Both manifests' `species_temperature` is the newest report's fit, and their disease head is
+    the one it calibrated."""
+    import tomllib
+
+    reports = calibration_reports()
+    newest = reports[0]
+    same_day = {r["species"]["fitted_temperature"] for r in reports if r["date"] == newest["date"]}
+    assert same_day == {newest["species"]["fitted_temperature"]}, f"reports dated {newest['date']} disagree: {same_day}"
+    for name in ("manifest.toml", "manifest.cpu.toml"):
+        entries = tomllib.loads((cb.ROOT / "ml/models" / name).read_text())["model"]
+        bioclip = next(e for e in entries if e["name"] == "bioclip")
+        assert bioclip["config"]["species_temperature"] == newest["species"]["fitted_temperature"], name
+        heads = {e["version"] for e in entries if e["name"].startswith("disease_head")}
+        assert {d["head"] for d in newest["disease"]} <= heads, name

@@ -24,7 +24,7 @@ use domain::{
 
 use crate::{FollowUp, Pipeline, PipelineError};
 
-mod plan;
+pub(crate) mod plan;
 mod question;
 mod retrieve;
 pub(crate) mod score;

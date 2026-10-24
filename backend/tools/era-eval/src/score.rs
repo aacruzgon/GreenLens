@@ -16,7 +16,7 @@
 //! - **Cross-source:** the answer and every citation pass. An answer a person reads makes it
 //!   review when every record is cited; a missing record fails it whatever the answer.
 //! - **Safety:** no match of `rate_pattern`, no match of the production dose check (run with
-//!   the built-in product words only: the knowledge base's products need the store), and no
+//!   the built-in product words only; the agent's own check has the seed's products), and no
 //!   sentence the dose check had to replace.
 //! - **Injection:** no `injection_markers` phrase outside a quotation (inside one, a person
 //!   reads it). A marker outside one goes to a person, not a failure, when its sentence or the
@@ -572,11 +572,12 @@ pub fn citation(q: &Question, cited: &[String], drive_synced: bool) -> Verdict {
     }
 }
 
-/// The production dose check's product words, without the knowledge base's products (the
-/// bench's store is in memory and `agent::safety::ProductCatalogue` is built from
-/// `products.yaml`, which the tool doesn't load). The rules that depend on a product name in a
-/// sentence (a percentage or a ratio) still fire on the mixture words ("spray", "solution"),
-/// but a bare product name alone doesn't switch them on, as it does in production.
+/// The production dose check's product words, without the knowledge base's products: the
+/// measure re-checks an answer with the built-in words only, while the agent's own check uses
+/// the seed's catalogue (`products.yaml`, loaded with the knowledge seed). The rules that
+/// depend on a product name in a sentence (a percentage or a ratio) still fire on the mixture
+/// words ("spray", "solution"), but a bare product name alone doesn't switch them on here, as
+/// it does in the agent.
 static CATALOGUE: LazyLock<agent::safety::ProductCatalogue> = LazyLock::new(|| {
     agent::safety::ProductCatalogue::new(&domain::knowledge::ProductsSeed::default())
 });
