@@ -20,7 +20,7 @@ fn the_registry_has_every_tool_sorted_and_filters_by_role() {
         .into_iter()
         .map(|s| s.name)
         .collect();
-    assert_eq!(all.len(), 20);
+    assert_eq!(all.len(), 21, "twenty tools and show_block");
     let mut sorted = all.clone();
     sorted.sort();
     assert_eq!(all, sorted, "a stable order keeps the prompt cache");
@@ -31,7 +31,7 @@ fn the_registry_has_every_tool_sorted_and_filters_by_role() {
             .into_iter()
             .map(|s| s.name)
             .collect();
-        assert_eq!(names.len(), 17);
+        assert_eq!(names.len(), 18);
         for write in ["create_task", "complete_task", "revise_plan"] {
             assert!(
                 !names.iter().any(|n| n == write),
@@ -42,6 +42,9 @@ fn the_registry_has_every_tool_sorted_and_filters_by_role() {
         assert!(names.iter().any(|n| n == "remember"));
         assert!(names.iter().any(|n| n == "request_rescan"));
         assert!(names.iter().any(|n| n == "search_farm_records"));
+        // A read and UI tool for every role, run by the turn, not found in the registry.
+        assert!(names.iter().any(|n| n == "show_block"));
+        assert!(r.find("show_block", Offer::everything(role)).is_none());
     }
     assert!(
         r.find("revise_plan", Offer::everything(Role::Editor))

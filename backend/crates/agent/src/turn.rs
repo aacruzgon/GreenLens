@@ -21,15 +21,21 @@
 //! **Tool results are data.** A successful result goes back to the model inside a `data` block
 //! ([`crate::prompt::tool_result`]), like every other text the server didn't write; the stored
 //! copy keeps the tool's JSON. A refusal stays plain: the server wrote it for the model to act on.
+//!
+//! **Answer blocks.** `show_block` is the one call the turn runs itself ([`crate::tools::blocks`]):
+//! it reads the turn's own tool results and the blocks already sent, which the reply holds, so
+//! only a call of this turn can be a block's anchor. It sends no `tool_started` or
+//! `tool_finished`; a built block goes out as `answer_block`, after its anchor's
+//! `tool_finished`, and is stored in `Message.blocks`.
 
 use std::sync::Arc;
 
 use domain::{
     authz::{ConversationOwner, Membership, Viewer},
     chat::{
-        Anchor, ChatErrorEvent, ChatEvent, ChatRoute, CitationEvent, MemorySaved, Message,
-        MessageCompleted, MessageRole, MessageStarted, PendingActionEvent, RescanRequested,
-        SendMessageRequest, TextDelta, ToolFinished, ToolStarted, Usage,
+        Anchor, AnswerBlock, AnswerBlockEvent, ChatErrorEvent, ChatEvent, ChatRoute, CitationEvent,
+        MemorySaved, Message, MessageCompleted, MessageRole, MessageStarted, PendingActionEvent,
+        RescanRequested, SendMessageRequest, TextDelta, ToolFinished, ToolName, ToolStarted, Usage,
     },
     connectors::FarmCitation,
     error::{Budget, DomainError, ErrorCode},
@@ -60,7 +66,11 @@ use crate::{
     safety::{
         REPLACED_SENTENCE, RouteDecision, SAFETY_POLICY, SentenceSplitter, decide_route, dose_check,
     },
-    tools::{Offer, ToolCtx, ToolEffect, ToolRegistry},
+    tools::{
+        Offer, ToolCtx, ToolEffect, ToolRegistry,
+        blocks::{self, ShowBlockArgs},
+        tool_name,
+    },
 };
 
 /// Events buffered between the turn task and the response body. Small: the body drains it as
@@ -373,6 +383,8 @@ struct Reply {
     farm_citations: Vec<FarmCitation>,
     /// Tool calls and results, in order (stored, never sent to the app).
     tool_calls: Vec<ContentPart>,
+    /// The answer blocks sent, in order (`Message.blocks`).
+    blocks: Vec<AnswerBlock>,
     usage: Usage,
     purpose: Option<ChatPurpose>,
     prompt_version: &'static str,
@@ -546,7 +558,7 @@ async fn store_reply(
                 attachments: Vec::new(),
                 citations: reply.citations.clone(),
                 farm_citations: reply.farm_citations.clone(),
-                blocks: Vec::new(),
+                blocks: reply.blocks.clone(),
                 tool_calls: reply.tool_calls.clone(),
                 route: Some(route),
                 interrupted,
@@ -854,6 +866,9 @@ async fn run_tool(
     name: String,
     arguments: serde_json::Value,
 ) -> Option<(ContentPart, Vec<ContentPart>)> {
+    if name == tool_name(ToolName::ShowBlock) {
+        return show_block(ctx, out, reply, call_id, arguments).await;
+    }
     let tool = inner.tools.find(&name, offer);
     let label = tool.map_or("Working", |t| t.label());
     let started = ToolStarted {
@@ -922,6 +937,64 @@ async fn run_tool(
         return None;
     }
     Some((part, images))
+}
+
+/// `show_block` ([`blocks`]): built from the turn's own results and the blocks already sent,
+/// which `reply` holds. It sends no `tool_started` or `tool_finished`, so the app shows no chip
+/// for it; a built block goes out as `answer_block` and into `Message.blocks`, and a refused one
+/// sends nothing and gives the model the reason. Its one string, `call_id`, must equal a call id
+/// the provider wrote, so no text of the model's reaches the app and there is nothing to
+/// dose-check. `None` when the client went away.
+async fn show_block(
+    ctx: &ToolCtx<'_>,
+    out: &mut Emitter,
+    reply: &mut Reply,
+    call_id: String,
+    arguments: serde_json::Value,
+) -> Option<(ContentPart, Vec<ContentPart>)> {
+    reply.after_tool_round = true;
+    let built = match serde_json::from_value::<ShowBlockArgs>(arguments.clone()) {
+        Ok(args) => blocks::build(ctx, &reply.tool_calls, &reply.blocks, args).await,
+        Err(e) => Err(crate::error::ToolError::Rejected(format!(
+            "The arguments are invalid: {e}."
+        ))),
+    };
+    reply.tool_calls.push(ContentPart::ToolCall {
+        call_id: call_id.clone(),
+        name: tool_name(ToolName::ShowBlock).to_owned(),
+        arguments,
+    });
+    let (content, is_error) = match built {
+        Ok(block) => {
+            let content = serde_json::json!({ "ok": true, "kind": block.kind().as_str() });
+            reply.blocks.push(block.clone());
+            if !out
+                .send(ChatEvent::AnswerBlock(AnswerBlockEvent { v: V1, block }))
+                .await
+            {
+                return None;
+            }
+            (content, false)
+        }
+        Err(e) => {
+            tracing::info!(error = %e, "show_block refused");
+            (serde_json::json!({ "error": e.for_model() }), true)
+        }
+    };
+    reply.tool_calls.push(ContentPart::ToolResult {
+        call_id: call_id.clone(),
+        content: content.clone(),
+        is_error,
+    });
+    // The server wrote both answers, so neither goes in a `data` block.
+    Some((
+        ContentPart::ToolResult {
+            call_id,
+            content,
+            is_error,
+        },
+        Vec::new(),
+    ))
 }
 
 async fn send_effect(out: &mut Emitter, reply: &mut Reply, effect: ToolEffect) -> bool {
