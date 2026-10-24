@@ -1,11 +1,16 @@
 // Small helpers shared by the mock transport, store, fixtures and runs.
 
+import { TZDate } from "@date-fns/tz";
+
 import type { components } from "../generated/schema";
 
 export type S = components["schemas"];
 
 /** Relative URLs are resolved against this host; the mock never touches the network. */
 export const MOCK_ORIGIN = "https://mock.pdm.local";
+
+/** The mock gardens' `time_zone`: their calendar, which the fixtures' dates follow. */
+export const MOCK_TIME_ZONE = "America/Toronto";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
@@ -127,35 +132,45 @@ export function paginate<T>(
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-/** Dates relative to the device's date, so the demo always looks current (analytics 6). */
+/**
+ * Dates relative to today in the gardens' calendar (`MOCK_TIME_ZONE`), so the demo always looks current (analytics
+ * 6) and a task due today is due today wherever the device is.
+ */
 export class DateKit {
   private readonly y: number;
   private readonly m: number;
   private readonly d: number;
 
-  constructor(readonly now: Date = new Date()) {
-    this.y = now.getFullYear();
-    this.m = now.getMonth();
-    this.d = now.getDate();
+  constructor(
+    readonly now: Date = new Date(),
+    readonly timeZone: string = MOCK_TIME_ZONE,
+  ) {
+    const today = new TZDate(now.getTime(), timeZone);
+    this.y = today.getFullYear();
+    this.m = today.getMonth();
+    this.d = today.getDate();
+  }
+
+  private at(daysAgo: number, hour = 0, minute = 0): TZDate {
+    return new TZDate(this.y, this.m, this.d - daysAgo, hour, minute, this.timeZone);
   }
 
   /**
-   * A UTC timestamp for the local day `daysAgo` days back (negative: ahead), at hour:minute. Today's fixtures sit
-   * in the morning; before noon their times are squeezed, in order, into the part of today already past, so none
-   * is later than now and a scan taken now is the plant's latest.
+   * A UTC timestamp for the garden's day `daysAgo` days back (negative: ahead), at hour:minute there. Today's
+   * fixtures sit in the morning, none after noon; before noon their times are squeezed, in order, into the part of
+   * today already past, so none is later than now and a scan taken now is the plant's latest.
    */
   ts(daysAgo: number, hour = 9, minute = 0): string {
-    const t = new Date(this.y, this.m, this.d - daysAgo, hour, minute);
-    if (daysAgo !== 0) return isoSeconds(t);
-    const midnight = new Date(this.y, this.m, this.d).getTime();
-    const noon = new Date(this.y, this.m, this.d, 12).getTime();
-    const squeeze = Math.min(1, (this.now.getTime() - midnight) / (noon - midnight));
-    return isoSeconds(new Date(midnight + (t.getTime() - midnight) * squeeze));
+    const t = this.at(daysAgo, hour, minute).getTime();
+    if (daysAgo !== 0) return isoSeconds(new Date(t));
+    const midnight = this.at(0).getTime();
+    const squeeze = Math.min(1, (this.now.getTime() - midnight) / (this.at(0, 12).getTime() - midnight));
+    return isoSeconds(new Date(midnight + (t - midnight) * squeeze));
   }
 
-  /** A `YYYY-MM-DD` local date. */
+  /** A `YYYY-MM-DD` date in the garden's calendar. */
   date(daysAgo: number): string {
-    const day = new Date(this.y, this.m, this.d - daysAgo);
+    const day = this.at(daysAgo);
     const mm = String(day.getMonth() + 1).padStart(2, "0");
     const dd = String(day.getDate()).padStart(2, "0");
     return `${day.getFullYear()}-${mm}-${dd}`;
@@ -163,7 +178,7 @@ export class DateKit {
 
   /** 0 = Sunday ... 4 = Thursday. */
   weekday(daysAgo: number): number {
-    return new Date(this.y, this.m, this.d - daysAgo).getDay();
+    return this.at(daysAgo).getDay();
   }
 
   /** "Thursday". */

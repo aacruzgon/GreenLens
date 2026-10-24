@@ -1,10 +1,11 @@
+import { TZDate } from "@date-fns/tz";
 import { format } from "date-fns";
 
 import { SseParser } from "../sse";
 import type { S } from "./util";
 import { chooseAccount, IDS, mockStore, mockTransport, resetMock, scenario } from "./index";
 import { buildSeed } from "./fixtures";
-import { bandFor, DateKit } from "./util";
+import { bandFor, DateKit, MOCK_TIME_ZONE } from "./util";
 
 const BASE = "https://mock.pdm.local";
 
@@ -137,13 +138,17 @@ describe("fixtures over REST", () => {
     expect(tl[2].primary?.name).toBe("Early blight");
   });
 
-  it("dates no seeded scan or event after now, early in the morning too, and keeps today's in order", () => {
+  it("dates nothing seeded after now, early in the morning too, and keeps today's events in order", () => {
     for (const [hour, minute] of [[0, 3], [7, 30], [11, 0], [15, 0]]) {
-      const now = new Date(2026, 9, 24, hour, minute);
+      const now = new TZDate(2026, 9, 24, hour, minute, MOCK_TIME_ZONE);
       const seed = buildSeed(new DateKit(now));
-      const times = seed.scans.flatMap((s) => [s.scan.created_at, ...s.events.map((e) => e.ts)]);
+      const times = [
+        ...seed.scans.flatMap((s) => [s.scan.created_at, ...s.events.map((e) => e.ts)]),
+        ...seed.tasks.flatMap((t) => [t.created_at, t.done_at ?? t.created_at]),
+        seed.weather.fetched_at,
+      ];
       for (const t of times) expect(Date.parse(t)).toBeLessThanOrEqual(now.getTime());
-      const today = seed.scans.filter((s) => new Date(s.scan.created_at).getDate() === 24);
+      const today = seed.scans.filter((s) => new TZDate(Date.parse(s.scan.created_at), MOCK_TIME_ZONE).getDate() === 24);
       expect(today.length).toBeGreaterThan(0);
       for (const s of today) {
         const ts = s.events.map((e) => Date.parse(e.ts));
@@ -155,7 +160,7 @@ describe("fixtures over REST", () => {
   it("forecasts the frost on the coming Thursday within the home's 6 days, and on Friday on a Thursday", () => {
     // Monday Oct 19, 2026 to Sunday Oct 25: the strip shows the 6 days after today.
     for (let day = 19; day <= 25; day++) {
-      const seed = buildSeed(new DateKit(new Date(2026, 9, day, 9)));
+      const seed = buildSeed(new DateKit(new TZDate(2026, 9, day, 9, 0, MOCK_TIME_ZONE)));
       const frost = seed.weather.forecast.findIndex((d) => d.frost_risk) + 1;
       const weekday = new Date(2026, 9, day + frost).getDay();
       expect(frost).toBeGreaterThanOrEqual(1);
@@ -166,9 +171,7 @@ describe("fixtures over REST", () => {
 
   it("holds Tomato 1's plan, the tasks, the frost alert and the garden note", async () => {
     const open = (await call("GET", `/tasks?garden_id=${IDS.garden}&state=open`)).json.items as S["Task"][];
-    const today = new Date();
-    const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    expect(open.find((t) => t.plant_id === IDS.tomato2 && t.due === ymd(today))?.title).toBe("Check Tomato 2's lower leaves");
+    expect(open.find((t) => t.plant_id === IDS.tomato2 && t.due === new DateKit().date(0))?.title).toBe("Check Tomato 2's lower leaves");
     const alerts = (await call("GET", `/tasks?garden_id=${IDS.garden}&source=forecast_alert`)).json.items as S["Task"][];
     expect(alerts).toHaveLength(2);
     const upcoming = alerts.find((t) => !t.done_at)!;
