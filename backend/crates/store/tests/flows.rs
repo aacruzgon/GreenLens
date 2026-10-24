@@ -2048,6 +2048,36 @@ async fn knowledge_loads() {
     assert_eq!(kb.vlm_options.label_set_version.len(), 16);
 }
 
+/// A species' `frost` round-trips through the knowledge load, and a species without it reads as none.
+#[tokio::test]
+async fn species_frost_round_trips() {
+    use domain::knowledge::Frost;
+    let store = support::store().await;
+    exec(
+        &store,
+        "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'label_only',
+           bioclip_label = 'tomato', reviewed_by = 'ada', frost = 'tender';
+         CREATE species:lettuce SET scientific_name = 'Lactuca sativa', common_names = ['Lettuce'], profile = 'label_only',
+           bioclip_label = 'lettuce', reviewed_by = 'ada', frost = 'hardy';
+         CREATE species:kale SET scientific_name = 'Brassica oleracea', common_names = ['Kale'], profile = 'label_only',
+           bioclip_label = 'kale', reviewed_by = 'ada';",
+    )
+    .await;
+    let kb = store.load_knowledge().await.expect("loaded");
+    let frost = |id: &str| {
+        kb.species
+            .iter()
+            .find(|s| s.id.as_str() == id)
+            .unwrap()
+            .frost
+    };
+    assert_eq!(frost("tomato"), Some(Frost::Tender));
+    assert_eq!(frost("lettuce"), Some(Frost::Hardy));
+    assert_eq!(frost("kale"), None);
+    let kale = kb.species.iter().find(|s| s.id.as_str() == "kale").unwrap();
+    assert!(serde_json::to_value(kale).unwrap().get("frost").is_none());
+}
+
 #[allow(dead_code, reason = "keeps the shared imports used across tests")]
 fn _types(_: Arc<SurrealStore>, _: GardenId, _: BTreeMap<u8, u8>) {}
 
