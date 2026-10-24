@@ -76,7 +76,9 @@ impl AnthropicChat {
             MessagesRequest::new(model, request.max_tokens, messages(&request.messages));
         api_request.system = Some(System::Blocks(vec![TextBlock {
             text: Cow::Borrowed(&request.system),
-            // Tools render before the system prompt, so this one breakpoint caches both.
+            // Tools render before the system prompt, so this one breakpoint caches both. The
+            // 5-minute TTL is the one `CallUsage::CACHE_WRITE_WEIGHT` (1.25) prices; a 1-hour
+            // cache writes at 2× and would need that weight changed.
             cache_control: Some(CacheControl::EPHEMERAL),
         }]));
         let mut tools: Vec<&domain::ports::ToolSpec> = request.tools.iter().collect();
