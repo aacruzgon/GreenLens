@@ -927,7 +927,7 @@ async fn run_tool(
         content.clone()
     } else {
         let kind = tool.map_or(DataKind::ToolResult, crate::tools::DynTool::data_kind);
-        tool_result(kind, &content)
+        tool_result(kind, &call_id, &content)
     };
     reply.tool_calls.push(ContentPart::ToolResult {
         call_id: call_id.clone(),
@@ -953,9 +953,10 @@ async fn run_tool(
 /// `show_block` ([`blocks`]): built from the turn's own results and the blocks already sent,
 /// which `reply` holds. It sends no `tool_started` or `tool_finished`, so the app shows no chip
 /// for it; a built block goes out as `answer_block` and into `Message.blocks`, and a refused one
-/// sends nothing and gives the model the reason. Its one string, `call_id`, must equal a call id
-/// the provider wrote, so no text of the model's reaches the app and there is nothing to
-/// dose-check. `None` when the client went away.
+/// sends nothing and gives the model the reason. Its one string, `call_id`, is a call id the
+/// provider wrote or the name of a tool the answer called once, which `blocks::resolve` maps to
+/// that call's provider id; the block carries only that id, so no text of the model's reaches
+/// the app and there is nothing to dose-check. `None` when the client went away.
 async fn show_block(
     ctx: &ToolCtx<'_>,
     out: &mut Emitter,

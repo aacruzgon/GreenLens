@@ -74,6 +74,47 @@ impl ScriptedModel {
     }
 }
 
+/// The placeholder a script puts in a tool call's `call_id` argument to have the model read
+/// the id the way the hosted model must: from the `call_id` attribute of the last framed tool
+/// result it was sent, never from the script.
+pub const FRAMED_ID: &str = "$FRAMED_ID";
+
+fn read_framed_id(chunk: ChatChunk, request: &ChatRequest) -> ChatChunk {
+    let ChatChunk::ToolCall {
+        call_id,
+        name,
+        mut arguments,
+    } = chunk
+    else {
+        return chunk;
+    };
+    if arguments.get("call_id").and_then(|v| v.as_str()) == Some(FRAMED_ID) {
+        let seen = request
+            .messages
+            .iter()
+            .flat_map(|m| &m.content)
+            .filter_map(|p| match p {
+                domain::ports::ContentPart::ToolResult {
+                    content: serde_json::Value::String(s),
+                    ..
+                } => s
+                    .split("call_id=\"")
+                    .nth(1)
+                    .and_then(|rest| rest.split('"').next()),
+                _ => None,
+            })
+            .last()
+            .unwrap_or("none")
+            .to_owned();
+        arguments["call_id"] = serde_json::Value::String(seen);
+    }
+    ChatChunk::ToolCall {
+        call_id,
+        name,
+        arguments,
+    }
+}
+
 #[async_trait::async_trait]
 impl ChatModel for ScriptedModel {
     fn model_name(&self, _: ChatPurpose) -> String {
@@ -99,6 +140,10 @@ impl ChatModel for ScriptedModel {
             })])
             .boxed();
         }
+        let script = script
+            .into_iter()
+            .map(|c| read_framed_id(c, request))
+            .collect::<Vec<_>>();
         let chunks = stream::iter(script.into_iter().map(Ok));
         if self.hang {
             chunks.chain(stream::pending()).boxed()
