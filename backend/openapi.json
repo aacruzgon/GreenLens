@@ -4732,7 +4732,7 @@
                 "items": {
                   "$ref": "#/components/schemas/Id"
                 },
-                "description": "The plants the answer is about, from the `show_block` call; each is pinned on the\nmap. May be empty."
+                "description": "The plants the answer is about, from the `show_block` call, once each: each is one of\n`plants`. May be empty."
               },
               "kind": {
                 "type": "string",
@@ -4764,7 +4764,7 @@
                 "items": {
                   "$ref": "#/components/schemas/BlockPlant"
                 },
-                "description": "Every plant pinned on the map, from the store."
+                "description": "Every live plant pinned on the map, from the store."
               }
             }
           },
@@ -4822,7 +4822,7 @@
                 "items": {
                   "$ref": "#/components/schemas/FrostPlant"
                 },
-                "description": "The garden's live plants, from the store, with their species' frost tenderness."
+                "description": "The garden's live plants that aren't dead, from the store, with their confirmed\nspecies' frost tenderness."
               }
             }
           },
@@ -6919,7 +6919,7 @@
             "properties": {
               "frost_tender": {
                 "type": "boolean",
-                "description": "`true` for a species with `frost: tender`, `false` for `hardy`; absent when the species\nis unknown or its sources don't say. Never `false` for \"don't know\"."
+                "description": "`true` for a confirmed species with `frost: tender`, `false` for `hardy`; absent when the\nspecies is only suggested or unknown, or its sources don't say. Never `false` for \"don't\nknow\"."
               }
             }
           }

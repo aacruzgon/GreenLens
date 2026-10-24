@@ -967,13 +967,15 @@ async fn show_block(
     let (content, is_error) = match built {
         Ok(block) => {
             let content = serde_json::json!({ "ok": true, "kind": block.kind().as_str() });
-            reply.blocks.push(block.clone());
-            if !out
-                .send(ChatEvent::AnswerBlock(AnswerBlockEvent { v: V1, block }))
-                .await
-            {
+            // Stored only once sent, so `Message.blocks` is exactly what the app received.
+            let event = ChatEvent::AnswerBlock(AnswerBlockEvent {
+                v: V1,
+                block: block.clone(),
+            });
+            if !out.send(event).await {
                 return None;
             }
+            reply.blocks.push(block);
             (content, false)
         }
         Err(e) => {

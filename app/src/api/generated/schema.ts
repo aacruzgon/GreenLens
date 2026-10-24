@@ -1358,8 +1358,8 @@ export interface components {
         /** @description `AnswerBlock`'s kinds, tagged by `kind`. */
         BlockBody: {
             /**
-             * @description The plants the answer is about, from the `show_block` call; each is pinned on the
-             *     map. May be empty.
+             * @description The plants the answer is about, from the `show_block` call, once each: each is one of
+             *     `plants`. May be empty.
              */
             focus_plant_ids: components["schemas"]["Id"][];
             /** @enum {string} */
@@ -1370,7 +1370,7 @@ export interface components {
             neighbours: {
                 [key: string]: components["schemas"]["Id"][];
             };
-            /** @description Every plant pinned on the map, from the store. */
+            /** @description Every live plant pinned on the map, from the store. */
             plants: components["schemas"]["BlockPlant"][];
         } | {
             /** @description Daily rows: the forecast, or the scan's snapshot of it at scan time. */
@@ -1384,7 +1384,10 @@ export interface components {
             kind: "frost_planner";
             /** @description The result's days with `frost_risk`, first first. */
             nights: components["schemas"]["ForecastDay"][];
-            /** @description The garden's live plants, from the store, with their species' frost tenderness. */
+            /**
+             * @description The garden's live plants that aren't dead, from the store, with their confirmed
+             *     species' frost tenderness.
+             */
             plants: components["schemas"]["FrostPlant"][];
         } | {
             /** @enum {string} */
@@ -2196,8 +2199,9 @@ export interface components {
         /** @description `FrostPlant = BlockPlant & { frost_tender?: boolean }`. */
         FrostPlant: components["schemas"]["BlockPlant"] & {
             /**
-             * @description `true` for a species with `frost: tender`, `false` for `hardy`; absent when the species
-             *     is unknown or its sources don't say. Never `false` for "don't know".
+             * @description `true` for a confirmed species with `frost: tender`, `false` for `hardy`; absent when the
+             *     species is only suggested or unknown, or its sources don't say. Never `false` for "don't
+             *     know".
              */
             frost_tender?: boolean;
         };

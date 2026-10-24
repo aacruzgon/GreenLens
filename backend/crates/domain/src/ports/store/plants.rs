@@ -46,14 +46,15 @@ pub struct SpeciesConfirmation {
     pub recent_scan: Option<RecentScan>,
 }
 
-/// A live plant as an answer block shows it, with its species for the frost planner
+/// A live plant as an answer block shows it, with its confirmed species for the frost planner
 /// ([contracts 8], answer blocks).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlantSummary {
     /// Its id, name, status and latest height.
     pub plant: BlockPlant,
-    /// Its working species, suggested or confirmed.
-    pub species: Option<SpeciesId>,
+    /// Its species when confirmed (by the user, or named when the plant was created); `None`
+    /// for a suggestion, so a guess never decides how a plant takes a frost.
+    pub confirmed_species: Option<SpeciesId>,
 }
 
 /// The `plant` table and the reads built on it.
@@ -157,8 +158,8 @@ pub trait PlantRepo: Send + Sync {
     async fn heights(&self, plant: PlantId) -> Result<Vec<MeasurementPoint>, StoreError>;
 
     /// Every live plant of the member's garden, by name, with its latest `plant_height_cm`
-    /// point (the newest scan's, of medium confidence or more), in one read: what an answer
-    /// block fills in ([contracts 8], answer blocks).
+    /// point (the newest scan's, of medium confidence or more) and its confirmed species, in
+    /// one read: what an answer block fills in ([contracts 8], answer blocks).
     async fn plant_summaries(
         &self,
         member: Membership<Viewer>,

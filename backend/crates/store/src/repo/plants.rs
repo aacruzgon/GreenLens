@@ -135,9 +135,10 @@ ORDER BY created_at DESC, scan_id DESC LIMIT $limit;";
     /// The cursor key of a scan in the timeline.
     pub const SCAN_CURSOR: &str = "SELECT VALUE [created_at, id] FROM ONLY $scan;";
     /// Every live plant of a garden by name (index `plant_garden`), with the newest scan's
-    /// `plant_height_cm` of medium confidence or more (index `observation_growth`), for an
-    /// answer block.
-    pub const PLANT_SUMMARIES: &str = "SELECT id, name, status, species,
+    /// `plant_height_cm` of medium confidence or more (index `observation_growth`) and the
+    /// species only when it is confirmed, for an answer block.
+    pub const PLANT_SUMMARIES: &str = "SELECT id, name, status,
+  IF species_status = 'confirmed' { species } ELSE { NONE } AS species,
   (SELECT VALUE measured_value FROM observation WHERE plant = $parent.id AND quantity = 'plant_height_cm'
      AND retracted_at = NONE AND confidence >= 0.5 ORDER BY taken_at DESC, confidence DESC LIMIT 1)[0] AS height_cm
 FROM plant WHERE garden = $garden AND deleting_at = NONE ORDER BY name;";
@@ -197,7 +198,7 @@ pub struct PlantSummaryRow {
     pub name: String,
     /// `healthy`, `watch`, `sick` or `dead`.
     pub status: String,
-    /// Its working species.
+    /// Its species, only when confirmed.
     pub species: Option<RecordId>,
     /// The newest scan's height, cm.
     pub height_cm: Option<f64>,
@@ -212,7 +213,7 @@ impl PlantSummaryRow {
                 status: crate::rows::from_json("status", serde_json::Value::String(self.status))?,
                 height_cm: self.height_cm,
             },
-            species: from_opt_rid(self.species.as_ref())?,
+            confirmed_species: from_opt_rid(self.species.as_ref())?,
         })
     }
 }

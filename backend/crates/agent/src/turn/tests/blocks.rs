@@ -16,6 +16,9 @@ const TOMATO: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5A";
 const LETTUCE: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5B";
 const BASIL: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5C";
 const MYSTERY: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5D";
+const PEPPER: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5E";
+const GONE: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5G";
+const SUGGESTED: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5H";
 
 /// The cell's weather: one forecast day per flag, from Tuesday 20 October, frost where set.
 fn weather(frost: &[bool]) -> CellWeather {
@@ -57,15 +60,21 @@ fn summary(id: &str, name: &str, species: Option<&str>) -> PlantSummary {
         plant: domain::chat::BlockPlant {
             plant_id: id.parse().unwrap(),
             name: name.to_owned(),
-            status: domain::scan::PlantStatus::Healthy,
+            status: if id == PEPPER {
+                domain::scan::PlantStatus::Dead
+            } else {
+                domain::scan::PlantStatus::Healthy
+            },
             height_cm: (id == TOMATO).then_some(42.0),
         },
-        species: species.map(|s| s.parse().unwrap()),
+        confirmed_species: species.map(|s| s.parse().unwrap()),
     }
 }
 
-/// A garden with a tomato (tender), a lettuce (hardy), a basil (its species doesn't say) and a
-/// plant of no known species, and the forecast `frost`; the map pins the tomato and the lettuce.
+/// A garden with a tomato (tender), a lettuce (hardy), a basil (its species doesn't say), a
+/// plant of no known species, a second lettuce whose species is only suggested (so the store
+/// gives no confirmed species) and a dead pepper, and the forecast `frost`. The map pins the
+/// tomato, the lettuce, the pepper and a plant being deleted, which has no summary.
 fn frost_setup(script: Vec<Vec<ChatChunk>>, frost: &'static [bool]) -> Setup {
     let mut cache = MockWeatherCacheRepo::new();
     cache
@@ -77,7 +86,9 @@ fn frost_setup(script: Vec<Vec<ChatChunk>>, frost: &'static [bool]) -> Setup {
         Ok(vec![
             summary(BASIL, "Basil", Some("basil")),
             summary(LETTUCE, "Lettuce", Some("lettuce")),
+            summary(SUGGESTED, "Lettuce 2", None),
             summary(MYSTERY, "Mystery", None),
+            summary(PEPPER, "Old pepper", Some("pepper")),
             summary(TOMATO, "Tomato 1", Some("tomato")),
         ])
     });
@@ -95,7 +106,9 @@ fn frost_setup(script: Vec<Vec<ChatChunk>>, frost: &'static [bool]) -> Setup {
             serde_json::from_value(json!({
                 "garden_id": GARDEN, "version": 1, "beds": [],
                 "pins": [{"plant_id": TOMATO, "x_m": 0.0, "y_m": 0.0},
-                         {"plant_id": LETTUCE, "x_m": 0.4, "y_m": 0.0}],
+                         {"plant_id": LETTUCE, "x_m": 0.4, "y_m": 0.0},
+                         {"plant_id": PEPPER, "x_m": 0.8, "y_m": 0.0},
+                         {"plant_id": GONE, "x_m": 1.2, "y_m": 0.0}],
                 "created_at": "2026-10-10T10:00:00Z"
             }))
             .unwrap(),
@@ -176,6 +189,7 @@ fn show_block_results(model: &ScriptedModel) -> Vec<(bool, serde_json::Value)> {
 }
 
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "the roadmap's exit check, step by step")]
 async fn a_frost_question_streams_a_frost_planner_after_the_forecast_and_stores_it() {
     let (agent, model, seen) = harness(frost_setup(
         vec![
@@ -248,8 +262,19 @@ async fn a_frost_question_streams_a_frost_planner_after_the_forecast_and_stores_
     assert_eq!(tender(BASIL), None, "a species with no frost field");
     assert_eq!(tender(MYSTERY), None, "a plant of no known species");
     assert_eq!(
+        tender(SUGGESTED),
+        None,
+        "a suggested lettuce is not known to be hardy"
+    );
+    assert!(
+        plants
+            .iter()
+            .all(|p| p.plant.plant_id.to_string() != PEPPER),
+        "a dead plant needs no cover"
+    );
+    assert_eq!(
         plants.len(),
-        4,
+        5,
         "the garden's live plants, not the map's pins"
     );
     let json = serde_json::to_value(&block).unwrap();
@@ -294,7 +319,8 @@ async fn a_garden_map_block_fills_its_pinned_plants_and_keeps_the_focus() {
             tool_round(vec![call(
                 "toolu_show",
                 "show_block",
-                json!({"kind": "garden_map", "call_id": "toolu_map", "focus_plant_ids": [TOMATO]}),
+                json!({"kind": "garden_map", "call_id": "toolu_map",
+                       "focus_plant_ids": [TOMATO, LETTUCE, TOMATO]}),
             )]),
             answer("The tomato is 40 cm from the lettuce."),
         ],
@@ -319,10 +345,18 @@ async fn a_garden_map_block_fills_its_pinned_plants_and_keeps_the_focus() {
         panic!()
     };
     let names: Vec<&str> = plants.iter().map(|p| p.name.as_str()).collect();
-    assert_eq!(names, ["Lettuce", "Tomato 1"], "only the pinned plants");
-    assert_eq!(plants[1].height_cm, Some(42.0));
-    assert_eq!(focus_plant_ids, &[TOMATO.parse::<PlantId>().unwrap()]);
-    assert_eq!(neighbours.len(), 2);
+    assert_eq!(
+        names,
+        ["Lettuce", "Old pepper", "Tomato 1"],
+        "every pinned live plant, the dead one too; not the pin of a plant being deleted"
+    );
+    assert_eq!(plants[2].height_cm, Some(42.0));
+    let ids: Vec<PlantId> = [TOMATO, LETTUCE]
+        .iter()
+        .map(|p| p.parse().unwrap())
+        .collect();
+    assert_eq!(focus_plant_ids, &ids, "once each, first seen first");
+    assert!(!neighbours.is_empty());
     assert!(!show_block_results(&model)[0].0);
 }
 
@@ -331,6 +365,8 @@ struct Refusal {
     name: &'static str,
     frost: &'static [bool],
     history: Vec<ContextMessage>,
+    /// The garden has no map.
+    no_map: bool,
     calls: Vec<Vec<ChatChunk>>,
     /// Blocks sent.
     sent: usize,
@@ -377,6 +413,7 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
             name: "a call_id from an earlier turn",
             frost: &[true],
             history: vec![earlier_forecast()],
+            no_map: false,
             calls: vec![tool_round(vec![show("s1", "frost_planner", "toolu_old")])],
             sent: 0,
             errors: vec![true],
@@ -386,6 +423,7 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
             name: "a kind that doesn't fit the result",
             frost: &[true],
             history: Vec::new(),
+            no_map: false,
             calls: vec![
                 tool_round(vec![forecast()]),
                 tool_round(vec![show("s1", "candidates", "toolu_fc")]),
@@ -398,6 +436,7 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
             name: "a forecast with no frost night",
             frost: &[false, false],
             history: Vec::new(),
+            no_map: false,
             calls: vec![
                 tool_round(vec![forecast()]),
                 tool_round(vec![show("s1", "frost_planner", "toolu_fc")]),
@@ -410,6 +449,7 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
             name: "a focus plant not on the map",
             frost: &[false],
             history: Vec::new(),
+            no_map: false,
             calls: vec![
                 tool_round(vec![call("toolu_map", "get_garden_map", json!({}))]),
                 tool_round(vec![call(
@@ -426,6 +466,7 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
             name: "a call that failed",
             frost: &[true],
             history: Vec::new(),
+            no_map: false,
             calls: vec![
                 tool_round(vec![call("toolu_bad", "get_forecast", json!({"weeks": 1}))]),
                 tool_round(vec![show("s1", "weather_hours", "toolu_bad")]),
@@ -438,6 +479,7 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
             name: "a fourth block",
             frost: &[true, true],
             history: Vec::new(),
+            no_map: false,
             calls: vec![
                 tool_round(vec![
                     forecast(),
@@ -458,6 +500,7 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
             name: "the same kind and call twice",
             frost: &[true],
             history: Vec::new(),
+            no_map: false,
             calls: vec![
                 tool_round(vec![forecast()]),
                 tool_round(vec![
@@ -469,14 +512,91 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
             errors: vec![false, true],
             reason: "already shows",
         },
+        Refusal {
+            name: "a focus on the pin of a plant being deleted",
+            frost: &[false],
+            history: Vec::new(),
+            no_map: false,
+            calls: vec![
+                tool_round(vec![call("toolu_map", "get_garden_map", json!({}))]),
+                tool_round(vec![call(
+                    "s1",
+                    "show_block",
+                    json!({"kind": "garden_map", "call_id": "toolu_map", "focus_plant_ids": [GONE]}),
+                )]),
+            ],
+            sent: 0,
+            errors: vec![true],
+            reason: GONE,
+        },
+        Refusal {
+            name: "focus_plant_ids on another kind",
+            frost: &[true],
+            history: Vec::new(),
+            no_map: false,
+            calls: vec![
+                tool_round(vec![forecast()]),
+                tool_round(vec![call(
+                    "s1",
+                    "show_block",
+                    json!({"kind": "weather_hours", "call_id": "toolu_fc", "focus_plant_ids": [TOMATO]}),
+                )]),
+            ],
+            sent: 0,
+            errors: vec![true],
+            reason: "garden_map only",
+        },
+        Refusal {
+            name: "weather hours of an empty forecast",
+            frost: &[],
+            history: Vec::new(),
+            no_map: false,
+            calls: vec![
+                tool_round(vec![forecast()]),
+                tool_round(vec![show("s1", "weather_hours", "toolu_fc")]),
+            ],
+            sent: 0,
+            errors: vec![true],
+            reason: "no days",
+        },
+        Refusal {
+            name: "a garden map that is null",
+            frost: &[false],
+            history: Vec::new(),
+            no_map: true,
+            calls: vec![
+                tool_round(vec![call("toolu_map", "get_garden_map", json!({}))]),
+                tool_round(vec![show("s1", "garden_map", "toolu_map")]),
+            ],
+            sent: 0,
+            errors: vec![true],
+            reason: "no map",
+        },
+        Refusal {
+            name: "an unknown kind",
+            frost: &[true],
+            history: Vec::new(),
+            no_map: false,
+            calls: vec![
+                tool_round(vec![forecast()]),
+                tool_round(vec![show("s1", "pie_chart", "toolu_fc")]),
+            ],
+            sent: 0,
+            errors: vec![true],
+            reason: "invalid",
+        },
     ];
     for case in cases {
         let mut script = case.calls;
         script.push(answer("Here is what the forecast says."));
-        let (agent, model, seen) = harness(Setup {
+        let mut setup = Setup {
             history: case.history,
             ..frost_setup(script, case.frost)
-        });
+        };
+        if case.no_map {
+            setup.maps = no_map();
+        }
+        let (agent, model, seen) = harness(setup);
         let stream = agent
             .start_turn(request(owner(Role::Viewer).await, "Frost this week?"))
             .await
@@ -485,6 +605,13 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
         let name = case.name;
         assert!(matches!(outcome, TurnOutcome::Completed(_)), "{name}");
         assert_eq!(blocks_of(&events).len(), case.sent, "{name}");
+        // No chip for show_block, refused or not.
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, ChatEvent::ToolStarted(t) if t.tool == "show_block")),
+            "{name}"
+        );
         let results = show_block_results(&model);
         let errors: Vec<bool> = results.iter().map(|(e, _)| *e).collect();
         assert_eq!(errors, case.errors, "{name}");

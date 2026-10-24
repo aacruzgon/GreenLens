@@ -1596,26 +1596,58 @@ async fn plants_tasks_and_growth() {
         .unwrap();
     assert_eq!(series.items.len(), 1);
     assert_eq!(store.heights(f.plant).await.unwrap().len(), 1);
-    // An answer block's plants: the newest scan's height, not a low-confidence one.
+    // An answer block's plants. The newest scan's height counts, not a later low-confidence
+    // one nor a newer canopy width; a plant being deleted and another garden's plant are left
+    // out; a species counts only when confirmed.
+    let suggested: PlantId = f.ids.id();
+    let deleting: PlantId = f.ids.id();
+    let other_garden: GardenId = f.ids.id();
+    let elsewhere: PlantId = f.ids.id();
     exec(
         &store,
         &format!(
             "CREATE observation SET scan = {s}, run = 1, stage = 'measurement', pipeline_stage = 'measurement', label = 'Height',
                confidence = 0.3, source = 'measurement', model_version = 'm1', plant = {p}, quantity = 'plant_height_cm',
-               measured_value = 99.0, taken_at = <datetime> '2026-10-19T14:00:00Z';",
+               measured_value = 99.0, taken_at = <datetime> '2026-10-19T14:00:00Z';
+             CREATE observation SET scan = {s}, run = 1, stage = 'measurement', pipeline_stage = 'measurement', label = 'Width',
+               confidence = 0.9, source = 'measurement', model_version = 'm1', plant = {p}, quantity = 'canopy_width_cm',
+               measured_value = 77.0, taken_at = <datetime> '2026-10-20T14:00:00Z';
+             UPDATE {p} SET species = species:tomato, species_status = 'confirmed';
+             CREATE {sp} SET garden = {g}, name = 'Lettuce', species = species:lettuce, species_status = 'suggested';
+             CREATE {dp} SET garden = {g}, name = 'Bean', deleting_at = <datetime> '2026-10-18T14:00:00Z';
+             CREATE {og} CONTENT (SELECT * OMIT id FROM ONLY {g});
+             CREATE {ep} SET garden = {og}, name = 'Apple';",
             s = rec("scan", f.scan),
-            p = rec("plant", f.plant)
+            p = rec("plant", f.plant),
+            g = rec("garden", f.garden),
+            sp = rec("plant", suggested),
+            dp = rec("plant", deleting),
+            og = rec("garden", other_garden),
+            ep = rec("plant", elsewhere),
         ),
     )
     .await;
     let summaries = store.plant_summaries(viewer).await.unwrap();
-    assert_eq!(summaries[0].plant.height_cm, Some(42.0));
-    assert_eq!(summaries[0].plant.name, plants.items[0].name);
-    assert_eq!(summaries[0].plant.status, plants.items[0].status);
+    let ids: Vec<PlantId> = summaries.iter().map(|s| s.plant.plant_id).collect();
     assert_eq!(
-        summaries[0].species,
-        plants.items[0].species.as_ref().map(|s| s.id.clone())
+        ids,
+        [suggested, f.plant],
+        "by name, live plants of this garden only"
     );
+    let tomato = &summaries[1];
+    assert_eq!(tomato.plant.height_cm, Some(42.0));
+    assert_eq!(tomato.plant.name, plants.items[0].name);
+    assert_eq!(tomato.plant.status, plants.items[0].status);
+    assert_eq!(
+        tomato.confirmed_species,
+        Some("tomato".parse().unwrap()),
+        "a confirmed species"
+    );
+    assert_eq!(
+        summaries[0].confirmed_species, None,
+        "a suggested species is not given"
+    );
+    assert_eq!(summaries[0].plant.height_cm, None);
     let timeline = store
         .timeline(viewer, f.plant, PageRequest::default())
         .await

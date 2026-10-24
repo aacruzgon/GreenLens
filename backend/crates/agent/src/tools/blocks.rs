@@ -4,7 +4,9 @@
 //! the same turn, its anchor. The block takes the anchor's result as it was returned and fills
 //! in the rest from the store (plant names, statuses, latest heights, species frost, problem
 //! names), never from the model, so it holds records and ids only. The only thing the model
-//! chooses is `focus_plant_ids`, for `garden_map`, and each must be pinned on that map.
+//! chooses is `focus_plant_ids`, for `garden_map`, and each must be a live plant pinned on that
+//! map. A plant's frost tenderness comes only from a confirmed species, and the frost planner
+//! leaves out dead plants.
 //!
 //! **A refusal sends nothing.** A call the turn doesn't hold, a call that errored, a result that
 //! doesn't fit the kind, a result with nothing to show, a fourth block or the same
@@ -23,8 +25,8 @@ use std::collections::BTreeSet;
 
 use domain::{
     chat::{
-        AnswerBlock, AnswerBlockKind, BlockBody, FrostPlant, GardenMapView, Lookalike, ProblemRef,
-        ToolName,
+        AnswerBlock, AnswerBlockKind, BlockBody, BlockPlant, FrostPlant, GardenMapView, Lookalike,
+        ProblemRef, ToolName,
     },
     garden::plants::{GrowthQuantity, MeasurementPoint},
     id::{PlantId, ProblemId, ScanId, SpeciesId},
@@ -32,6 +34,7 @@ use domain::{
     ports::{ContentPart, PlantSummary, ToolSpec},
     records::weather::ForecastDay,
     rules::limits::MESSAGE_MAX_BLOCKS,
+    scan::PlantStatus,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -240,22 +243,30 @@ async fn garden_map(
         return Err(refuse("The garden has no map to show."));
     };
     let pinned: BTreeSet<PlantId> = map.pins.iter().map(|p| p.plant_id).collect();
-    if let Some(missing) = focus.iter().find(|p| !pinned.contains(p)) {
-        return Err(refuse(format!(
-            "The plant {missing} is not pinned on the map. Focus only plants on it."
-        )));
-    }
-    let plants = summaries(ctx)
+    // Every pinned live plant; a pin of a plant being deleted has no summary.
+    let plants: Vec<BlockPlant> = summaries(ctx)
         .await?
         .into_iter()
         .filter(|s| pinned.contains(&s.plant.plant_id))
         .map(|s| s.plant)
         .collect();
+    // The focus is checked against those plants and kept once each, first seen first.
+    let mut focus_plant_ids: Vec<PlantId> = Vec::with_capacity(focus.len());
+    for id in focus {
+        if !plants.iter().any(|p| p.plant_id == id) {
+            return Err(refuse(format!(
+                "The plant {id} is not a live plant pinned on the map. Focus only plants on it."
+            )));
+        }
+        if !focus_plant_ids.contains(&id) {
+            focus_plant_ids.push(id);
+        }
+    }
     Ok(BlockBody::GardenMap {
         map,
         neighbours: view.neighbours,
         plants,
-        focus_plant_ids: focus,
+        focus_plant_ids,
     })
 }
 
@@ -266,11 +277,17 @@ async fn frost_planner(ctx: &ToolCtx<'_>, days: Vec<ForecastDay>) -> Result<Bloc
             "No day of that forecast has a frost risk, so there is no frost to plan for.",
         ));
     }
-    let summaries = summaries(ctx).await?;
-    // One knowledge lookup per species (the knowledge base answers from memory).
+    // A dead plant needs no cover.
+    let summaries: Vec<PlantSummary> = summaries(ctx)
+        .await?
+        .into_iter()
+        .filter(|s| s.plant.status != PlantStatus::Dead)
+        .collect();
+    // One knowledge lookup per confirmed species (the knowledge base answers from memory). A
+    // suggested species is never asked: a guess doesn't decide how a plant takes a frost.
     let species: BTreeSet<&SpeciesId> = summaries
         .iter()
-        .filter_map(|s| s.species.as_ref())
+        .filter_map(|s| s.confirmed_species.as_ref())
         .collect();
     let mut frost = std::collections::BTreeMap::new();
     for id in species {
@@ -282,7 +299,7 @@ async fn frost_planner(ctx: &ToolCtx<'_>, days: Vec<ForecastDay>) -> Result<Bloc
         .into_iter()
         .map(|s| {
             let tender = s
-                .species
+                .confirmed_species
                 .as_ref()
                 .and_then(|id| frost.get(id).copied().flatten())
                 .map(|f| f == Frost::Tender);
