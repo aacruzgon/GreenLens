@@ -74,7 +74,7 @@ def test_variants_keep_the_truth_they_can_and_live_in_their_own_file(manifest):
     v = vs[0]
     assert (v["derived_from"], v["transform"], v["split"], v["plant_key"]) == ("tomato-0001", "tilt", "dev", "p1")
     assert v["truth"] == {"outcome": "diagnosed", "species_id": "tomato", "problems": ["tomato_early_blight"],
-                          "organisms": [], "damage": []}
+                          "organisms": [], "damage": [], "organisms_unboxed": True}  # its box is dropped, the animal isn't
     assert v["images"] == [{"file": "variants/tilt/team/t1.jpg", "sha256": v["images"][0]["sha256"], "kind": "whole_plant"}]
     assert (root / "variants/tilt/team/t1.jpg").exists()
     assert len(path.read_text().splitlines()) == 2  # the manifest itself is untouched
@@ -82,3 +82,14 @@ def test_variants_keep_the_truth_they_can_and_live_in_their_own_file(manifest):
         va.variant(v, "dim", root)
     with pytest.raises(SystemExit, match="unknown"):
         va.main([*args[:-1], "tilt,sharpen"])
+
+
+def test_a_look_alike_and_an_unboxed_animal_stay_on_the_variant(manifest):
+    root, path = manifest
+    c = json.loads(path.read_text().splitlines()[0])
+    c["truth"] = {"outcome": "diagnosed", "species_id": "corn", "problems": [], "organisms": [], "damage": [],
+                  "look_alike": "potassium_deficiency"}
+    assert va.variant(c, "dim", root)["truth"] == {**c["truth"]}
+    c["truth"] = {"outcome": "healthy", "species_id": "rose", "problems": [], "organisms": [], "damage": [],
+                  "organisms_unboxed": True}
+    assert va.variant(c, "dim", root)["truth"] == {**c["truth"]}

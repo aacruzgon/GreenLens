@@ -25,3 +25,15 @@ def test_the_head_in_share_keeps_zero_shots_share_of_the_crops():
 def test_confusions_count_each_species_top_1():
     p = np.array([[0.9, 0.1], [0.2, 0.8], [0.7, 0.3]])
     assert sc.confusions(["x", "x", "y"], p, ["x", "y"]) == {"x": {"x": 1, "y": 1}, "y": {"x": 1}}
+
+
+def test_commons_cases_are_found_by_their_source(tmp_path):
+    import json
+
+    m = tmp_path / "manifest.jsonl"
+    m.write_text("\n".join(json.dumps(c) for c in [
+        {"case_id": "apple-commons-apple-hail", "source": "https://commons.wikimedia.org/wiki/File:Hail.jpg", "taken": "2019-06-01"},
+        {"case_id": "corn-fs-x", "source": "https://data.mendeley.com/datasets/34gb2gr7p2/1/files/x.jpg"},
+        {"case_id": "tomato-inat-1", "source": "https://www.inaturalist.org/observations/1"},
+    ]) + "\n")
+    assert sc.commons_cases(m) == {"apple-commons-apple-hail"}

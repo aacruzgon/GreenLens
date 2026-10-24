@@ -25,6 +25,8 @@ pub struct Limits {
     pub other_description: usize,
     /// `other_name`.
     pub other_name: usize,
+    /// A damage finding's `trace`.
+    pub trace: usize,
     /// An indicator's `reason`.
     pub reason: usize,
     /// `organisms` and `damage`.
@@ -37,6 +39,7 @@ impl Limits {
         notes: 200,
         other_description: 100,
         other_name: 60,
+        trace: 60,
         reason: 60,
         max_items: 10,
     };
@@ -214,7 +217,10 @@ pub fn findings(
         ("bbox_2d", boxes.schema()),
         ("certainty", certainty()),
     ]);
+    // `trace` comes first, so the model names the animal or the trace it left before it picks a
+    // pattern; decoding drops a finding with none (task P11).
     let damage = object(vec![
+        ("trace", text(limits.trace)),
         ("pattern", damage_enum),
         (
             "other_description",
@@ -398,6 +404,57 @@ mod tests {
                 ["enum"],
             json!(["img1", "img2", "img3"])
         );
+    }
+
+    fn tomato_findings(boxes: BoxRange) -> Value {
+        let species = [SpeciesOption {
+            id: "tomato".parse().unwrap(),
+            name: "Tomato".to_owned(),
+        }];
+        let organisms = [OrganismOption {
+            id: "aphid".parse().unwrap(),
+            name: "Aphid".to_owned(),
+        }];
+        findings(4, &species, &organisms, boxes, Limits::CONTRACT)
+    }
+
+    #[test]
+    fn a_damage_finding_names_its_trace_before_its_pattern() {
+        let schema = tomato_findings(BoxRange::for_format(BoxFormat::Norm1000, 0));
+        let damage = &schema["properties"]["damage"]["items"];
+        assert_eq!(
+            damage["properties"]["trace"],
+            json!({ "type": "string", "maxLength": 60 })
+        );
+        assert_eq!(damage["required"][0], json!("trace"));
+        let keys: Vec<&String> = damage["properties"].as_object().unwrap().keys().collect();
+        assert_eq!(keys[..2], ["trace", "pattern"]);
+    }
+
+    /// Union-typed parameters (`anyOf` or a type array) in a schema.
+    fn unions(v: &Value) -> usize {
+        match v {
+            Value::Object(o) => {
+                usize::from(o.contains_key("anyOf") || o.get("type").is_some_and(Value::is_array))
+                    + o.values().map(unions).sum::<usize>()
+            }
+            Value::Array(a) => a.iter().map(unions).sum(),
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn the_hosted_findings_schema_keeps_the_trace_within_the_union_limit() {
+        // The fallback sends the schema through the hosted API's sanitiser, which strips
+        // `maxLength` and allows at most 16 union-typed parameters a request (integrations
+        // anthropic::schema). `trace` is a plain string, so it adds none.
+        let schema = tomato_findings(BoxRange::for_format(BoxFormat::AbsPxPrepared, 1568));
+        let sanitized = integrations::anthropic::sanitize_schema(&schema);
+        let damage = &sanitized.schema["properties"]["damage"]["items"];
+        assert_eq!(damage["properties"]["trace"], json!({ "type": "string" }));
+        assert_eq!(damage["required"][0], json!("trace"));
+        assert_eq!(damage["additionalProperties"], json!(false));
+        assert!(unions(&sanitized.schema) <= 16);
     }
 
     #[test]

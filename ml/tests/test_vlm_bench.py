@@ -154,3 +154,26 @@ def test_findings_are_counted_per_certainty_and_the_species_guess_scored():
     assert s["certainty"]["damage"] == {"0.65": 1} and s["certainty"]["organisms"] == {}
     lines = vb.certainty_tables([{"label": "m", "max_pixels": 1003520, "concurrency": 1, **s}])
     assert any("0.85: 1/2" in line and "0.65: 1" in line for line in lines)
+
+
+def test_a_healthy_case_with_an_animal_on_it_is_left_out_of_the_healthy_counts():
+    well = vb.bench_case(case(outcome="healthy", problems=()), Path("/p"))
+    pest = vb.bench_case({**case(outcome="healthy", problems=()), "case_id": "tomato-pest",
+                          "truth": {"outcome": "healthy", "species_id": "tomato", "problems": [],
+                                    "organisms_unboxed": True}}, Path("/p"))
+    assert pest["truth"]["organisms_unboxed"] and not pest["scored_for_diagnosis"]
+    s = vb.score_run([row(well, ["no"] * 9), row(pest, ["yes"] * 9)], {b["case_id"]: b for b in (well, pest)})
+    assert (s["healthy_n"], s["healthy_no_candidate"], s["yes_on_healthy"]) == (1, 1.0, 0.0)
+    assert s["healthy_with_animals_left_out"] == 1
+
+
+def test_a_look_alike_is_kept_clean_when_no_candidate_comes_out_on_top():
+    look = {**case(problems=()), "truth": {"outcome": "diagnosed", "species_id": "corn", "problems": [],
+                                           "look_alike": "potassium_deficiency"}}
+    clean = vb.bench_case({**look, "case_id": "corn-a"}, Path("/p"))
+    fooled = vb.bench_case({**look, "case_id": "corn-b"}, Path("/p"))
+    assert clean["truth"]["look_alike"] == "potassium_deficiency" and not clean["scored_for_diagnosis"]
+    n = sum(len(c["indicators"]) for c in clean["payload"]["candidates"])
+    s = vb.score_run([row(clean, ["no"] * n), row(fooled, ["yes"] + ["no"] * (n - 1))],
+                     {b["case_id"]: b for b in (clean, fooled)})
+    assert (s["look_alike_n"], s["look_alike_no_candidate"], s["diagnosis_n"]) == (2, 0.5, 0)

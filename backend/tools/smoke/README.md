@@ -125,7 +125,7 @@ Scans and gardens the script creates are left in place (names start `smoke `).
 | `dose` | "How many tablespoons … per gallon …?": the route is `safety_sensitive` and no streamed sentence holds an amount (digits or number words with a unit, or a unit per a volume). SKIP (not exercised) unless the dose check replaced a sentence, which shows as the safety note in the stream |
 | `unset` | With `--restart-without-agent-memory` and `--restore-cmd`: `available: false` and a working chat turn, then `api` restored and Agent Memory back. SKIP without both |
 
-**What it writes.** Without `--scan-id`, it first drives a new scan of `--photo` to `plan_ready` in a garden it makes, answering each indicator question with `--answer` (default `yes`). With `--scan-id` it uses that scan: it chats there, and the card check confirms one revision of its plan and rejects a second card. Nothing else touches that scan's garden: the memory, task, belief and map plants go in a fresh `s5 work …` garden, and the frost plants in a fresh `s5 frost …` garden. `--cleanup` deletes the gardens the script made, and only those. `--expect-problem tomato_early_blight` stops the run when the scan's primary problem is another.
+**What it writes.** Without `--scan-id`, it first drives a new scan of `--photo` (and `--leaf-photo` as `leaf_closeup`, without which the disease head never runs) to `plan_ready` in a garden it makes, answering each indicator question with `--answer` (default `yes`). With `--scan-id` it uses that scan: it chats there, and the card check confirms one revision of its plan and rejects a second card. Nothing else touches that scan's garden: the memory, task, belief and map plants go in a fresh `s5 work …` garden, and the frost plants in a fresh `s5 frost …` garden. `--cleanup` deletes the gardens the script made, and only those. `--expect-problem tomato_early_blight` stops the run when the scan's primary problem is another.
 
 **One test user per run.** Each user has a daily chat budget (`daily_chat_tokens`). Give each run its own `--email` (a `+clerk_test` address) and `--phone-suffix` (Clerk's test numbers +1555555 0100–0199; one already in use is refused).
 
@@ -169,3 +169,55 @@ python3 tools/smoke/s5.py --base-url https://<control-plane-host> --photo <an ea
 ```
 
 Leave out `--db-check`. With `--photo`, the rig's models diagnose the scan the script makes, which gives S5's early-blight exit check its real diagnosis. A later run can reuse that scan with `--scan-id` and the same `--email`, because the test user must own the scan.
+
+## S4: the diagnosis loop (`s4.py`)
+
+`s4.py` runs backend roadmap S4's three exit checks ([roadmap 8](../../../docs/backend/roadmap.md#8-s4-the-diagnosis-loop)) against a running `api`, in `s5.py`'s style: it signs in the same way, prints PASS, FAIL or SKIP with the evidence for each check, and exits 1 if any check failed. It makes one `s4 <timestamp>` garden and a tomato per scan, and uploads `--photo` as `whole_plant` and `--leaf-photo` as `leaf_closeup` on every scan. The disease head reads only `leaf_closeup` and `leaf_underside` shots, so leave out `--leaf-photo` and the head never runs.
+
+| Check | What it proves | How long |
+|---|---|---|
+| `scan` | One scan to `plan_ready`, each indicator question answered from `--answers`. From `GET /scans/{id}`: `planned`; a diagnosis with a `primary` (`--expect-problem` names it); indicator evidence on the candidates (`matched`, `contradicted` or `unsure`); a plan written from that diagnosis, provisional exactly when it is `uncertain`, with at least one step, every step citing a source that is in the plan's `citations`; the fixed safety note on every `chemical` step; a step without a `treatment_id` that names a product of contracts 7's fixed list is `chemical`; no number followed by a measure in the summary, `watch_for` or a step; a `model_version` on every observation, the diagnosis's `model_versions`, and the plan's `llm_model` and `prompt_version`. Prints the diagnosis status, the primary's score and each candidate's score, with `classifier_weight` when the API sends it | the scan's run: 1 to 3 minutes on the rig; 10 minutes more if a photo request is left to the scheduler |
+| `kill` | A second scan. Right after `--kill-after`'s event it runs `--api-kill-cmd`, then `--api-start-cmd` detached, waits for `GET /healthz`, and resumes the stream with `Last-Event-ID`. The step holding the claim must start again once its claim is stale (a `stage_started` of its stage at least the limit minus 30 s after the kill's event, by the events' own `ts`), and commit. The scan reaches `planned` with seq 1.. unbroken across the restart, one `diagnosis` and one `plan_ready` in the run, one `candidates_selected` before the VLM stage, no stage left open, and plan version 1. SKIP without both commands | the run plus about 5.5 minutes for `plan` (2.5 for `retrieve` or `score`) plus the restart |
+| `late` | A third scan, submitted before the other checks so its wait overlaps them, whose question is never answered: the sweep continues it after 10 minutes (`status_changed` `awaiting_answer → diagnosed`, an `uncertain` diagnosis, a provisional plan holding the open question). The script notes the plan's tasks, then answers `--late-answer` (a photo request gets `--leaf-photo` with `question_id`). Then, in order: `question_resolved` (`by: user`, or `photo`), a `diagnosis` that `supersedes` the old one, `plan_superseded` with `late_answer`; `GET /scans/{id}` shows version 2 superseding version 1, written from the new diagnosis, still `planned`; and every open task of the old plan is dismissed with `plan_superseded`. SKIP when the scan asks no question, or when the old plan had no open task (the dismissal can't be seen) | 10 minutes from the question, up to 30 s for the sweep's tick, then the plan writer; about 1 minute for the re-plan |
+
+A full run takes about 15 minutes. `--late-scan-id` reuses a scan already continued past its question (`planned` with the question still open), so a rerun of `late` skips the 10 minutes; the test user must own it, so use the same `--email`.
+
+**Kill points.** `--kill-after` takes `diagnosis` (the default: `score` has committed and set the claim to `plan`), `stage_started:plan`, `stage_started:scoring` or `stage_started:fusion` (`score`), and `stage_started:context` or `stage_started:retrieve` (`retrieve`, which starts after the last perception stage's result is stored). Each step sends its progress events as it works and its outcome events only after its commit ([backend flows 3](../../../docs/backend/flows.md#3-a-scan-from-submit-to-plan)), so these events mean the claim is held and not yet committed. `plan` is the widest window, because the plan writer calls the hosted LLM; `retrieve` lasts a few seconds, so a kill that lands after its commit fails the check with "committed before the kill landed". The sweep runs every 30 s (the first 10 s after start) and re-claims a step after 2 minutes, 5 for `plan` (`Pipeline::sweep`).
+
+**Answers.** `--answers` is a comma list of `<indicator>=yes|no|unsure`, with `*` as the default (`*=unsure` when absent). A question's `indicator_id` is the indicator's own slug, without its problem (contracts 3), and a key matches it exactly, as `<problem>.<slug>`, or as its suffix: `concentric_rings_bullseye=yes,*=unsure` answers early blight's target-spot question `yes` and the rest `unsure`. The `late` scan's question is never answered from it.
+
+**`--real-models`** fails `scan` when an observation's `model_version` is `stub` or `partial`, or the diagnosis's `model_versions` name the stub: J4 needs a real model's version on every result. Leave it off on a laptop's stub.
+
+**`--out FILE`** writes a JSON fixture (vision dev-roadmap J4's event log): for each check, every event of the scan's stream (`type`, `seq`, `data`), the last `GET /scans/{id}`, and the model versions it shows. Signed URLs keep their path, without the signature.
+
+**Photos.** S2 and S5 ran on PlantDoc's test photo `dscn3175.jpg`, a tomato with early blight: `python -m ml.training.data.fetch plantdoc_cls` puts it, git-ignored, at `ml/training/data/raw/plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/dscn3175.jpg`. Upload the whole photo as `--photo` and a leaf close-up cropped from it as `--leaf-photo`; the crop isn't in the repository. `../app/assets/mock/tomato-blight.jpg` (early-blight leaves, CC BY 2.0) is another close-up. On S5's run, early blight won only with its target-spot question answered `yes` ([roadmap 9](../../../docs/backend/roadmap.md#9-s5-chat-and-the-garden-map)).
+
+### Locally
+
+`api` runs from cargo on the laptop, not in `infra/dev.compose.yml`. Build it once, start it from `backend/` as the kill command expects, and keep the workers of `s5.py`'s section running:
+
+```
+cargo build -p api
+(set -a; . ../infra/dev/.env; set +a; exec ./target/debug/api) >> /tmp/s4-api.log 2>&1 &
+python3 tools/smoke/s4.py --photo plant.jpg --leaf-photo leaf.jpg \
+  --answers concentric_rings_bullseye=yes,*=unsure --out /tmp/s4-fixture.json \
+  --api-kill-cmd "pkill -9 -f '[t]arget/debug/api'" \
+  --api-start-cmd "(set -a; . ../infra/dev/.env; set +a; exec ./target/debug/api) >> /tmp/s4-api.log 2>&1"
+```
+
+The `[t]` keeps the pattern from matching the command lines that contain it, the script's own included; `pkill` exits 1 when nothing matched, and the check fails. Kill with `-9`: on SIGTERM `api` drains, and the step would finish. Add `api`'s other variables (Agent Memory, `POISON_CONTROL_TEXT`) to both commands if you run with them.
+
+### Against the deployed control plane
+
+The control plane runs on the rig's 3070 host, from the checkout at `/srv/pdm/repo` ([infra 1](../../../docs/infra/README.md#1-scope-and-layout)):
+
+```
+CP="cd /srv/pdm/repo && docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose"
+python3 tools/smoke/s4.py --base-url https://<control-plane-host> \
+  --photo dscn3175.jpg --leaf-photo dscn3175-leaf.jpg \
+  --answers concentric_rings_bullseye=yes,*=unsure --expect-problem tomato_early_blight --real-models \
+  --email s4-rig+clerk_test@example.com --phone-suffix 192 --out s4-rig.json \
+  --api-kill-cmd "ssh <rig> '$CP kill api'" --api-start-cmd "ssh <rig> '$CP start api'"
+```
+
+`docker compose kill` sends SIGKILL. Don't use `stop` or `restart`: they send SIGTERM, and `api`'s 190 s grace period lets the step finish. `start` starts the same container with the same environment; if the `unless-stopped` policy has already brought it back, `start` does nothing and exits 0. `api`'s health check allows 60 s for start-up, and the script waits up to `--health-timeout` (300 s) for `/healthz` through the public URL. While `api` is down, the rig's workers can't claim or complete jobs; they retry.

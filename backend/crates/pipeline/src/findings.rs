@@ -45,28 +45,55 @@ pub fn plant_present(observations: &[Observation<Stored>]) -> Option<bool> {
         .map(|o| o.label != NO_PLANT)
 }
 
-/// The classifier's results across the leaf regions: (problem or healthy, confidence).
+/// Whether an observation is a disease-stage call: the disease head's (`classifier`), or the
+/// hosted LLM's on a fallback perception result (`llm_fallback`).
+fn disease_call(o: &Observation<Stored>) -> bool {
+    o.stage == ObservationStage::Disease
+        && matches!(
+            o.source,
+            ObservationSource::Classifier | ObservationSource::LlmFallback
+        )
+}
+
+/// The problem of a disease-stage call, or `healthy`.
+fn disease_label(o: &Observation<Stored>) -> ProblemOrHealthy {
+    match &o.knowledge_ref {
+        Some(KnowledgeRef::Disease(id)) => ProblemOrHealthy::Problem(id.clone()),
+        _ => ProblemOrHealthy::Healthy,
+    }
+}
+
+/// The disease stage's results across the leaf regions: (problem or healthy, confidence), from
+/// the disease head or, on the fallback, the hosted LLM. Both pick candidates and feed the
+/// healthy rule, as the classifier's did before the fallback's were told apart.
 pub fn classifier_results(
     observations: &[Observation<Stored>],
 ) -> Vec<(ProblemOrHealthy, Confidence)> {
     observations
         .iter()
-        .filter(|o| {
-            o.stage == ObservationStage::Disease && o.source == ObservationSource::Classifier
-        })
-        .map(|o| {
-            let p = match &o.knowledge_ref {
-                Some(KnowledgeRef::Disease(id)) => ProblemOrHealthy::Problem(id.clone()),
-                _ => ProblemOrHealthy::Healthy,
-            };
-            (p, o.confidence.confidence())
-        })
+        .filter(|o| disease_call(o))
+        .map(|o| (disease_label(o), o.confidence.confidence()))
         .collect()
 }
 
-/// The scan's classifier candidates ([contracts 5]): 3 distinct problems, healthy ignored.
+/// The scan's classifier candidates ([contracts 5]): 3 distinct problems, healthy ignored. Each
+/// hit's `head` is the disease head's own best confidence, the only one that adds
+/// `classifier_weight`: on the fallback the hosted LLM also answers the indicators, so its call
+/// would count twice.
 pub fn classifier_hits(observations: &[Observation<Stored>]) -> Vec<ClassifierHit> {
-    knowledge::candidates::classifier_hits(classifier_results(observations))
+    let mut hits = knowledge::candidates::classifier_hits(classifier_results(observations));
+    for hit in &mut hits {
+        hit.head = observations
+            .iter()
+            .filter(|o| {
+                disease_call(o)
+                    && o.source == ObservationSource::Classifier
+                    && disease_label(o) == ProblemOrHealthy::Problem(hit.problem.clone())
+            })
+            .map(|o| o.confidence.confidence())
+            .max_by(|a, b| a.get().total_cmp(&b.get()));
+    }
+    hits
 }
 
 /// A plant is **readable** ([contracts 3]) when any of these holds: a leaf region was found;
@@ -238,6 +265,24 @@ pub fn model_versions(observations: &[Observation<Stored>]) -> BTreeMap<String, 
 mod tests {
     use super::*;
     use crate::testkit;
+
+    /// PR #212's review: on the fallback the hosted LLM's disease call is `llm_fallback`. It
+    /// still picks the candidate and counts for the healthy rule, but adds no weight.
+    #[test]
+    fn the_fallbacks_disease_call_is_a_candidate_without_a_head_confidence() {
+        let mut fallback = testkit::disease_obs(Some("tomato_early_blight"), 0.85);
+        fallback.source = ObservationSource::LlmFallback;
+        let hits = classifier_hits(std::slice::from_ref(&fallback));
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].problem.as_str(), "tomato_early_blight");
+        assert!(hits[0].head.is_none());
+        assert!(finding_summary(std::slice::from_ref(&fallback)).classifier_problem);
+
+        let head = testkit::disease_obs(Some("tomato_early_blight"), 0.62);
+        let hits = classifier_hits(&[fallback, head]);
+        assert!((hits[0].confidence.get() - 0.85).abs() < 1e-9);
+        assert!((hits[0].head.unwrap().get() - 0.62).abs() < 1e-9);
+    }
 
     #[test]
     fn readable_rule() {

@@ -685,6 +685,7 @@ async fn scan(
         matched: Vec::new(),
         contradicted: Vec::new(),
         unsure: Vec::new(),
+        classifier_weight: 0,
         weather_fit: WeatherFit::Neutral,
     });
     let diagnosis = Diagnosis::<Stored> {

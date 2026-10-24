@@ -29,6 +29,10 @@ pub struct ClassifierHit {
     pub problem: ProblemId,
     /// Its highest confidence across the leaf regions.
     pub confidence: Confidence,
+    /// Its highest confidence from the disease head itself, the only call that adds
+    /// `classifier_weight` to a score; `None` when only the fallback's LLM named it, since the
+    /// same model answers the indicators there and would count twice.
+    pub head: Option<Confidence>,
 }
 
 /// The scan's classifier candidates ([contracts 5], classifier candidates): the 3 distinct
@@ -50,6 +54,7 @@ pub fn classifier_hits(
         .map(|(problem, confidence)| ClassifierHit {
             problem,
             confidence,
+            head: None,
         })
         .collect();
     hits.sort_by(|a, b| {
@@ -94,6 +99,9 @@ pub struct Candidate<'k> {
     pub source: SelectionSource,
     /// The classifier's confidence, when it was a classifier candidate.
     pub classifier: Option<Confidence>,
+    /// The disease head's own confidence ([`ClassifierHit::head`]), which alone adds
+    /// `classifier_weight`.
+    pub head: Option<Confidence>,
     /// The weather against its conditions.
     pub weather_fit: WeatherFit,
 }
@@ -168,6 +176,10 @@ impl<'k> CandidateSet<'k> {
                         .iter()
                         .find(|h| h.problem == s.problem_id)
                         .map(|h| h.confidence),
+                    head: classifier
+                        .iter()
+                        .find(|h| h.problem == s.problem_id)
+                        .and_then(|h| h.head),
                     weather_fit: weather_fit(&profile.conditions, weather),
                 })
             })
@@ -224,6 +236,11 @@ pub fn rank_candidates<'k>(input: &RankInput<'_, 'k>) -> CandidateSet<'k> {
                 .iter()
                 .find(|h| &h.problem == id)
                 .map(|h| h.confidence),
+            head: input
+                .classifier
+                .iter()
+                .find(|h| &h.problem == id)
+                .and_then(|h| h.head),
             weather_fit: weather_fit(&profile.conditions, input.weather),
         })
     };
@@ -286,6 +303,7 @@ pub fn outside_candidates<'k>(
             profile,
             source,
             classifier: None,
+            head: None,
             weather_fit: weather_fit(&profile.conditions, weather),
         })
         .collect()
@@ -327,6 +345,7 @@ mod tests {
         let classifier = [ClassifierHit {
             problem: "tomato_early_blight".parse().unwrap(),
             confidence: Confidence::new(0.71).unwrap(),
+            head: None,
         }];
         let species: Vec<ProblemId> = [
             "tomato_early_blight",
@@ -386,6 +405,7 @@ mod tests {
             profile: blight,
             source: SelectionSource::Classifier,
             classifier: None,
+            head: None,
             weather_fit: WeatherFit::Neutral,
         }]);
         let added = outside_candidates(

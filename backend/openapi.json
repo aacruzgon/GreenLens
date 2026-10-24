@@ -4970,12 +4970,19 @@
           "name",
           "kind",
           "score",
+          "classifier_weight",
           "matched",
           "contradicted",
           "unsure",
           "weather_fit"
         ],
         "properties": {
+          "classifier_weight": {
+            "type": "integer",
+            "format": "int32",
+            "description": "What the disease classifier adds for this problem: 3 when it named it with high\nconfidence, 2 with medium, 0 otherwise. Diagnoses stored before the field read as 0.",
+            "minimum": 0
+          },
           "contradicted": {
             "type": "array",
             "items": {
@@ -5005,7 +5012,7 @@
           "score": {
             "type": "integer",
             "format": "int32",
-            "description": "Sum of matched weights minus contradicted weights."
+            "description": "Sum of matched weights minus contradicted weights, plus `classifier_weight`."
           },
           "unsure": {
             "type": "array",
