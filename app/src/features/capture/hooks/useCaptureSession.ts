@@ -48,7 +48,8 @@ export type SessionProblem = { message: string; newScan?: boolean } | undefined;
 // The capture screen's view-model hook (README 5; flows 4, 14, 15): the scan, its draft, the upload runner and
 // every action. The runner sends what the draft says is pending, so a draft restored after the app closed picks
 // up where it stopped. Components below take its plain data.
-export function useCaptureSession(scanId: string) {
+/** `firstMode`: the mode a new draft opens on (chat's rescan asks for a shot kind); otherwise whole plant. */
+export function useCaptureSession(scanId: string, firstMode?: CaptureKind) {
   const router = useRouter();
   const qc = useQueryClient();
   const scan = useScan(scanId);
@@ -96,7 +97,7 @@ export function useCaptureSession(scanId: string) {
       return;
     }
     if (!store.drafts[s.id]) {
-      store.put(createDraft(s));
+      store.put({ ...createDraft(s), ...(firstMode ? { mode: firstMode } : {}) });
       checked.current = scan.isFetchedAfterMount;
       return;
     }
@@ -109,7 +110,7 @@ export function useCaptureSession(scanId: string) {
       return result.draft;
     });
     for (const uri of unused) files.remove(uri);
-  }, [s, scan.error, scan.isFetchedAfterMount, scanId, known]);
+  }, [s, scan.error, scan.isFetchedAfterMount, scanId, known, firstMode]);
 
   const current = () => useDraftStore.getState().drafts[scanId];
   /** Deletes a shot's kept files: the photo and its depth map. */

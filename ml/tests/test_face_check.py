@@ -107,6 +107,14 @@ def test_dev_photos_never_include_the_test_split(tmp_path):
     assert photos[1]["path"] == tmp_path / "x/2.jpg"
 
 
+def test_the_test_photos_run_only_when_asked_for(tmp_path):
+    m = tmp_path / "manifest.jsonl"
+    m.write_text(json.dumps({"case_id": "a", "split": "dev", "images": [{"file": "x/1.jpg", "kind": "whole_plant"}]}) + "\n"
+                 + json.dumps({"case_id": "b", "split": "test", "images": [{"file": "x/3.jpg", "kind": "whole_plant"}]}) + "\n")
+    assert [p["key"] for p in fc.split_photos("test", m, tmp_path)] == ["b#0"]
+    assert "test" in fc.RUN_SETS and "test" not in fc.SETS     # `score` never reads them
+
+
 def test_score_writes_the_report_from_the_example_output(tmp_path, monkeypatch):
     """One Open Images photo with two faces and one dev photo, through `score`."""
     faces_dir, tables = tmp_path / "faces", tmp_path / "tables"

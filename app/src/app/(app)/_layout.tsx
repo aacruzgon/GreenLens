@@ -30,7 +30,7 @@ export default function AppLayout() {
         <Stack.Screen name="capture/[scanId]/guided/[kind]" options={{ presentation: "fullScreenModal" }} />
         {/* Analyse replaces capture with the scan, which stays full screen and dark like the camera (design 3.1).
             One screen per scan: `dismissTo` a scan goes back to that scan's screen, never another scan's. */}
-        <Stack.Screen name="scans/[scanId]/index" options={{ presentation: "fullScreenModal" }} getId={({ params }) => params?.scanId as string | undefined} />
+        <Stack.Screen name="scans/[scanId]/index" options={{ presentation: "fullScreenModal" }} dangerouslySingular={(_name, params) => params?.scanId as string | undefined} />
         {/* "See the diagnosis and plan" pushes the result over the analysis; a plant's timeline opens it too. */}
         <Stack.Screen name="scans/[scanId]/result" />
         {/* The plan step by step covers the screen, with Close at the top (design 5, after Crouton). */}
@@ -41,6 +41,8 @@ export default function AppLayout() {
           options={{ presentation: "formSheet", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }}
         />
         <Stack.Screen name="plants/[plantId]/index" />
+        {/* A conversation, pushed from the Chat tab or "Ask about this result" (screens 3.6). */}
+        <Stack.Screen name="chat/[conversationId]" />
         {/* The LiDAR day-1 check and evaluation captures: a camera, so full screen (roadmap F5). */}
         <Stack.Screen name="dev/depth-check" options={{ presentation: "fullScreenModal" }} />
         {/* The garden mapping session: the camera, full screen (roadmap F5; flows 11). */}
