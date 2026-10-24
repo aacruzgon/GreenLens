@@ -182,12 +182,14 @@ def build(seed: Seed, embedder, revision: str, templates: list[str]) -> tuple[st
             photos[key] = data
             images.append({"storage_key": key, "credit": img["credit"],
                            "source": rec("source", img["source_id"])})
-        species_rows.append((rec("species", s["id"]), {
+        content = {
             "scientific_name": s["scientific_name"], "common_names": s["common_names"],
             "profile": s["profile"], "care": s.get("care"),
             "classifier_supported": s["classifier_supported"],
             "bioclip_label": s["bioclip_label"], "sources": srcs(s["sources"]),
-            "reviewed_by": s["reviewed_by"], "reference_images": images}))
+            "reviewed_by": s["reviewed_by"], "reference_images": images,
+            "frost": s.get("frost")}  # absent stays NONE (contracts 10)
+        species_rows.append((rec("species", s["id"]), content))
     table("species", species_rows)
     table("disease", [(rec("disease", p["id"]), {
         "name": p["name"], "kind": p["kind"], "damage_patterns": p["damage_patterns"],

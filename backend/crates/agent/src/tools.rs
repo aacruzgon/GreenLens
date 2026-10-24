@@ -23,6 +23,7 @@
 //! into the call; [`Erased::call`] checks them all before `run`, so a failing call creates no
 //! card, task, memory or event, and the model gets the reason as an `is_error` result.
 
+pub mod blocks;
 pub mod read;
 pub mod revise;
 pub mod ui;
@@ -306,6 +307,7 @@ pub const fn tool_name(name: ToolName) -> &'static str {
         ToolName::SearchFarmRecords => "search_farm_records",
         ToolName::Remember => "remember",
         ToolName::RequestRescan => "request_rescan",
+        ToolName::ShowBlock => "show_block",
         ToolName::CreateTask => "create_task",
         ToolName::CompleteTask => "complete_task",
         ToolName::RevisePlan => "revise_plan",
@@ -313,14 +315,18 @@ pub const fn tool_name(name: ToolName) -> &'static str {
 }
 
 /// Every tool, erased, sorted by name: built once at start-up and shared by every turn.
+/// `show_block` is offered beside them but run by the turn ([`blocks`]), so only its spec is
+/// kept here.
 pub struct ToolRegistry {
     tools: Vec<Box<dyn DynTool>>,
+    show_block: ToolSpec,
 }
 
 impl std::fmt::Debug for ToolRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
             .entries(self.tools.iter().map(|t| tool_name(t.name())))
+            .entry(&self.show_block.name)
             .finish()
     }
 }
@@ -332,7 +338,7 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
-    /// The twenty tools of architecture 7 and connectors 7.
+    /// The twenty tools of architecture 7 and connectors 7, and `show_block`'s spec.
     pub fn standard() -> Self {
         let mut tools: Vec<Box<dyn DynTool>> = vec![
             Box::new(Erased::new(read::GetScan)),
@@ -357,13 +363,22 @@ impl ToolRegistry {
             Box::new(Erased::new(revise::RevisePlan)),
         ];
         tools.sort_by_key(|t| tool_name(t.name()));
-        Self { tools }
+        Self {
+            tools,
+            show_block: blocks::spec(),
+        }
     }
 
     /// The specs offered, sorted by name (a stable tool list keeps the provider's prompt cache;
-    /// a garden's first synced record changes it once).
+    /// a garden's first synced record changes it once). `show_block` is offered to every role.
     pub fn specs_for(&self, offer: Offer) -> Vec<ToolSpec> {
-        self.offered(offer).map(|t| t.spec().clone()).collect()
+        let mut specs: Vec<ToolSpec> = self
+            .offered(offer)
+            .map(|t| t.spec().clone())
+            .chain(std::iter::once(self.show_block.clone()))
+            .collect();
+        specs.sort_by(|a, b| a.name.cmp(&b.name));
+        specs
     }
 
     /// The tools offered: by the role, and by whether the garden has farm records (gap G6).
