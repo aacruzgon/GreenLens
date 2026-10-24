@@ -1329,13 +1329,15 @@ pub fn data_json<T: Serialize + ?Sized>(kind: DataKind, value: &T) -> String {
 /// The opening tag carries the call's id, `<data kind="tool_result" call_id="toolu_…">`: the
 /// provider assigns the ids and never shows them to the model, so without it `show_block` could
 /// not name the result it shows (live S5 checks, 2026-10-24). An id with any character outside
-/// ASCII letters, digits, `_` and `-` is left out, so the attribute can't break the tag.
+/// ASCII letters, digits, `_` and `-`, or longer than [`MAX_CALL_ID_LEN`], is left out, so the
+/// attribute can't break the tag.
 pub fn tool_result(kind: DataKind, call_id: &str, content: &Value) -> Value {
     let body = match content {
         Value::String(s) => escape_tags(s),
         other => escape_tags(&escape_value(other).to_string()),
     };
     let safe = !call_id.is_empty()
+        && call_id.len() <= MAX_CALL_ID_LEN
         && call_id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
@@ -2692,9 +2694,9 @@ pub async fn propose(
 
 ### `show_block` and answer blocks
 
-The model asks for a block with `show_block { kind, call_id, focus_plant_ids? }`, naming one earlier tool call of the same turn, the block's anchor ([contracts 8, answer blocks](../architecture/contracts.md#answer-blocks)). `build` finds the call and its result in the turn's tool calls, checks that the tool fits the kind (`garden_map` from `get_garden_map`; `weather_hours` from `get_forecast` or `get_scan`; `frost_planner` from `get_forecast`; `measurement_trend` from `get_plant_measurements`; `candidates` from `compare_lookalikes`), takes the result as it was returned, and fills in the rest from the store, never from the model: the garden's live plants with their status and latest height in one `plant_summaries` read (the map's pinned ones for `garden_map`, a dead one included; every one but the dead for `frost_planner`), each distinct **confirmed** species' `frost` from the knowledge base (`tender` is `frost_tender: true`, `hardy` `false`; a suggested species, no species or no `frost` leaves it out, since `plant_summaries` gives only a confirmed species), a plant's name, a problem's name. The model chooses only `focus_plant_ids`, and only for `garden_map`: each must be one of the block's live pinned plants (a pin of a plant being deleted is refused), and a repeated id is kept once, first seen first.
+The model asks for a block with `show_block { kind, call_id, focus_plant_ids? }`, naming one earlier tool call of the same turn, the block's anchor ([contracts 8, answer blocks](../architecture/contracts.md#answer-blocks)). The model reads the id in the `call_id` attribute of the result's `data` element. As a fallback it may write the tool's name when the answer called that tool once with success, and `resolve` maps the name to that call's id, which the block carries. With one errored call and no successful one, the name maps to the errored call, so the refusal says it failed. `build` finds the call and its result in the turn's tool calls, checks that the tool fits the kind (`garden_map` from `get_garden_map`; `weather_hours` from `get_forecast` or `get_scan`; `frost_planner` from `get_forecast`; `measurement_trend` from `get_plant_measurements`; `candidates` from `compare_lookalikes`), takes the result as it was returned, and fills in the rest from the store, never from the model: the garden's live plants with their status and latest height in one `plant_summaries` read (the map's pinned ones for `garden_map`, a dead one included; every one but the dead for `frost_planner`), each distinct **confirmed** species' `frost` from the knowledge base (`tender` is `frost_tender: true`, `hardy` `false`; a suggested species, no species or no `frost` leaves it out, since `plant_summaries` gives only a confirmed species), a plant's name, a problem's name. The model chooses only `focus_plant_ids`, and only for `garden_map`: each must be one of the block's live pinned plants (a pin of a plant being deleted is refused), and a repeated id is kept once, first seen first.
 
-Every refusal is `ToolError::Rejected` with its reason, so the model reads an `is_error` result and answers in text, and no event is sent: a `call_id` the turn doesn't hold (an earlier turn's included, since only this turn's calls are read), a call that errored, a tool that doesn't fit the kind, nothing to show (no map, no days, no frost night, no points, no look-alikes, points that mix both quantities without a `quantity` in the call), a focus plant that isn't a live plant pinned on the map, `focus_plant_ids` on another kind, a fourth block (`MESSAGE_MAX_BLOCKS`), or the same `(kind, call_id)` again.
+Every refusal is `ToolError::Rejected` with its reason, so the model reads an `is_error` result and answers in text, and no event is sent: a `call_id` the turn doesn't hold (an earlier turn's included, since only this turn's calls are read), a call that errored, a tool name the answer called several times ("This answer called get_forecast 2 times"), a tool that doesn't fit the kind, nothing to show (no map, no days, no frost night, no points, no look-alikes, points that mix both quantities without a `quantity` in the call), a focus plant that isn't a live plant pinned on the map, `focus_plant_ids` on another kind, a fourth block (`MESSAGE_MAX_BLOCKS`), or the same `(kind, call_id)` again.
 
 **Why the turn runs it.** `show_block` reads what the turn holds: its earlier tool calls and results, and the blocks already sent. Both live in the turn's `Reply`, which `run_tool` borrows mutably for every call, so a `ToolCtx` can't also borrow them, and a snapshot in it would clone every result for every call. So `run_tool` hands a `show_block` call to `turn::show_block`, which calls `build` with shared borrows of the two lists before it records the call, and keeps a block in the reply only once its `answer_block` event is sent, so `Message.blocks` is exactly what the app received. `ToolCtx` stays `Copy`, the other tools stay unaware of the turn, and the registry only offers the spec (`blocks::spec`, to every role, never strict, so the strict schema budget is unchanged). Its one string, `call_id`, must equal a call id the provider wrote, so no text of the model's reaches the app and there is nothing to dose-check.
 
@@ -2705,7 +2707,8 @@ Every refusal is `ToolError::Rejected` with its reason, so the model reads an `i
 pub struct ShowBlockArgs {
     /// Which block.
     pub kind: AnswerBlockKind,
-    /// The `call_id` of an earlier tool call of this answer whose result the block shows.
+    /// The earlier tool call of this answer whose result the block shows: the `call_id`
+    /// attribute of its result's `data` element, or the tool's name if it ran once.
     pub call_id: String,
     /// `garden_map` only: the plants the answer is about, each pinned on the map.
     #[serde(default)]

@@ -8,10 +8,15 @@
 //! map. A plant's frost tenderness comes only from a confirmed species, and the frost planner
 //! leaves out dead plants.
 //!
-//! **A refusal sends nothing.** A call the turn doesn't hold, a call that errored, a result that
-//! doesn't fit the kind, a result with nothing to show, a fourth block or the same
-//! `(kind, call_id)` twice is a `Rejected` tool error: the model reads the reason and its text
-//! answer stands alone.
+//! **Naming the anchor.** The model reads each call's id in the `call_id` attribute of the
+//! result's `data` element, the only place it sees one. As a fallback it may write the tool's
+//! name when the answer called that tool once with success; [`resolve`] maps the name to that
+//! call's id, and the block carries the id.
+//!
+//! **A refusal sends nothing.** A call the turn doesn't hold, a call that errored, a tool name
+//! the answer called several times ("called X n times"), a result that doesn't fit the kind, a
+//! result with nothing to show, a fourth block or the same `(kind, call_id)` twice is a
+//! `Rejected` tool error: the model reads the reason and its text answer stands alone.
 //!
 //! **Why the turn runs it, not the registry.** `show_block` reads what the turn holds: its
 //! earlier tool calls and results, and the blocks already sent. Both live in the turn's reply,
@@ -56,7 +61,8 @@ pub const DESCRIPTION: &str = "Show an answer block under your text: a native vi
 pub struct ShowBlockArgs {
     /// Which block.
     pub kind: AnswerBlockKind,
-    /// The `call_id` of an earlier tool call of this answer whose result the block shows.
+    /// The earlier tool call of this answer whose result the block shows: the `call_id`
+    /// attribute of its result's `data` element, or the tool's name if it ran once.
     pub call_id: String,
     /// `garden_map` only: the plants the answer is about, each pinned on the map.
     #[serde(default)]
@@ -257,7 +263,23 @@ fn resolve(calls: &[ContentPart], named: &str) -> Result<String, ToolError> {
         .collect();
     match ids.as_slice() {
         [one] => Ok((*one).to_owned()),
-        [] => Ok(named.to_owned()),
+        // No successful call: the only call of that tool, if it errored, so the refusal says
+        // it failed; otherwise the name, which the anchor lookup refuses as unknown.
+        [] => {
+            let all: Vec<&str> = calls
+                .iter()
+                .filter_map(|p| match p {
+                    ContentPart::ToolCall { call_id, name, .. } if name == named => {
+                        Some(call_id.as_str())
+                    }
+                    _ => None,
+                })
+                .collect();
+            Ok(match all.as_slice() {
+                [only] => (*only).to_owned(),
+                _ => named.to_owned(),
+            })
+        }
         several => Err(refuse(format!(
             "This answer called {named} {} times: name one by the call_id of its result.",
             several.len()

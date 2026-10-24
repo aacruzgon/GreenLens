@@ -96,8 +96,9 @@ pub fn chat_system() -> String {
          forecast or of a scan's weather, a frost planner, a plant's measured trend, or \
          look-alikes side by side. Most answers need none.\n\
          - A block shows one result of this answer: name that tool call by its call_id, after \
-         the call has returned. Copy the call_id attribute of the result's data element. The server builds the block from the records; you choose only \
-         focus_plant_ids on a garden map.\n\
+         the call has returned. Copy the call_id attribute of the result's data element. The \
+         server builds the block from the records; you choose only focus_plant_ids on a garden \
+         map.\n\
          - Write the text so it stands alone without the block: give the facts that answer the \
          question in words. The user sees the block with your answer, so never describe it as \
          if they can't see it, and don't read its rows out.\n\
@@ -276,6 +277,10 @@ pub fn data_json<T: Serialize + ?Sized>(kind: DataKind, value: &T) -> String {
     data(kind, &body)
 }
 
+/// The longest call id a tool result's `data` element carries (Anthropic's are about 30
+/// characters).
+pub const MAX_CALL_ID_LEN: usize = 128;
+
 /// A successful tool result as the model reads it: the tool's JSON, unchanged, inside a `data`
 /// block of `kind` (`ToolResult`, unless the tool sets [`crate::tools::Tool::DATA_KIND`]), sent as
 /// the result's text.
@@ -293,13 +298,15 @@ pub fn data_json<T: Serialize + ?Sized>(kind: DataKind, value: &T) -> String {
 /// The opening tag carries the call's id, `<data kind="tool_result" call_id="toolu_…">`: the
 /// provider assigns the ids and never shows them to the model, so without it `show_block` could
 /// not name the result it shows (live S5 checks, 2026-10-24). An id with any character outside
-/// ASCII letters, digits, `_` and `-` is left out, so the attribute can't break the tag.
+/// ASCII letters, digits, `_` and `-`, or longer than [`MAX_CALL_ID_LEN`], is left out, so the
+/// attribute can't break the tag.
 pub fn tool_result(kind: DataKind, call_id: &str, content: &Value) -> Value {
     let body = match content {
         Value::String(s) => escape_tags(s),
         other => escape_tags(&escape_value(other).to_string()),
     };
     let safe = !call_id.is_empty()
+        && call_id.len() <= MAX_CALL_ID_LEN
         && call_id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
@@ -502,6 +509,14 @@ mod tests {
             panic!("a framed result is text");
         };
         assert!(odd.starts_with("<data kind=\"tool_result\">\n"), "{odd}");
+        let long = "a".repeat(MAX_CALL_ID_LEN + 1);
+        let Value::String(long) = tool_result(DataKind::ToolResult, &long, &content) else {
+            panic!("a framed result is text");
+        };
+        assert!(
+            long.starts_with("<data kind=\"tool_result\">\n"),
+            "too long an id is left out"
+        );
     }
 
     #[test]
@@ -540,6 +555,7 @@ mod tests {
         let p = chat_system();
         assert!(p.contains("Use show_block only when a view helps more than words"));
         assert!(p.contains("name that tool call by its call_id"));
+        assert!(p.contains("Copy the call_id attribute of the result's data element"));
         assert!(p.contains("Write the text so it stands alone without the block"));
         assert!(p.contains("never describe it as if they can't see it"));
     }
