@@ -448,6 +448,9 @@ impl CallUsage {
     /// A cache write counts as 1.25 input tokens: Anthropic's price for the 5-minute cache,
     /// the one the agent uses.
     pub const CACHE_WRITE_WEIGHT: (u64, u64) = (5, 4);
+    /// An output token (thinking included) counts as 5 input tokens: Opus 5.5's $20 to $4 per
+    /// million, so a budget token costs about an input token's price (US$4 per million).
+    pub const OUTPUT_WEIGHT: u64 = 5;
 
     /// Counts that carry no cache split (a provider that reports none, a test).
     #[must_use]
@@ -459,11 +462,11 @@ impl CallUsage {
         }
     }
 
-    /// The call's weight in the daily chat budget: uncached input and output at 1, cache
-    /// reads at 0.1 and cache writes at 1.25, each rounded up. Anthropic's prices, from the
-    /// prompt-caching guide (cache reads 0.1× the input price, 5-minute writes 1.25×), so the
-    /// budget follows what a turn costs; most of a tool turn's input is the cached prefix
-    /// read again on each call.
+    /// The call's weight in the daily chat budget, in input-token prices: uncached input at 1,
+    /// cache reads at 0.1, cache writes at 1.25 (each rounded up) and output at 5. Anthropic's
+    /// prices, from the claude-api skill (cache reads 0.1× the input price, 5-minute writes
+    /// 1.25×, Opus 5.5 output 5×), so the budget is a cost cap: most of a tool turn's input is
+    /// the cached prefix read again on each call.
     #[must_use]
     pub fn budget_tokens(&self) -> u64 {
         let read = u64::from(self.cache_read);
@@ -476,7 +479,7 @@ impl CallUsage {
         uncached
             + (read * rn).div_ceil(rd)
             + (write * wn).div_ceil(wd)
-            + u64::from(self.usage.tokens_out)
+            + u64::from(self.usage.tokens_out) * Self::OUTPUT_WEIGHT
     }
 }
 
@@ -657,10 +660,11 @@ pub trait SpotSegmenter: Send + Sync {
 mod tests {
     use super::*;
 
-    /// The live card turn of the S5 checks (3 calls): 8 uncached, 25,792 written and 44,005
-    /// read of 69,805 input tokens, and 2,070 out, weighs 38,719 in the budget, not 71,875.
+    /// The live card turn of the S5 checks as one call with its totals: 8 uncached, 25,792
+    /// written and 44,005 read of 69,805 input tokens, and 2,070 out, weighs 46,999 budget
+    /// tokens (input prices; output at 5), not 71,875.
     #[test]
-    fn the_budget_weighs_cache_reads_at_a_tenth_and_writes_at_one_and_a_quarter() {
+    fn the_budget_weighs_reads_writes_and_output_by_price() {
         let call = CallUsage {
             usage: Usage {
                 tokens_in: 69_805,
@@ -669,12 +673,16 @@ mod tests {
             cache_read: 44_005,
             cache_write: 25_792,
         };
-        assert_eq!(call.budget_tokens(), 8 + 4_401 + 32_240 + 2_070);
+        assert_eq!(call.budget_tokens(), 8 + 4_401 + 32_240 + 5 * 2_070);
         let plain = CallUsage::plain(Usage {
             tokens_in: 100,
             tokens_out: 7,
         });
-        assert_eq!(plain.budget_tokens(), 107, "no cache split counts in full");
+        assert_eq!(
+            plain.budget_tokens(),
+            100 + 35,
+            "no cache split: input in full, output at 5"
+        );
         let odd = CallUsage {
             usage: Usage {
                 tokens_in: 3,

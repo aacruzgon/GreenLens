@@ -653,10 +653,17 @@ async fn stream_call(
     let mut usage = CallUsage::default();
     let mut stream = deps.chat.stream(request);
     loop {
+        // A call cut short still counts: what it reported so far goes into the budget.
         let next = tokio::select! {
             biased;
-            () = turn.shutdown.cancelled() => return Err(Ended::Interrupted),
-            () = out.tx.closed() => return Err(Ended::Interrupted),
+            () = turn.shutdown.cancelled() => {
+                reply.add_usage(usage);
+                return Err(Ended::Interrupted);
+            }
+            () = out.tx.closed() => {
+                reply.add_usage(usage);
+                return Err(Ended::Interrupted);
+            }
             next = stream.next() => next,
         };
         let chunk = match next {

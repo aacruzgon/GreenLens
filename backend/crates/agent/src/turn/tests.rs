@@ -88,6 +88,8 @@ struct Setup {
     embed_fails_after_memory: bool,
     /// What the classifier scores a route task: a clear care question unless a test says.
     route_scores: Vec<(&'static str, f64)>,
+    /// Each model stream stays open after its script.
+    hang: bool,
     /// The garden's ports: no weather, no plants and no map unless a test says otherwise.
     gardens: MockGardenRepo,
     weather_cache: MockWeatherCacheRepo,
@@ -167,6 +169,7 @@ impl Setup {
             farm: crate::testing::no_connectors(),
             embed_fails_after_memory: false,
             route_scores: vec![("care_question", 0.9), ("off_topic", 0.05)],
+            hang: false,
             gardens: garden_repo(false),
             weather_cache: MockWeatherCacheRepo::new(),
             plants: no_plants(),
@@ -195,7 +198,11 @@ fn stored_message(m: &NewMessage) -> Message<Stored> {
 #[expect(clippy::too_many_lines, reason = "one mock per port")]
 fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
     let seen = Arc::new(Seen::default());
-    let model = Arc::new(ScriptedModel::streaming(setup.script));
+    let model = Arc::new(if setup.hang {
+        ScriptedModel::streaming_then_hanging(setup.script)
+    } else {
+        ScriptedModel::streaming(setup.script)
+    });
 
     let mut chats = MockChatRepo::new();
     chats.expect_conversation_detail().returning(|_, _| {
@@ -1224,9 +1231,9 @@ async fn the_budget_is_checked_before_the_stream() {
     assert_eq!(model.sent().len(), 0);
 }
 
-/// The day's budget counts a call's cache reads at 0.1 and cache writes at 1.25 of an input
-/// token, while the stored and streamed usage keep every token. Two calls of 10,000 input
-/// tokens, 9,000 of them cache reads, weigh 1,000 + 900 + 50 out each.
+/// The day's budget counts a call's cache reads at 0.1, cache writes at 1.25 and output at 5
+/// input tokens, while the stored and streamed usage keep every token. Two calls of 10,000
+/// input tokens, 9,000 of them cache reads, and 50 out weigh 1,000 + 900 + 250 each.
 #[tokio::test]
 async fn the_budget_weighs_cache_reads_and_writes() {
     let cached = || {
@@ -1271,9 +1278,76 @@ async fn the_budget_weighs_cache_reads_and_writes() {
                 tokens_in: 20_000,
                 tokens_out: 100
             },
-            2 * (1_000 + 900 + 50)
+            2 * (1_000 + 900 + 250)
         )]
     );
+}
+
+fn cached_call() -> ChatChunk {
+    ChatChunk::Usage(domain::ports::CallUsage {
+        usage: Usage {
+            tokens_in: 10_000,
+            tokens_out: 50,
+        },
+        cache_read: 9_000,
+        cache_write: 0,
+    })
+}
+
+/// The check before each further call uses the weighted count: with 5,000 budget tokens left,
+/// a first call of 10,000 input tokens (9,000 cache reads) and 50 out spends 2,150, so the
+/// second call runs, where the raw 10,050 would have ended the turn with the budget note.
+#[tokio::test]
+async fn the_check_inside_the_turn_uses_the_weighted_count() {
+    let mut setup = Setup::new(vec![
+        vec![
+            ChatChunk::ToolCall {
+                call_id: "toolu_1".to_owned(),
+                name: "list_tasks".to_owned(),
+                arguments: json!({}),
+            },
+            cached_call(),
+            ChatChunk::Done(StopReason::ToolUse),
+        ],
+        vec![
+            ChatChunk::TextDelta("No open tasks.".to_owned()),
+            cached_call(),
+            ChatChunk::Done(StopReason::EndTurn),
+        ],
+    ]);
+    setup.spent_today = AgentConfig::default().daily_chat_tokens - 5_000;
+    let (agent, model, _) = harness(setup);
+    let stream = agent
+        .start_turn(request(owner(Role::Editor).await, "Any tasks?"))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    assert_eq!(model.sent().len(), 2, "the second call ran");
+    assert!(!text_of(&events).contains(BUDGET_TEXT));
+}
+
+/// A call cut short by shutdown still counts: the usage it reported goes into the budget.
+#[tokio::test]
+async fn a_call_cut_short_still_counts() {
+    let mut setup = Setup::new(vec![vec![
+        ChatChunk::TextDelta("Remove the".to_owned()),
+        cached_call(),
+    ]]);
+    setup.hang = true;
+    let (agent, _, seen) = harness(setup);
+    let shutdown = CancellationToken::new();
+    let mut req = request(owner(Role::Editor).await, "Spots?");
+    req.shutdown = shutdown.clone();
+    let stream = agent.start_turn(req).await.unwrap();
+    let (events, outcome) = stream.into_parts();
+    let reader = tokio::spawn(events.collect::<Vec<_>>());
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    shutdown.cancel();
+    assert_eq!(outcome.await.unwrap(), TurnOutcome::Interrupted);
+    drop(reader.await);
+    let added = seen.usage_added.lock().unwrap();
+    assert_eq!(added.len(), 1);
+    assert_eq!(added[0].1, 1_000 + 900 + 250);
 }
 
 #[tokio::test]
