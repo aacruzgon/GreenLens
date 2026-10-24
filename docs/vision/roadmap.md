@@ -106,6 +106,7 @@ Day 8 of 10 (Oct 23). **The models are trained, calibrated and frozen (M17), and
 | [#192](https://github.com/aacruzgon/GreenLens/pull/192) | `feat/m18-test-split` | `main` | Merged (9013254) | M18: the test split scored once at the shipped values (`score_test_split.py`), the leakage check with plant probe v2's photos, and the test numbers in devpost.md and evaluation 4 |
 | [#194](https://github.com/aacruzgon/GreenLens/pull/194) (Sara) | `feat/p8-pipeline-real-results` | `main` | Merged (54aaeb2) | P8: the `api` test `scan_harness`, findings keeping their ids from partial to `complete` and named from the knowledge base, the laptop runs and Sam's run on Qwen3.5 |
 | [#206](https://github.com/aacruzgon/GreenLens/pull/206) | `docs/m18-follow-ups` | `main` | Open | Alan's follow-ups on #192: T11–T16 stay unmeasured on the test split for good, the T7 rule's baseline, the scorer's notes beside `measured` and a split with no leaf photos, the report rebuilt from its JSON |
+| [#210](https://github.com/aacruzgon/GreenLens/pull/210) | `feat/m10-captures` | `main` | Open | M10: iNaturalist pests on a named crop and garden plants, the look-alikes from Commons (`commons.py`) and two deficiency field sets, `captures.py` for the LiDAR cases and the soil photos, the `look_alike` truth, and new cases in dev only; the cases wait on Sam's review |
 | [#31](https://github.com/aacruzgon/GreenLens/pull/31) | `docs/roadmap-day1-wrap` | `main` | Merged (691bb40) | This file at the end of day 1 |
 
 ## 3. Tracker by build-plan period
