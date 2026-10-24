@@ -19,7 +19,9 @@ find locally, such as diseased crops in late October. Three rules keep the score
 
 A target with a `host` finds organisms whose observer recorded the plant they were on, in the
 observation fields `Host`, `Host Plant ID` or `Eating` (HOST_FIELDS), so a pest case's plant is
-known rather than guessed from the photo; the reviewer still checks that the plant shows.
+known rather than guessed from the photo; the reviewer still checks that the plant shows. A case
+from a `pests` target is marked `organisms_unboxed` until its animals' boxes are drawn, so a
+healthy plant with a pest on it isn't scored as a plain healthy one (vlm_bench).
 
 `fetch` searches each target in `inat_targets.yaml` and downloads the licensed photos at
 iNaturalist's largest size (2048 px on the long side) to `photos/inat/` (git-ignored), re-encoded
@@ -99,6 +101,7 @@ REVIEW_HEADER = """\
 #   plant: optional, the key of observations that may show the same plant (one observer, one crop,
 #          within 100 m), so they share a split; the lowest observation's, e.g. inat-401728510
 #   split: optional, and only dev: the test split is frozen since M18 (2026-10-23); not with plant
+#   organisms_unboxed: set on a pests target's entries: an animal shows, its box isn't drawn yet
 # Skip any photo that shows a person's face: faces aren't blurred on import yet (evaluation.md §2).
 # Then: python -m ml.training.eval.inat add --labeller <your GitHub login>
 """
@@ -249,6 +252,8 @@ def review_entry(cand: dict, target: dict) -> dict:
              "images": {p["id"]: "skip" for p in cand["photos"]}}
     if target.get("look_alike"):
         entry["look_alike"] = target["look_alike"]
+    if target.get("group") == "pests":
+        entry["organisms_unboxed"] = True
     return entry
 
 
@@ -283,6 +288,8 @@ def truth_of(entry: dict) -> dict:
              "problems": list(entry.get("problems") or []), "organisms": [], "damage": []}
     if entry.get("look_alike") is not None:
         truth["look_alike"] = entry["look_alike"]
+    if entry.get("organisms_unboxed"):
+        truth["organisms_unboxed"] = True   # an animal shows; its box isn't drawn yet
     return truth
 
 

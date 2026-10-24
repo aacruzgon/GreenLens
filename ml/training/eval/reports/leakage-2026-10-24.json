@@ -1,7 +1,7 @@
 {
   "date": "2026-10-24",
   "manifest": "ml/training/eval/manifest.jsonl",
-  "manifest_sha256": "938ea08deba81f37c379f266d27f760276549a29fd712080a16923255c72aaf3",
+  "manifest_sha256": "e562c89716fc452f8200d2507ccdaba1c574ef737b3f4d1968da60d0f4d0c8af",
   "photos": 359,
   "training_images": 61591,
   "training_images_by_folder": {

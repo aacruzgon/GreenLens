@@ -228,3 +228,11 @@ def test_a_host_search_asks_each_host_field_and_counts_an_observation_once(monke
     found, total = inat.search(PEST, 1, "2026-01-01", limit=10, host_tid=47148)
     assert asked == [(f, 47148) for f in inat.HOST_FIELDS]
     assert [o["id"] for o in found] == [1, 2, 3] and total == 5
+
+
+def test_a_pest_targets_cases_are_marked_unboxed():
+    entry = inat.review_entry(inat.candidate(obs(), PEST), PEST)
+    assert entry["organisms_unboxed"] is True
+    assert inat.truth_of({**entry, "keep": True})["organisms_unboxed"] is True
+    plain = inat.review_entry(inat.candidate(obs(), TARGET), TARGET)
+    assert "organisms_unboxed" not in plain and "organisms_unboxed" not in inat.truth_of(plain)
