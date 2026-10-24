@@ -188,6 +188,13 @@ def test_the_newest_committed_report_checked_the_current_manifest():
         "(evaluation.md §2)")
 
 
+def test_the_newest_committed_report_covered_every_required_folder():
+    reports = [json.loads(p.read_text()) for p in cl.REPORTS.glob("leakage-*.json")]
+    newest = max(reports, key=lambda r: r["date"])
+    missing = sorted(set(cl.required_folders()) - set(newest["training_images_by_folder"]))
+    assert not missing, f"the newest leakage report has no images from {', '.join(missing)}: rerun it (evaluation.md §2)"
+
+
 def test_bioclip_skips_an_unreadable_training_file(tree, monkeypatch):
     (tree / "raw" / "tom2024" / "broken.jpg").write_bytes(b"not an image")
     fake = FakeEmbedder()
