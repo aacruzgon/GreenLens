@@ -293,38 +293,57 @@ pub const ROUTE_CONTEXT_USER_CHARS: usize = 300;
 /// The longest previous assistant reply the router reads, in characters.
 pub const ROUTE_CONTEXT_ASSISTANT_CHARS: usize = 1_000;
 
-/// At most `max` characters of `text`, cut at a character and marked with `…` when cut.
-fn cut(text: &str, max: usize) -> String {
+/// The first `max` characters of `text`, marked with `…` when cut.
+fn cut_start(text: &str, max: usize) -> String {
     match text.char_indices().nth(max) {
         Some((end, _)) => format!("{}…", text[..end].trim_end()),
         None => text.to_owned(),
     }
 }
 
-/// The exchange before this message, from the conversation's newest messages (newest first):
-/// the last assistant reply and the user message before it, each cut to its limit, so a
-/// follow-up is routed with what it refers to. `None` in a conversation's first message.
+/// The last `max` characters of `text`, marked with `…` when cut: a long question usually
+/// ends with what it asks.
+fn cut_end(text: &str, max: usize) -> String {
+    let count = text.chars().count();
+    if count <= max {
+        return text.to_owned();
+    }
+    let start = text.char_indices().nth(count - max).map_or(0, |(i, _)| i);
+    format!("…{}", text[start..].trim_start())
+}
+
+/// The exchange before this message, from the conversation's newest messages (newest first),
+/// so a follow-up is routed with what it refers to. `None` in a conversation's first message.
+///
+/// - The assistant half is the last reply, its first [`ROUTE_CONTEXT_ASSISTANT_CHARS`]. It is
+///   left out when empty, and when the reply cites farm records: such a reply can quote Slack
+///   messages or Drive files that people outside PDM wrote, which must not reach a classifier
+///   that has no data framing (Jev's `state`).
+/// - The user half is the user message before it, or the newest message itself when no reply
+///   followed it (an interrupted turn): its last [`ROUTE_CONTEXT_USER_CHARS`].
 pub fn prior_exchange<U: domain::url::UrlState>(newest: &[Message<U>]) -> Option<PriorExchange> {
-    let text = |m: &Message<U>, role, max| {
-        (m.role == role && !m.text.trim().is_empty()).then(|| cut(m.text.trim(), max))
+    fn said<U: domain::url::UrlState>(m: &Message<U>) -> Option<&str> {
+        Some(m.text.trim()).filter(|t| !t.is_empty())
+    }
+    let user_half = |m: Option<&Message<U>>| {
+        m.filter(|m| m.role == MessageRole::User)
+            .and_then(said)
+            .map(|t| cut_end(t, ROUTE_CONTEXT_USER_CHARS))
     };
-    let mut messages = newest.iter();
-    let first = messages.next()?;
-    let (assistant, user) = match text(first, MessageRole::Assistant, ROUTE_CONTEXT_ASSISTANT_CHARS)
-    {
-        Some(reply) => (
-            Some(reply),
-            messages
-                .next()
-                .and_then(|m| text(m, MessageRole::User, ROUTE_CONTEXT_USER_CHARS)),
-        ),
-        // An unanswered message (an interrupted turn) is the exchange's user half.
-        None => (
-            None,
-            text(first, MessageRole::User, ROUTE_CONTEXT_USER_CHARS),
-        ),
+    let first = newest.first()?;
+    let prior = if first.role == MessageRole::Assistant {
+        PriorExchange {
+            assistant: said(first)
+                .filter(|_| first.farm_citations.is_empty())
+                .map(|t| cut_start(t, ROUTE_CONTEXT_ASSISTANT_CHARS)),
+            user: user_half(newest.get(1)),
+        }
+    } else {
+        PriorExchange {
+            assistant: None,
+            user: user_half(Some(first)),
+        }
     };
-    let prior = PriorExchange { user, assistant };
     (!prior.is_empty()).then_some(prior)
 }
 
