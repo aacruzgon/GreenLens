@@ -44,6 +44,8 @@ function RootStack() {
       <Stack.Protected guard={session.isSignedIn}>
         <Stack.Screen name="(app)" />
       </Stack.Protected>
+      {/* Outside both guards: an invite link works signed in or out (flows 3). */}
+      <Stack.Screen name="invite/[code]" />
     </Stack>
   );
 }

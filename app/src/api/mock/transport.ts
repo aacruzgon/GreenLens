@@ -6,6 +6,9 @@ import { polygonArea } from "@/domain/map";
 
 import type { Transport } from "../transport";
 import { registerChatRoutes } from "./chat";
+import { registerConnectorRoutes } from "./connectors";
+import { addMember, myRole, registerMemberRoutes } from "./members";
+import { registerInsightRoutes } from "./insights";
 import { answerRun, guidedCheck, scriptFor, speciesRerun, startRun, takeOutcome } from "./runs";
 import { scenario } from "./scenario";
 import { mockStore, type MockStore } from "./store";
@@ -159,7 +162,23 @@ function photoFor(store: MockStore, plantId: string, kind: S["ImageKind"]): Mock
 }
 
 function gardenView(store: MockStore, g: S["Garden"]): S["Garden"] {
-  return { ...g, my_role: scenario.get().role };
+  const members = store.people.members.get(g.id)?.length;
+  return { ...g, my_role: myRole(store, g.id) ?? scenario.get().role, member_count: members || g.member_count };
+}
+
+/** A GardenLocationInput's label and precision, as the server's geocoder would give them; a string is the problem. */
+function locate(loc: unknown): { label: string; precision: S["LocationPrecision"] } | { field: string; problem: string } {
+  if (typeof loc !== "object" || loc === null) return { field: "location", problem: "required" };
+  const l = loc as Record<string, unknown>;
+  const label =
+    (typeof l.city === "string" && l.city) || (typeof l.postal_code === "string" && l.postal_code) || "";
+  if (!label && !(typeof l.lat === "number" && typeof l.lon === "number")) {
+    return { field: "location.city", problem: "give a city, a postal code or lat and lon" };
+  }
+  return {
+    label: label || "Near you",
+    precision: label ? (typeof l.city === "string" ? "city" : "postal_code") : l.precision === "exact" ? "exact" : "about_1_km",
+  };
 }
 
 // ---- /me
@@ -181,6 +200,13 @@ route("PATCH", "/me", async (c) => {
   if (body.location_consent !== undefined) {
     if (typeof body.location_consent !== "boolean") return invalid("location_consent", "must be a boolean");
     user.location_consent = body.location_consent;
+    // Withdrawn consent rounds every garden the user owns to about 10 km (contracts 9, account).
+    if (!body.location_consent) {
+      for (const g of c.store.gardens.values()) {
+        if (myRole(c.store, g.id) !== "owner") continue;
+        if (g.location_precision === "exact" || g.location_precision === "about_1_km") g.location_precision = "about_10_km";
+      }
+    }
   }
   return jsonResponse(200, user);
 });
@@ -204,26 +230,28 @@ route("DELETE", "/me/push-tokens/:token", (c) => {
 route("GET", "/gardens", (c) =>
   jsonResponse(
     200,
-    paginate(scenario.get().emptyAccount ? [] : [...c.store.gardens.values()].map((g) => gardenView(c.store, g)), c.query),
+    paginate(
+      scenario.get().emptyAccount
+        ? []
+        : [...c.store.gardens.values()]
+            .filter((g) => myRole(c.store, g.id))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((g) => gardenView(c.store, g)),
+      c.query,
+    ),
   ),
 );
 
 route("POST", "/gardens", async (c) => {
   const body = await jsonObject(c);
   const name = str(body, "name")!;
-  const loc = body.location;
-  if (typeof loc !== "object" || loc === null) return invalid("location", "required");
-  const l = loc as Record<string, unknown>;
-  const label =
-    (typeof l.city === "string" && l.city) || (typeof l.postal_code === "string" && l.postal_code) || "";
-  if (!label && !(typeof l.lat === "number" && typeof l.lon === "number")) {
-    return invalid("location.city", "give a city, a postal code or lat and lon");
-  }
+  const place = locate(body.location);
+  if ("field" in place) return invalid(place.field, place.problem);
   const garden: S["Garden"] = {
     id: c.store.nextId("garden"),
     name,
-    location_label: label || "Near you",
-    location_precision: label ? (typeof l.city === "string" ? "city" : "postal_code") : l.precision === "exact" ? "exact" : "about_1_km",
+    location_label: place.label,
+    location_precision: place.precision,
     time_zone: "America/Toronto",
     member_count: 1,
     my_role: "owner",
@@ -237,6 +265,7 @@ route("POST", "/gardens", async (c) => {
   }
   c.store.gardens.set(garden.id, garden);
   c.store.maps.set(garden.id, null);
+  addMember(c.store, garden.id, c.store.user, "owner");
   return jsonResponse(201, gardenView(c.store, garden));
 }, true);
 
@@ -250,6 +279,12 @@ route("PATCH", "/gardens/:id", async (c) => {
   if (!g) return notFound();
   const body = await jsonObject(c);
   if (body.name !== undefined) g.name = str(body, "name")!;
+  if (body.location !== undefined) {
+    const place = locate(body.location);
+    if ("field" in place) return invalid(place.field, place.problem);
+    g.location_label = place.label;
+    g.location_precision = place.precision;
+  }
   return jsonResponse(200, gardenView(c.store, g));
 }, "owner");
 
@@ -413,18 +448,8 @@ route("POST", "/plants/:id/species", async (c) => {
   return jsonResponse(200, c.store.plantView(p));
 }, true);
 
-route("GET", "/plants/:id/timeline", (c) =>
-  c.store.plants.has(c.params.id)
-    ? jsonResponse(200, paginate(c.store.timelineOf(c.params.id), c.query))
-    : notFound(),
-);
-
-route("GET", "/plants/:id/measurements", (c) => {
-  if (!c.store.plants.has(c.params.id)) return notFound();
-  const q = c.query.get("quantity");
-  if (q && q !== "plant_height_cm" && q !== "canopy_width_cm") return invalid("quantity", "unknown quantity");
-  return jsonResponse(200, paginate(c.store.pointsOf(c.params.id, (q as S["GrowthQuantity"] | null) ?? undefined), c.query));
-});
+// The timeline and measurements, with the proposed Insights fields (insights.ts).
+registerInsightRoutes(route);
 
 // ---- tasks and memories
 
@@ -815,6 +840,11 @@ route("GET", "/scans/:id/events", (c) => {
 // ---- chat (chat.ts)
 
 registerChatRoutes(route, { jsonObject, streamResponse });
+registerConnectorRoutes(route, { jsonObject });
+
+// ---- members, invites and deletion (members.ts)
+
+registerMemberRoutes(route, { jsonObject });
 
 // ---- the transport
 

@@ -14,18 +14,20 @@ export interface AnswerBlockViewProps {
   gardenId: string;
   canAddTasks: boolean;
   onOpenPlant: (plantId: string) => void;
+  onOpenGarden: (plantIds: string[]) => void;
+  onOpenInsights: (plantId: string) => void;
 }
 
-export function AnswerBlockView({ block, gardenId, canAddTasks, onOpenPlant }: AnswerBlockViewProps) {
+export function AnswerBlockView({ block, gardenId, canAddTasks, onOpenPlant, onOpenGarden, onOpenInsights }: AnswerBlockViewProps) {
   switch (block.kind) {
     case "garden_map":
-      return <GardenMapBlock block={block} onOpenPlant={onOpenPlant} />;
+      return <GardenMapBlock block={block} onOpenPlant={onOpenPlant} onOpenGarden={onOpenGarden} />;
     case "weather_hours":
       return <WeatherHoursBlock block={block} />;
     case "frost_planner":
       return <FrostPlannerBlock block={block} gardenId={gardenId} canAddTasks={canAddTasks} />;
     case "measurement_trend":
-      return <MeasurementTrendBlock block={block} onOpenPlant={onOpenPlant} />;
+      return <MeasurementTrendBlock block={block} onOpenInsights={onOpenInsights} />;
     case "candidates":
       return <CandidatesBlock block={block} />;
     default:

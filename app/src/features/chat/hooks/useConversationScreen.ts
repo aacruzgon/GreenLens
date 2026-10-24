@@ -19,8 +19,12 @@ export const MAX_PHOTOS = 3;
 
 /** A network error before any response is retried with the same key this many times (flows 9). */
 const NETWORK_RETRIES = 2;
-/** `409 request_in_progress` (the first attempt is still running) is waited out this many times, same key. */
-const IN_PROGRESS_RETRIES = 3;
+/**
+ * `409 request_in_progress` (the first attempt is still running) is waited out this many times, same key: about
+ * 16 s at the API's 2 s, as the server only notices a closed request on its next send, which an LLM or tool call
+ * can hold back. Past that the turn fails, and Try again keeps the key.
+ */
+const IN_PROGRESS_RETRIES = 8;
 
 /**
  * No bytes for this long, keepalives included, and the stream is taken as dropped (README 10, the scan stream's
@@ -100,6 +104,12 @@ export function useConversationScreen(conversationId: string) {
   const [text, setText] = useState("");
   const [photos, setPhotos] = useState<ComposerPhoto[]>([]);
   const aborts = useRef(new Set<AbortController>());
+  /**
+   * A failed turn's key, when the question may have reached the server (a network error, or `request_in_progress`
+   * given up on). Try again sends it again with that key, which waits for or replays the first attempt: a new key
+   * could start a second turn while the first is still running (flows 9).
+   */
+  const keptKeys = useRef(new Map<string, IdempotencyKey>());
 
   // Leaving the screen closes its streams: the server stops the turn and stores it as interrupted (contracts 8).
   useEffect(() => {
@@ -129,8 +139,8 @@ export function useConversationScreen(conversationId: string) {
   );
 
   const run = useCallback(
-    async (localId: string, body: { text: string; image_ids?: string[] }) => {
-      const key = newKey();
+    async (localId: string, body: { text: string; image_ids?: string[] }, kept?: IdempotencyKey) => {
+      const key = kept ?? newKey();
       // `abort` is leaving the screen; `conn` is this request, which a silent stream also closes.
       const abort = new AbortController();
       const conn = new AbortController();
@@ -165,6 +175,7 @@ export function useConversationScreen(conversationId: string) {
               await wait((e.retryAfterS ?? 2) * 1_000, abort.signal);
               continue;
             }
+            if (!isApiError(e) || e.code === "request_in_progress") keptKeys.current.set(localId, key);
             dispatch(localId, { type: "failed", error: turnError(e) });
             announce(errorWords(turnError(e)));
             return;
@@ -224,7 +235,9 @@ export function useConversationScreen(conversationId: string) {
       if (!body || body.length > MAX_TEXT || busy) return;
       const attachments: Attachment[] = override ? [] : ready.map((p) => ({ image_id: p.imageId!, url: p.url! }));
       const localId = uuid();
-      setTurns((all) => [...all, startTurn(localId, { text: body, attachments })]);
+      // A failed turn's Try again only makes sense as the last thing in the conversation, so a new question
+      // replaces it; a question that did reach the server comes back with the stored conversation.
+      setTurns((all) => [...all.filter((t) => t.status !== "failed"), startTurn(localId, { text: body, attachments })]);
       if (!override) {
         setText("");
         setPhotos([]);
@@ -234,14 +247,21 @@ export function useConversationScreen(conversationId: string) {
     [text, busy, ready, run],
   );
 
-  /** Resend: a new action with a new key (contracts 8). The old turn or interrupted message stays as it was. */
+  /**
+   * Resend: a new action with a new key (contracts 8). The old turn or interrupted message stays as it was. Try
+   * again on a turn that failed before any answer keeps that turn's key, when it has one (`keptKeys`).
+   */
   const resend = useCallback(
     (request: { text: string; attachments: Attachment[] }, failedLocalId?: string) => {
       if (busy) return;
-      if (failedLocalId) setTurns((all) => all.filter((t) => t.localId !== failedLocalId));
+      const kept = failedLocalId ? keptKeys.current.get(failedLocalId) : undefined;
+      if (failedLocalId) {
+        keptKeys.current.delete(failedLocalId);
+        setTurns((all) => all.filter((t) => t.localId !== failedLocalId));
+      }
       const localId = uuid();
-      setTurns((all) => [...all, startTurn(localId, request)]);
-      void run(localId, { text: request.text, ...(request.attachments.length ? { image_ids: request.attachments.map((a) => a.image_id) } : {}) });
+      setTurns((all) => [...all.filter((t) => t.status !== "failed"), startTurn(localId, request)]);
+      void run(localId, { text: request.text, ...(request.attachments.length ? { image_ids: request.attachments.map((a) => a.image_id) } : {}) }, kept);
     },
     [busy, run],
   );
@@ -289,11 +309,17 @@ export function useConversationScreen(conversationId: string) {
   // in while the turn still draws it: a stored question after the last stored answer that a live turn asks is
   // left to the turn. An interrupted assistant message can be resent from the user message before it, while it is
   // the last thing in the conversation: once a resend or another question follows it, a second Resend would only
-  // ask twice (seen on the simulator).
+  // ask twice (seen on the simulator). A failed turn whose question the server did store (its first attempt got
+  // through, then `request_in_progress` was given up on) gives way to the stored question and its answer, and a
+  // failed turn is never live: it doesn't hold back the stored messages' Resend.
   const items: ChatItem[] = useMemo(() => {
     const byMessage = new Map(turns.flatMap((t) => (t.messageId ? [[t.messageId, t] as const] : [])));
     const storedIds = new Set(stored.map((m) => m.id));
-    const liveTurns = turns.filter((t) => !(t.messageId && storedIds.has(t.messageId)));
+    const lastQuestion = stored.findLast((m) => m.role === "user");
+    const answered = lastQuestion !== undefined && stored.at(-1)?.role === "assistant";
+    const liveTurns = turns.filter(
+      (t) => !(t.messageId && storedIds.has(t.messageId)) && !(t.status === "failed" && answered && lastQuestion.text === t.request.text),
+    );
     const asked = liveTurns.map((t) => t.request.text);
     const hidden = new Set<string>();
     for (let i = stored.length - 1; i >= 0 && stored[i]!.role === "user"; i--) {
@@ -303,7 +329,7 @@ export function useConversationScreen(conversationId: string) {
       hidden.add(stored[i]!.id);
     }
     const shown = stored.filter((m) => !hidden.has(m.id));
-    const live = liveTurns.length > 0;
+    const live = liveTurns.some((t) => t.status !== "failed");
     const out: ChatItem[] = shown.map((m, i) => {
       const t = byMessage.get(m.id);
       const error = t?.status === "errored" ? t.error : undefined;

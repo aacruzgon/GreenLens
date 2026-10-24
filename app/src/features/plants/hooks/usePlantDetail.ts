@@ -1,5 +1,5 @@
 // The plant page's view model (roadmap 10 item 8; screens 3.5): the plant, its timeline of scans, its notes, the
-// role checks and where each thing leads. The growth curve joins with Insights in F7; Ask joins with chat in F6.
+// role checks and where each thing leads. The growth curve is on Insights (F7); Ask joins with chat in F6.
 import { useRouter } from "expo-router";
 
 import { flattenPages, imageSource, isApiError, useGarden, useMemories, usePlant, useTimeline } from "@/api";
@@ -57,6 +57,7 @@ export function usePlantDetail(plantId: string) {
     actions: {
       back: () => (router.canGoBack() ? router.back() : router.dismissAll()),
       changeSpecies: () => router.push({ pathname: "/plants/[plantId]/species", params: { plantId } }),
+      insights: () => router.push({ pathname: "/plants/[plantId]/insights", params: { plantId } }),
       scan: () => void startCapture.start({ plantId }),
       addNote: () => router.push({ pathname: "/notes/new", params: { plantId } }),
       open: (row: { scanId: string; opens: "result" | "scan" | "capture" }) => {

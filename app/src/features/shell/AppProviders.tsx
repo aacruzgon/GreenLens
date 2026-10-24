@@ -5,18 +5,20 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { liveTransport, queryClient, setBaseUrl, setTransport } from "@/api";
-import { mockTransport } from "@/api/mock";
+import { mockAuthSession, mockTransport } from "@/api/mock";
 import type { Env } from "@/config/env";
 import { SessionProvider } from "@/features/auth";
 import { useDraftStore } from "@/features/capture";
 import { useActiveGardenStore } from "@/features/gardens";
-import { mapping } from "@/platform";
+import { authSession, mapping } from "@/platform";
 import { ThemeProvider } from "@/ui";
 
 // The provider tree of docs/frontend/README.md §7. Called once, after the env check passed.
 export function configureApi(env: Env) {
   if (env.apiMode === "mock") {
     setTransport(mockTransport);
+    // The connect flow's consent page answers at once, with no vendor (docs/connectors/README.md 5).
+    authSession.setFake(mockAuthSession);
   } else {
     setTransport(liveTransport);
     setBaseUrl(env.apiUrl);

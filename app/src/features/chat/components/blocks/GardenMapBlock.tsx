@@ -1,6 +1,6 @@
 // The garden map snippet (design 5): the beds and a pin per plant in its status shape, the plants the answer is
 // about outlined with their canopy and named under their pin, and their distance to the nearest 5 cm. A tap on a
-// pin shows its status and height; Open goes to the plant. Drawn with react-native-svg, so it works without WebGL (design 3.1, the map).
+// pin shows its status and height; Open goes to the plant, and Open the garden to the garden screen on its plants. Drawn with react-native-svg, so it works without WebGL (design 3.1, the map).
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import Svg, { Circle, Polygon } from "react-native-svg";
@@ -13,7 +13,7 @@ import { BlockFrame } from "./BlockFrame";
 
 type Block = Extract<AnswerBlock, { kind: "garden_map" }>;
 
-export function GardenMapBlock({ block, onOpenPlant }: { block: Block; onOpenPlant: (plantId: string) => void }) {
+export function GardenMapBlock({ block, onOpenPlant, onOpenGarden }: { block: Block; onOpenPlant: (plantId: string) => void; onOpenGarden: (plantIds: string[]) => void }) {
   const { colors } = useTheme();
   // The card's own width, measured: an estimate from the screen left a gap on the right.
   const [width, setWidth] = useState(0);
@@ -93,6 +93,8 @@ export function GardenMapBlock({ block, onOpenPlant }: { block: Block; onOpenPla
           <Button label="Open" variant="secondary" size="small" onPress={() => onOpenPlant(chosen.plant_id)} accessibilityLabel={`Open ${chosen.name}`} />
         </View>
       ) : null}
+      {/* The garden screen on the plants the answer is about (roadmap F7 item 1). */}
+      <Button label="Open the garden" variant="secondary" size="small" onPress={() => onOpenGarden(block.focus_plant_ids)} style={{ alignSelf: "flex-start" }} testID="block-open-garden" />
     </BlockFrame>
   );
 }

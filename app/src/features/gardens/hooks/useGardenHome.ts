@@ -173,6 +173,8 @@ export function useGardenHome(gardenId: string) {
       switchGarden: (id: string) => useActiveGardenStore.getState().setGardenId(id),
       // The new-scan sheet with nothing chosen; it lets the user name a new plant.
       addPlant: () => router.push("/scan/new"),
+      /** The garden in 3D or on the map (roadmap F7). */
+      openGarden: () => router.push("/garden"),
     },
   };
 }

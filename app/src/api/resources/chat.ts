@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
 import type {
@@ -130,14 +130,5 @@ export function useRejectPendingAction() {
   return useMutation({
     mutationFn: (id: string) => chat.reject(id),
     onSuccess: (res) => qc.invalidateQueries({ queryKey: qk.conversation(res.pending_action.conversation_id) }),
-  });
-}
-
-/** The garden's farm connectors: chat reads them to tell an `era` record from a vendor's (EON E10.3). */
-export function useConnectors(gardenId: string) {
-  return useQuery({
-    queryKey: qk.connectors(gardenId),
-    queryFn: () => chat.connectors(gardenId),
-    enabled: gardenId !== "",
   });
 }

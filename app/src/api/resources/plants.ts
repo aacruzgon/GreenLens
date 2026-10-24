@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
 import type { ConfirmSpeciesRequest, Page, Plant, TimelineEntry } from "@/domain/types";
@@ -55,6 +55,25 @@ export function useTimeline(plantId: string) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: nextCursor,
     staleTime: STALE.signedUrls,
+  });
+}
+
+/**
+ * Every plant's whole timeline, all pages loaded: the garden's date scrubber needs each plant at each scan
+ * (roadmap F7). Its own key under the timeline's, since `useTimeline`'s cache holds pages.
+ */
+export function useTimelines(plantIds: string[]) {
+  return useQueries({
+    queries: plantIds.map((id) => ({
+      queryKey: [...qk.timeline(id), "all"] as const,
+      queryFn: () => fetchAllPages((cursor) => plants.timeline(id, cursor)),
+      staleTime: STALE.signedUrls,
+    })),
+    combine: (results) => ({
+      byPlant: Object.fromEntries(plantIds.map((id, i) => [id, results[i]?.data])) as Record<string, TimelineEntry[] | undefined>,
+      isPending: results.some((r) => r.isPending),
+      isError: results.some((r) => r.isError),
+    }),
   });
 }
 
