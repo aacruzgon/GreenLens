@@ -3,6 +3,7 @@
 //! fakes of the seams.
 
 mod beliefs;
+mod chat;
 mod connect;
 mod connector_deletion;
 mod connectors;
