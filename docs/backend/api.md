@@ -4126,8 +4126,9 @@ The handler checks everything that can fail with an error body before the first 
 /// app's "resend", with a new key, runs again.
 #[utoipa::path(post, path = "/conversations/{id}/messages", tag = "chat", request_body = SendMessageRequest,
     params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
-    responses((status = 200, content_type = "text/event-stream", body = ChatEvent,
-            description = "`event: name`, `data: ChatEvent`; a replay is `application/json` MessageReplay"),
+    responses((status = 200,
+            content((ChatEvent = "text/event-stream"), (MessageReplay = "application/json")),
+            description = "`event: name`, `data: ChatEvent` as SSE; a finished turn's replay is `application/json` MessageReplay"),
         (status = 400, body = ErrorBody), (status = 404, body = ErrorBody), (status = 429, body = ErrorBody)))]
 pub async fn send_message(
     State(state): State<SharedState>,
