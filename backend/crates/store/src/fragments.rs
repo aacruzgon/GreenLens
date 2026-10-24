@@ -39,6 +39,8 @@ pub(crate) use handover;
 
 /// A stage's observations, replacing that stage's earlier ones for the images it covers, and
 /// those tied to no image when `replace_imageless` ([database 5]: replacement per image).
+/// A segmentation write also replaces the masks of the images it covers, since the regions
+/// they outlined are gone; their objects are left to the orphan sweep ([storage 4]).
 /// Binds: `$scan`, `$obs` (an [`crate::repo::analysis::ObservationWriteRow`] or `NONE`).
 /// Measurement observations get the top-level `plant` and `taken_at` (the scan's
 /// `created_at`) for the growth series.
@@ -48,6 +50,7 @@ macro_rules! observation_write {
   LET $sc = (SELECT plant, created_at FROM ONLY $scan);
   DELETE observation WHERE scan = $scan AND pipeline_stage = $obs.stage
     AND (image IN $obs.images OR ($obs.replace_imageless AND image = NONE));
+  IF $obs.stage = 'segmentation' { DELETE mask WHERE scan = $scan AND image IN $obs.images; };
   FOR $o IN $obs.rows {
     CREATE $o.id CONTENT $o.row;
     IF $o.row.quantity != NONE { UPDATE $o.id SET plant = $sc.plant, taken_at = $sc.created_at; };

@@ -3,6 +3,7 @@ whole shot, shipped in the zero-shot probe's format (`pdm-linear-head/1`, kind `
 the worker's `PlantProbe` reads it unchanged: p(plant) = σ(w · e + b).
 
     python -m ml.training.heads.train_plant_probe --version plant-probe-v1-2026-10-20
+    python -m ml.training.heads.train_plant_probe --version plant-probe-v2-2026-10-23 --clean
 
 - Plant photos: every photo of the train split (all species, mostly leaves) and every
   iNaturalist training photo (`data/splits/inat_species.tsv`: the five crops as whole plants,
@@ -13,6 +14,12 @@ the worker's `PlantProbe` reads it unchanged: p(plant) = σ(w · e + b).
   `ml.training.eval.plant_check --negatives`, so the pair (τ_leaf, τ_plant) is chosen on photos the
   probe never saw; the COCO train2017 hold-out (`negatives_coco_train_holdout.tsv`) stays the
   final check.
+- With `--clean`, the photos without a plant it learns from are `negatives_probe_train.tsv`
+  instead (`ml.training.data.negatives_probe`): v1's train half less the photos whose licence
+  doesn't allow commercial use and adaptation, replaced by COCO train2017 photos that do. Only
+  such photos go into shipped weights (docs/vision/training.md §3); v1 broke that rule. The tune
+  half is v1's either way. The trainer refuses a list with any other licence, or with a photo in
+  the tune half or the hold-out.
 - Plant photos and photos without one weigh the same in total. C is chosen on the val split's
   plant photos and iNaturalist's val photos against the tune half: the fewest negatives passing
   at the τ_plant where the probe alone fails at most 1% of plant photos.
@@ -26,6 +33,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -51,6 +59,24 @@ def half(path: str) -> str:
     return "train" if int(hashlib.sha256(f"probe|{path}".encode()).hexdigest()[:8], 16) % 2 == 0 else "tune"
 
 
+def clean_negatives(tune: set[str]) -> list[dict]:
+    """negatives_probe_train.tsv, after checking every photo's licence allows commercial use and
+    adaptation and that none is in the tune half or the plant check's hold-out."""
+    from ml.training.data.negatives_holdout import TSV as HOLDOUT
+    from ml.training.data.negatives_holdout import pinned_names
+    from ml.training.data.negatives_probe import TSV
+    from ml.training.detector.background import REUSABLE
+
+    rows = read_tsv(TSV)
+    bad = [r["path"] for r in rows if r["licence"] not in REUSABLE]
+    seen = [r["path"] for r in rows if r["path"] in tune]
+    held = [r["path"] for r in rows if r["path"].rsplit("/", 1)[-1] in pinned_names(HOLDOUT) and r["dataset"] == "coco_train2017"]
+    if bad or seen or held:
+        raise SystemExit(f"{TSV.name}: {len(bad)} photos with a licence outside REUSABLE, {len(seen)} in the tune half, "
+                         f"{len(held)} in the hold-out (first: {(bad + seen + held)[0]})")
+    return rows
+
+
 def tau_at(p_pos: np.ndarray, max_fn: float = MAX_FALSE_NO_PLANT) -> float:
     """The highest τ at which at most `max_fn` of the plant photos fall below it."""
     return float(np.quantile(p_pos, max_fn, method="lower"))
@@ -59,6 +85,8 @@ def tau_at(p_pos: np.ndarray, max_fn: float = MAX_FALSE_NO_PLANT) -> float:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--version", required=True)
+    ap.add_argument("--clean", action="store_true",
+                    help="learn 'no plant' from negatives_probe_train.tsv, licence-clean photos (ml.training.data.negatives_probe)")
     args = ap.parse_args(argv)
 
     inat = read_tsv(SPLITS / "inat_species.tsv")
@@ -70,6 +98,8 @@ def main(argv=None) -> int:
                + [("inaturalist", RAW / r["path"]) for r in inat if r["split"] == "val"],
     }
     neg = {h: [r for r in negatives if half(r["path"]) == h] for h in ("train", "tune")}
+    if args.clean:
+        neg["train"] = clean_negatives({r["path"] for r in neg["tune"]})
     emb = Embedder()
     Xp = {n: emb.files([p for _, p in rs]) for n, rs in pos.items()}
     Xn = {h: emb.files([RAW / r["path"] for r in rs]) for h, rs in neg.items()}
@@ -115,7 +145,9 @@ def main(argv=None) -> int:
         "version": args.version, "C": C, "probe_alone_on_val": op,
         "counts": {"plant_train": {s: int((src["train"] == s).sum()) for s in set(src["train"])},
                    "plant_val": {s: int((src["val"] == s).sum()) for s in set(src["val"])},
-                   "negatives_train": len(neg["train"]), "negatives_tune": len(neg["tune"])},
+                   "negatives_train": len(neg["train"]), "negatives_tune": len(neg["tune"]),
+                   "negatives_train_licences": dict(Counter(r.get("licence", "not recorded") for r in neg["train"]))},
+        "negatives_train_list": "negatives_probe_train.tsv" if args.clean else "the train half of negatives_coco.tsv",
         "note": ("The probe alone, at the τ_plant where it fails 1% of val plant photos, against the tune half of "
                  "COCO val2017's negatives. The plant check is leaf score >= τ_leaf OR p(plant) >= τ_plant; "
                  "plant_check --probe chooses the pair."),

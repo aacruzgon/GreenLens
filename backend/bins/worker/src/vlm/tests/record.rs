@@ -10,6 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use clap::ValueEnum as _;
 use domain::{
     jobs::{GuidedPayload, JobImage, VerifyPayload, VerifyReason, VlmPayload},
     ports::{JobContext, LoadedImage, ModelError, ProgressError, ProgressSink, VisionModel},
@@ -17,6 +18,7 @@ use domain::{
     vlm::{BoxFormat, GuidedTexture, VlmFindings, VlmIndicatorAnswers},
 };
 use integrations::{
+    anthropic::{AnthropicClient, AnthropicConfig},
     http::{HttpConfig, RetryPolicy, SecretString},
     openai_compat::{OpenAiCompatClient, OpenAiCompatConfig, ServerFlavour},
 };
@@ -26,9 +28,10 @@ use vision::{
     upload::UploadConfig,
 };
 
+use crate::config::VlmServerKind;
 use crate::vlm::{
     VlmAdapter,
-    backend::{OpenAiBackend, Stop, VlmBackend, VlmCall, VlmReply},
+    backend::{AnthropicBackend, OpenAiBackend, Stop, Tokens, VlmBackend, VlmCall, VlmReply},
     profile::{AdapterProfile, CallBudget, CertaintyMap, VlmIdentity},
 };
 
@@ -59,6 +62,12 @@ pub(super) struct Attempt {
     pub(super) budget: u32,
     pub(super) ms: u128,
     pub(super) outcome: Result<(Stop, usize), String>,
+    /// The tokens used, when the backend reports them.
+    pub(super) tokens: Option<Tokens>,
+    /// The answer as sent, before decoding: its boxes in the model's own coordinates.
+    pub(super) text: Option<String>,
+    /// Each image's size as sent (width, height), which `abs_px_prepared` boxes are in.
+    pub(super) sizes: Vec<(u32, u32)>,
 }
 
 /// The real backend, unchanged, with a log of each call: the adapter retries inside, so this
@@ -68,9 +77,29 @@ pub(super) struct Recording<B> {
     pub(super) log: Mutex<Vec<Attempt>>,
 }
 
+impl<B> Recording<B> {
+    const fn new(inner: B) -> Self {
+        Self {
+            inner,
+            log: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+/// A JPEG's size from its header.
+fn jpeg_size(jpeg: &[u8]) -> (u32, u32) {
+    image::ImageReader::with_format(std::io::Cursor::new(jpeg), image::ImageFormat::Jpeg)
+        .into_dimensions()
+        .unwrap_or((0, 0))
+}
+
 impl<B: VlmBackend> VlmBackend for Recording<B> {
     fn name(&self) -> &'static str {
         self.inner.name()
+    }
+
+    fn max_questions(&self) -> Option<usize> {
+        self.inner.max_questions()
     }
 
     async fn call<'a>(&'a self, call: &'a VlmCall<'a>) -> Result<VlmReply, ModelError> {
@@ -85,6 +114,9 @@ impl<B: VlmBackend> VlmBackend for Recording<B> {
                 .as_ref()
                 .map(|r| (r.stop, r.text.len()))
                 .map_err(ToString::to_string),
+            tokens: reply.as_ref().ok().and_then(|r| r.tokens),
+            text: reply.as_ref().ok().map(|r| r.text.clone()),
+            sizes: call.images.iter().map(|i| jpeg_size(i.jpeg)).collect(),
         });
         reply
     }
@@ -99,9 +131,19 @@ impl ProgressSink for Discard {
     }
 }
 
+/// `VLM_ADAPTER` as `main.rs` reads it, `vllm` when unset: llama.cpp takes `max_tokens` and
+/// `repeat_penalty` where vLLM takes `max_completion_tokens` and `repetition_penalty`.
+fn flavour() -> ServerFlavour {
+    std::env::var("VLM_ADAPTER").map_or(ServerFlavour::Vllm, |v| {
+        VlmServerKind::from_str(&v, false)
+            .unwrap_or_else(|e| panic!("VLM_ADAPTER={v}: {e}"))
+            .flavour()
+    })
+}
+
 /// The adapter `main.rs` builds for `--caps vlm` with its defaults (`VLM_ADAPTER=vllm`,
 /// `VLM_SERVED_NAME=vlm`, `norm1000`, 32 px cells, 1,003,520 pixels, the local budgets), with
-/// the backend wrapped in [`Recording`].
+/// the backend wrapped in [`Recording`]; `VLM_ADAPTER=llamacpp` sends llama.cpp's fields.
 async fn adapter(base_url: &str) -> VlmAdapter<Recording<OpenAiBackend>> {
     adapter_with(base_url, 1_003_520, Arc::new(Semaphore::new(1))).await
 }
@@ -123,7 +165,7 @@ pub(super) async fn adapter_with(
             base_url: base_url.to_owned(),
             api_key: std::env::var("VLM_API_KEY").ok().map(SecretString::from),
             timeout: Duration::from_secs(240),
-            flavour: ServerFlavour::Vllm,
+            flavour: flavour(),
             retry: RetryPolicy::NONE,
         },
     );
@@ -150,10 +192,52 @@ pub(super) async fn adapter_with(
         },
     };
     VlmAdapter::new(
-        Recording {
-            inner: OpenAiBackend::new(client, "vlm".to_owned()),
-            log: Mutex::new(Vec::new()),
+        Recording::new(OpenAiBackend::new(client, "vlm".to_owned())),
+        profile,
+        cpu,
+    )
+}
+
+/// `FALLBACK_MAX_PIXELS`'s default: the most pixels the hosted API takes without resizing.
+pub(super) const FALLBACK_MAX_PIXELS: u32 = 1_150_000;
+
+/// The adapter `main.rs` builds for `--caps fallback` with its defaults (`abs_px_prepared`,
+/// 1 px cells, at most 1,150,000 pixels and 1568 on the long side, the hosted budgets, no
+/// retries and 300 s a call), calling `model` with `LLM_API_KEY`, with the backend wrapped in
+/// [`Recording`] (task P9).
+pub(super) fn hosted_adapter(
+    model: &str,
+    cpu: Arc<Semaphore>,
+) -> VlmAdapter<Recording<AnthropicBackend>> {
+    let http = integrations::http::client(&HttpConfig {
+        read_timeout: Duration::from_secs(600),
+        ..HttpConfig::default()
+    })
+    .unwrap();
+    let key = std::env::var("LLM_API_KEY").expect("LLM_API_KEY is not set");
+    let mut config = AnthropicConfig::new(SecretString::from(key));
+    config.retry = RetryPolicy::NONE;
+    config.request_timeout = Duration::from_secs(300);
+    model.clone_into(&mut config.models.vision_fallback);
+    let profile = AdapterProfile {
+        box_format: BoxFormat::AbsPxPrepared,
+        cell_px: 1,
+        max_pixels: FALLBACK_MAX_PIXELS,
+        max_long_side: Some(1568),
+        jpeg_quality: 90,
+        budget: CallBudget::HOSTED,
+        certainty: CertaintyMap::default(),
+        identity: VlmIdentity {
+            model: model.to_owned(),
+            quant: None,
+            server: "anthropic".to_owned(),
         },
+    };
+    VlmAdapter::new(
+        Recording::new(AnthropicBackend::new(
+            AnthropicClient::new(http, config),
+            model.to_owned(),
+        )),
         profile,
         cpu,
     )
@@ -162,7 +246,7 @@ pub(super) async fn adapter_with(
 /// A photo as the bucket would hold it: decoded with its EXIF orientation applied, resized to
 /// the default stored long side and re-encoded as `WebP` (`vision::upload`, without the face
 /// blur, which needs ONNX Runtime).
-pub(super) fn stored(path: &str, image: &JobImage) -> LoadedImage {
+pub(crate) fn stored(path: &str, image: &JobImage) -> LoadedImage {
     let file = std::fs::read(path).unwrap_or_else(|e| panic!("reading {path}: {e}"));
     let config = UploadConfig::default();
     let decoded = imaging::decode_upload(&file, DecodeLimits::default())
@@ -318,6 +402,7 @@ fn report(case: &str, decoded: &str, log: &Mutex<Vec<Attempt>>) {
 /// - `VLM_RECORD_BASE_URL`: the server, without `/v1`; it must serve the model as `vlm`.
 ///   Unset, the test returns at once.
 /// - `VLM_API_KEY`: the server's `--api-key`, if it has one.
+/// - `VLM_ADAPTER`: `llamacpp` for llama.cpp's `llama-server`; `vllm` when unset.
 /// - `VLM_RECORD_IMAGES`: at least 2 photo paths (JPEG, PNG or `WebP`), comma- or
 ///   colon-separated, assigned in [`SLOTS`] order and reused cyclically: give 7 to have each
 ///   shot (tomato plant, leaf, soil; corn plant, leaf; squeeze test; jar test) its own photo.

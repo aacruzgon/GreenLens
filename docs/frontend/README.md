@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.10, 2026-10-22. v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> **Status:** Draft v0.4.14, 2026-10-23. v0.4.14: the LiDAR camera refuses an all-black photo (`ERR_LIDAR_BLACK`) and depth with no valid pixel, falls back on any runtime error but a media-services reset, and the mapping view reports ARKit's fatal errors through `onMountError` (section 13); `.env.example` and section 17 say to prebuild with `--clean` after turning `EXPO_PUBLIC_DEV_TOOLS` off. v0.4.13: F5 after review: the LiDAR camera reports interruptions and falls back to `expo-camera` when it can't start, depth goes up only with intrinsics, the mapping view gains `onInterruption`, true north and `removeWorldMap`, drafts move to Application Support and the LiDAR tools need `EXPO_PUBLIC_DEV_TOOLS` (sections 11, 13, 17); a return after the background grace reconnects the stream (section 10); open decision 11 asks who alerts for a scan, the Live Activity or push. v0.4.12: the LiDAR module adds `ModePickerView`, capture's mode bar as Apple's segmented control on glass, and the camera view shows the photo's 4:3 frame with the ultra-wide outside it (section 13). v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
 > v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
@@ -640,7 +640,7 @@ The reducer is tested against the example run in contracts 4, a species-change r
 
 - When the server closes a stream, the app refetches `GET /scans/{id}`. If the record is at rest, the stream stays closed. Otherwise, after a network error or a close the record doesn't explain, the app reconnects with backoff (1, 2, 4 … 30 s) and `Last-Event-ID`.
 - No bytes for 45 seconds, three missed keepalives, counts as a broken stream.
-- The stream closes when the app goes to the background (or the browser tab is hidden) and reopens on return, from the last applied `seq`. In between, push carries the main changes (a plan, a new plan version, a question, a failure) to the scan's creator on native builds ([contracts 9](../architecture/contracts.md#push-notifications)); everyone else sees them on the next read.
+- The stream closes when the app goes to the background (or the browser tab is hidden) and reopens on return, from the last applied `seq`. While the scan's Live Activity runs, it closes 25 s later instead, inside the background time the activity's module asks iOS for, so the Lock Screen follows the scan that long. iOS can suspend JavaScript before that timer fires, leaving the stream open but dead; the app keeps the time it left, and a return after the grace closes the stream first so it resumes from `Last-Event-ID` (`scans/model/foregroundGrace.ts`). The activity's content goes stale 30 s after the app leaves, so a scan that finished meanwhile never shows as running. In between, push carries the main changes (a plan, a new plan version, a question, a failure) to the scan's creator on native builds ([contracts 9](../architecture/contracts.md#push-notifications)); everyone else sees them on the next read.
 - A scan at rest gets its stream back when the user starts late work on it (an answer, a question photo, a guided check, a species change, a retry), when a push arrives for it, or when its screen is focused again and the refetched record isn't at rest.
 - Only the screen that shows a scan holds its stream. Other screens read records and refetch on focus.
 
@@ -689,7 +689,7 @@ The capture model is a state machine over **shot slots**, built from the kind li
 | `flower_fruit` | No | "If it has flowers or fruit" |
 
 - **Each shot uploads as soon as it is taken**, so a blurry shot is caught before the next one (architecture 6.6). Replacing a stored shot deletes it first. **Submit** is enabled when `whole_plant` is stored and nothing is uploading.
-- **The draft** (scan ID, slots, the exact upload file for each, idempotency keys) is persisted, so a capture interrupted by the app closing resumes on the still-`pending` scan. **Discard** deletes the scan (`DELETE /scans/{id}`, contracts 3) and the draft. When a jar test was started on it, the confirmation says its task is deleted too, which the server does with the scan.
+- **The draft** (scan ID, slots, the exact upload file for each, idempotency keys) is persisted, so a capture interrupted by the app closing resumes on the still-`pending` scan. Its files are copied into Application Support, one folder per scan: not Documents, which an evaluation build shows in the Files app, since the photos and depth maps are raw until the server blurs faces (architecture 11). Drafts an earlier build kept in Documents move there on first use. **Discard** deletes the scan (`DELETE /scans/{id}`, contracts 3) and the draft. When a jar test was started on it, the confirmation says its task is deleted too, which the server does with the scan.
 - **Uploads** build the multipart body from `expo-file-system` `File` objects, which `expo/fetch` accepts ✓; browsers use the picker's web `File`. A LiDAR shot adds the `depth`, `depth_confidence` and `depth_meta` parts from the module, and the photo is the module's JPEG, unchanged. `depth.stored: false` in the response is a small note, never an error: the photo is kept (contracts 3).
 - **Picked photos** in HEIC are converted to JPEG before the first upload attempt (contracts open question 8), and the converted file is what the draft keeps. In browsers the conversion needs a browser that decodes HEIC; where it can't, the original is sent and an `unsupported_media_type` answer is shown with "Choose a JPEG or take the photo again" (*unverified*: what each phone browser hands over).
 - **Distance hints** on LiDAR devices come from the module's distance events and the ranges per kind in `capture/model/distanceRanges.ts`: 0.5–3 m for the whole plant, 25–45 cm for leaf shots, 30–80 cm for soil and fruit (architecture 6.7). They move with the day-1 check.
@@ -831,31 +831,80 @@ interface CapturedShot {
 
 ### The LiDAR module's JavaScript surface
 
-The native side is designed in architecture 6.7 and 6.8. This is the interface the app codes against, in `app/modules/lidar/src/index.ts`, so the app and the Swift work proceed in parallel:
+The native side is designed in architecture 6.7 and 6.8. This is the interface the app codes against, in `app/modules/lidar` (`src/LidarCamera.ts`, `src/GardenMapping.ts`, `src/GardenView.ts`, `src/ModePicker.ts`, re-exported by `index.ts`). Features reach it only through `src/platform` (`capabilities`, `capture`, `depth`, `mapping`, `garden3d`, `modePicker`).
 
 ```ts
 export function getCapabilities(): { depth: boolean; mapping: boolean };
 
-// Camera view with depth. Replaces expo-camera on LiDAR devices: one capture session at a time.
+// Camera view with depth. Replaces expo-camera on LiDAR devices: one capture session at a time. Shows the photo's
+// 4:3 frame from the largest preview at the largest photo; where the phone can run both cameras and keep the photo's
+// depth, the ultra-wide shows what lies outside the frame, dimmed (design 3.1).
 export const LidarCameraView: React.ComponentType<{
   active: boolean;
-  onDistance?: (e: { distance_m: number | null }) => void;   // median depth at the centre of the frame
-}>;
-export function capturePhoto(view: LidarCameraViewRef): Promise<CapturedShot>;
+  onDistance?: (e: { nativeEvent: { distance_m: number | null } }) => void;   // median depth at the centre, 5 per second
+  onReady?: () => void;
+  onMountError?: (e: { nativeEvent: { message: string } }) => void;   // platform/capture falls back to expo-camera
+  // A call, FaceTime, iPhone Mirroring or another app took the camera, or gave it back. An interrupted session still
+  // counts as running and would store a black photo with all-zero depth, so the shutter waits and the screen says why.
+  onInterruption?: (e: { nativeEvent: { interrupted: boolean; reason: "in_use" | "multitasking" | "system_pressure" | "background" | "other" | null } }) => void;
+}> | null;
+// ref.capture(): the JPEG in the sensor frame with its EXIF orientation, the 16-bit depth PNG in millimetres and
+// the DepthMeta (contracts 3) when the depth is absolute and the camera gave its intrinsics (the server requires
+// them), and a report for the day-1 check. A capture the camera never finishes, or one cut by an interruption,
+// rejects; it never stays pending. An all-black photo (a session running without its picture, as under iPhone
+// Mirroring) rejects with the code ERR_LIDAR_BLACK and is never stored; platform's isBlackShot() tells it apart.
+interface LidarShot {
+  file: { uri: string; mimeType: "image/jpeg"; width: number; height: number };
+  depth?: { depthUri: string; meta: DepthMeta };
+  report: CaptureReport;                 // photo and depth sizes, valid share, accuracy, filtered, distortion table, gravity,
+                                         // and `dropped`: no_depth, no_valid_depth, relative_accuracy, no_intrinsics or encoding
+}
+export function sampleDepth(depthUri: string, points: [number, number][], halfSide?: number): Promise<(number | null)[]>;
 
-// AR mapping session.
+// AR mapping session. The world map is kept per garden, so its functions take the garden's ID.
 export const GardenMappingView: React.ComponentType<{
-  onTrackingState?: (e: { state: "normal" | "limited" | "lost" }) => void;
-  onGroundTap?: (e: { x_m: number; y_m: number }) => void;            // bed corners
-  onPinPlaced?: (e: { x_m: number; y_m: number; canopy_radius_m?: number }) => void;
-  onHeading?: (e: { north_deg: number; accuracy_deg: number }) => void;
-}>;
-export function saveWorldMap(version: number): Promise<void>;          // stays on the phone
-export function savedWorldMapVersion(): Promise<number | null>;
-export function relocalise(): Promise<"ok" | "failed">;
+  tapMode: "corner" | "pin";
+  onTrackingState?: (e: { nativeEvent: { state: "normal" | "limited" | "lost" } }) => void;
+  onGroundTap?: (e: { nativeEvent: { x_m: number; y_m: number } }) => void;   // bed corners
+  onPinPlaced?: (e: { nativeEvent: { x_m: number; y_m: number; canopy_radius_m?: number } }) => void;
+  // True north while location runs for the session; a magnetic heading reports at least 30° of accuracy, which the
+  // app's 20° gate leaves out.
+  onHeading?: (e: { nativeEvent: { north_deg: number; accuracy_deg: number } }) => void;
+  // ARKit stopped for good: no camera permission, no sensors, or a third failed session. The screen shows the message.
+  onMountError?: (e: { nativeEvent: { message: string } }) => void;
+  // The camera taken away and given back: ARKit then finds its place again with the same origin, so no restart.
+  onInterruption?: (e: { nativeEvent: { interrupted: boolean } }) => void;
+}> | null;                                // ref.undoLast(), ref.clearMarkers(), ref.restart()
+export function saveWorldMap(gardenId: string, version: number): Promise<void>;   // stays on the phone, out of backups
+export function savedWorldMapVersion(gardenId: string): number | null;
+export function relocalise(gardenId: string): Promise<"ok" | "failed">;
+export function removeWorldMap(gardenId: string): void;                           // an older version's, or a garden left
+export function removeWorldMaps(): void;                                          // on sign-out
+
+// The 3D garden on RealityKit, a non-AR ARView (design garden-3d 1).
+export const GardenView: React.ComponentType<{
+  beds: { id: string; name?: string; polygon_m: number[][] }[];
+  plants: { id: string; name: string; x_m: number; y_m: number; canopy_radius_m?: number; height_m?: number;
+            status: "healthy" | "watch" | "sick" | "dead" | "unknown"; tender?: boolean; label?: string; bed_id?: string }[];
+  mode: "health" | "growth" | "frost";
+  selectedPlantId?: string | null;
+  scheme: "light" | "dark";
+  reduceMotion?: boolean;
+  onSelectPlant?: (e: { nativeEvent: { plant_id: string | null } }) => void;
+}> | null;
+
+// Capture's mode bar: iOS 26's segmented control on interactive Liquid Glass (design 3.1 and 6).
+export const ModePickerView: React.ComponentType<{
+  items: { kind: string; label: string; mark: "none" | "stored" | "busy" | "problem"; selected: boolean }[];
+  onSelect: (e: { nativeEvent: { kind: string } }) => void;
+}> | null;
 ```
 
-Where the native module is absent (Android, the web, Expo Go), `requireOptionalNativeModule` returns `null` and the fallback reports `{ depth: false, mapping: false }`.
+Where the native module is absent (Android, the web, Expo Go), `requireOptionalNativeModule` returns `null`: the views are `null` and `getCapabilities()` reports `{ depth: false, mapping: false }`. Ground-plane coordinates are metres, x to the right of where the phone first looked and y ahead of it (ARKit's −z); `north_deg` is clockwise from that +y axis. `GardenView` puts map y back on −z, or the garden would be drawn as its mirror image.
+
+A `LidarCameraView` that sends `onMountError` (no depth format, a session that can't start, a runtime error other than a media-services reset) is replaced by `expo-camera` for the rest of the screen's life: the user gets photos without depth, never a black screen. An ESLint zone keeps every folder of `src` but `src/platform` from importing `modules/` (section 5).
+
+The development and evaluation build's tools (the depth check, the 3D garden spike, and the mapping session until the map screen lands in F7) show in Settings only when `EXPO_PUBLIC_DEV_TOOLS=1`; the same variable turns on the Files app's view of Documents in `app.config.ts`, where the evaluation captures go (section 17). Capture drafts are kept in Application Support, which the Files app never shows (section 11).
 
 Docs: [Expo Modules API](https://docs.expo.dev/modules/module-api/) · [`AVDepthData`](https://developer.apple.com/documentation/avfoundation/avdepthdata) · [`ARWorldTrackingConfiguration`](https://developer.apple.com/documentation/arkit/arworldtrackingconfiguration) · [`ARWorldMap`](https://developer.apple.com/documentation/arkit/arworldmap) · [Core Motion](https://developer.apple.com/documentation/coremotion).
 
@@ -930,6 +979,7 @@ The fixtures use the same types as the live client, so a contract change that br
 | `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_test_…` | Public by design; still kept in `.env`, out of git |
 | `EXPO_PUBLIC_API_URL` | `https://api.example.org` | No trailing slash |
 | `EXPO_PUBLIC_API_MODE` | `live` or `mock` | Section 15 |
+| `EXPO_PUBLIC_DEV_TOOLS` | `1` or empty | `1` for a development or evaluation build: the LiDAR tools in Settings and Documents in the Files app (section 13). Empty for a build that goes to users; `.env.example` has `1`, the development setup. `app.config.ts` reads it at prebuild: prebuild again after turning it on, and run `npx expo prebuild --clean` after turning it off, since Expo merges Info.plist keys and can't remove the Files app's |
 
 `EXPO_PUBLIC_*` values are compiled into the app and readable by anyone who has it, so nothing secret goes in one ([environment variables](https://docs.expo.dev/guides/environment-variables/)). `app/.env.example` lists them with placeholders.
 
@@ -979,6 +1029,7 @@ The frontend track of [architecture 14](../architecture/README.md#14-build-plan)
 8. **Abandoned scans.** Decided: **Discard** deletes the pending scan (`DELETE /scans/{id}`). It still counts toward the daily scan limit, and a plant it created stays (contracts 3). Whether discarding should also offer to delete that new plant is open; only owners can delete plants.
 9. **Browser capture.** The system camera (`launchCameraAsync`) is proposed for phone browsers because it takes a full-resolution photo. `expo-camera`'s web view would allow the same framing overlay as native, but its photo is a frame from the video stream. Compare the two on the demo phones on day 1.
 10. **Web push.** The contracts accept `platform: "web"` push tokens and store them unused (contracts 9), because Expo Push serves only iOS and Android. Browser push would need a separate Web Push sender in the API, and on iOS works only for a page added to the home screen ([WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)). Until then the alert inbox covers browsers.
+11. **The Live Activity or push for a scan's question and plan.** The scan's Live Activity alerts for the question and the plan (roadmap F5 item 6), and contracts 9's push sends the same events to the scan's creator. The HIG says not to send a push for an update a Live Activity already shows. Proposed: while the scan has a running activity, its alert is the one; the push goes only where there is none (another device, the activity turned off, or the app gone past the 25 s grace). That needs the app to tell the API, or the push to be dropped on the phone by `setForegroundFilter`; settle it with the backend before push lands ([backend roadmap S6](../backend/roadmap.md#10-s6-background-work-and-resilience)).
 
 ---
 

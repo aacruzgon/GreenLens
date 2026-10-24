@@ -78,6 +78,10 @@ module.exports = defineConfig([
               ],
               "lib imports nothing in src (README 5).",
             ),
+            // Local native modules are reached only through src/platform (README 5 and 13).
+            ...["./src/app", "./src/features", "./src/ui", "./src/api", "./src/domain", "./src/lib", "./src/config"].map((target) =>
+              zone(target, ["./modules"], "Only src/platform imports a local native module (README 5, 13)."),
+            ),
             // features/*/model: pure TypeScript
             zone(
               "./src/features/*/model/**",

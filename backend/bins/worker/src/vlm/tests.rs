@@ -70,6 +70,7 @@ fn reply(text: &str, stop: Stop) -> VlmReply {
     VlmReply {
         text: text.to_owned(),
         stop,
+        tokens: None,
     }
 }
 
@@ -106,7 +107,7 @@ fn adapter_with(replies: Vec<VlmReply>, max_questions: Option<usize>) -> VlmAdap
 
 mod bench;
 mod live;
-mod record;
+pub(crate) mod record;
 
 const IMG: &str = "01JAX6BBBBBBBBBBBBBBBBBBBB";
 const JOB: &str = "01JAX5AAAAAAAAAAAAAAAAAAAA";
