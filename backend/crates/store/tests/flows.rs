@@ -1958,6 +1958,7 @@ async fn a_card_names_the_turns_message_before_it_is_stored() {
         attachments: Vec::new(),
         citations: Vec::new(),
         farm_citations: Vec::new(),
+        blocks: Vec::new(),
         tool_calls: Vec::new(),
         route: None,
         interrupted: false,
@@ -2018,6 +2019,24 @@ async fn a_card_names_the_turns_message_before_it_is_stored() {
         .store_message(owner.at_least(), message(turn_message))
         .await
         .expect("the turn stores its message after the tool loop");
+    // SurrealDB 3.3.4 tracks the card's `REFERENCE ON DELETE REJECT` link though the message
+    // was created after the card: the message can't be deleted while the card exists.
+    let mut deleted = store
+        .db()
+        .query("DELETE $message;")
+        .bind((
+            "message",
+            surrealdb::types::RecordId::new("message", turn_message.to_string()),
+        ))
+        .await
+        .expect("query sent");
+    let errors = deleted.take_errors();
+    assert!(
+        errors
+            .values()
+            .any(|e| e.to_string().contains("ON DELETE REJECT")),
+        "the message's deletion is refused while its card exists: {errors:?}"
+    );
     let detail = store
         .conversation_detail(owner.at_least(), PageRequest::default())
         .await
