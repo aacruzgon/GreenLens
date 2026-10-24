@@ -2,6 +2,10 @@
 # fetch.py downloads each one, checks its SHA-256 and unpacks it under data/raw/<name>/.
 # A null sha256 means "not pinned yet": fetch.py prints the hash so it can be filled in.
 # Only sources with `ship: true` may go into weights we ship (licence allows commercial use).
+# A `ship: false` source whose photos keep their own licences may still lend single photos whose
+# licence allows commercial use and adaptation, picked per image into a list that records each
+# photo's licence and that the trainer checks (COCO: the leaf detector's background photos, the
+# trained plant probe's no-plant photos; docs/vision/training.md §3).
 
 datasets:
   - name: plantdoc_cls
@@ -199,7 +203,9 @@ datasets:
     licence: "COCO: annotations CC BY 4.0; images keep their Flickr licences (unverified per image)"
     citation: "Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014"
     ship: false
-    use: plant-check negatives (evaluation only, never training data)
+    use: >-
+      plant-check negatives; the trained plant probe v2 also learns from 602 of these photos whose
+      licence allows commercial use and adaptation, picked per image (splits/negatives_probe_train.tsv)
 
   - name: coco_annotations_2017
     description: COCO 2017 train/val annotations (about 241 MB); instances_val2017.json says which val2017 images show a potted plant or broccoli
@@ -209,7 +215,7 @@ datasets:
     licence: "COCO: annotations CC BY 4.0; images keep their Flickr licences (unverified per image)"
     citation: "Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014"
     ship: false
-    use: plant-check negatives (evaluation only, never training data)
+    use: which COCO photos show a potted plant or broccoli, and each photo's licence
 
   - name: openimages_v7_faces
     description: >-
