@@ -1,14 +1,13 @@
 # PDM Devpost Write-up: the ML Part
 
-> **Status:** Draft v0.2.4, 2026-10-23. v0.2.4: the trained plant probe v2 ships at 0.94 / 0.31 (M17), so iNaturalist, iBean and 2,372 licence-clean COCO photos are in shipped weights, each photo credited in `ml/models/credits/`; COCO's photo licences are version 2.0. v0.2.3: section 3's dev results are M16's re-runs on the 102 dev cases (#156), with 95% intervals where a target depends on them: species zero-shot 74.3% top 1 and 90.1% top 3, both missing; v3c's top 3 93% against 62% guessing, undecided against 85%, with its temperature pending M17 (#167); and the VLM on the shipped prompts 3 of 7 `sure` cases against FP8's 1. Sections 4 to 7 and 10 follow. v0.2.2: the split is #147's, 102 dev and 58 test with 9 `sure` test cases, since neighbouring field-dataset frames now share a plant key; the 7 test cases that were used on dev are named, and M18 reports with and without them. v0.2.1: the split is #140's after Alan's second review of #135, 104 dev and 56 test, since a same-plant squash pair moved to test. v0.2: after Alan's review, the 12 garden tomato leaves are out (the second review keeps at most 3 of them), the VLM's 35% sits beside the 33% a random pick gets, prior work says what existed before build week, the species result is the seed's matrix (61%, as the stand-in), case counts are #140's and marked pending, T5 and T11–T14 name their cases, section 10's checklist covers the re-runs, and the duplicates between fields are cut. v0.1: first draft of the ML part of each Devpost field (dev-roadmap M19): what the models do on a scan, how they were built and measured, challenges, accomplishments, lessons, next steps, built with and prior work, with the test split's numbers left as placeholders for M18.
+> **Status:** Draft v0.2.5, 2026-10-23. v0.2.5: M18 scored the test split once on Oct 23 and filled section 3's T rows: species zero-shot top 1 41 of 56 (missed), the disease head's top 3 36 of 43 against 60% guessing (undecided), the plant check 58 of 58, the VLM 41 of 41 jobs valid at 8.8 s p95, a face box on 38 of 73 test photos, and T11–T16 not measured without J5's harness; the leakage check on the final state covers plant probe v2's photos. v0.2.4: the trained plant probe v2 ships at 0.94 / 0.31 (M17), so iNaturalist, iBean and 2,372 licence-clean COCO photos are in shipped weights, each photo credited in `ml/models/credits/`; COCO's photo licences are version 2.0. v0.2.3: section 3's dev results are M16's re-runs on the 102 dev cases (#156), with 95% intervals where a target depends on them: species zero-shot 74.3% top 1 and 90.1% top 3, both missing; v3c's top 3 93% against 62% guessing, undecided against 85%, with its temperature pending M17 (#167); and the VLM on the shipped prompts 3 of 7 `sure` cases against FP8's 1. Sections 4 to 7 and 10 follow. v0.2.2: the split is #147's, 102 dev and 58 test with 9 `sure` test cases, since neighbouring field-dataset frames now share a plant key; the 7 test cases that were used on dev are named, and M18 reports with and without them. v0.2.1: the split is #140's after Alan's second review of #135, 104 dev and 56 test, since a same-plant squash pair moved to test. v0.2: after Alan's review, the 12 garden tomato leaves are out (the second review keeps at most 3 of them), the VLM's 35% sits beside the 33% a random pick gets, prior work says what existed before build week, the species result is the seed's matrix (61%, as the stand-in), case counts are #140's and marked pending, T5 and T11–T14 name their cases, section 10's checklist covers the re-runs, and the duplicates between fields are cut. v0.1: first draft of the ML part of each Devpost field (dev-roadmap M19): what the models do on a scan, how they were built and measured, challenges, accomplishments, lessons, next steps, built with and prior work, with the test split's numbers left as placeholders for M18.
 
 This file holds the machine-learning part of each field on PDM's Devpost page, ready to paste; each section names its field. The app, the backend and the farm connectors are written up elsewhere. Every number links its source: a section of the vision documents, a committed report, or an open pull request where the fact isn't on `main` yet. Each number carries one of these labels:
 
 - **Dev:** the evaluation set's dev cases. We chose and tuned the models on them, so they flatter the models.
 - **Held-out:** photos set aside from the training sources: the training datasets' own test photos, and for the plant check 1,000 COCO photos no threshold was chosen on. They come from the same cameras and fields as the training photos, and they are not the evaluation set.
 - **Bench:** speed and memory, measured on the machine named beside it.
-- **Test:** the evaluation set's test cases, scored once by task M18 ([dev-roadmap, phase 5](dev-roadmap.md#phase-5-oct-2425-score-once-ship)). Until then every test number is a placeholder `⟨M18: …⟩`, and [section 10](#10-for-m18) says what fills each one. A placeholder M18 can't fill becomes "not measured" with the reason, never an estimate.
-- **Pending:** a count from pull requests that change the evaluation set and aren't merged yet: [#135](https://github.com/aacruzgon/GreenLens/pull/135) (the second review) and [#140](https://github.com/aacruzgon/GreenLens/pull/140) (replacement cases), which merge after [#134](https://github.com/aacruzgon/GreenLens/pull/134) in that order. Section 10 refreshes them after merge.
+- **Test:** the evaluation set's test cases, scored once by task M18 on Oct 23 ([report](../../ml/training/eval/reports/test-split-2026-10-23.md); [dev-roadmap, phase 5](dev-roadmap.md#phase-5-oct-2425-score-once-ship)). A number M18 couldn't measure says "not measured" and why, never an estimate.
 
 ## Contents
 
@@ -98,7 +97,7 @@ Sources: [README 3](README.md#3-model-inventory) (inventory) and [4](README.md#4
   - Two kept their test case: an early-blight leaf with 3 cases in dev, and a late-blight leaf with 5. So dev photos of these two test leaves helped choose v3c. Both test cases are `probable`, so they count toward species and the disease head's top 3, not diagnosis accuracy. M18 reports the disease head's top 3 with and without them.
   - Two kept their dev case, an early-blight leaf and a bacterial-spot leaf, so no test case shows them.
 - **Dev cases moved to test.** Grouping photos by plant moved 7 dev cases to test after they had helped choose v3c, the VLM or the calibration: 4 when one observer's observations took one plant key ([#135](https://github.com/aacruzgon/GreenLens/pull/135)), and 3 when neighbouring frames did ([#147](https://github.com/aacruzgon/GreenLens/pull/147)). One is `sure`. M18 reports each test number with and without them.
-- **Kept apart from training.** A leakage check compared the 160 cases' 203 photos with all 59,821 training images, by perceptual hash (within 4 bits over the photo's 8 rotations and flips) and by BioCLIP 2 cosine (0.98 or more). The one match, at 0.983, is two different flowering tomato plants; the next closest pair is at 0.950 ([#140](https://github.com/aacruzgon/GreenLens/pull/140); the Oct 20 run on the first 187 cases found the same, [report](../../ml/training/eval/reports/leakage-2026-10-20.md)). Edited copies of training images (halved, recompressed, rotated, mirrored, brightened) match in 98–100% of cases, but a copy with 5% cropped off each edge matches only 26% of the time, so a cropped copy could slip through ([evaluation 2](evaluation.md#where-the-photos-come-from)). M18 runs the check again on the final manifest before scoring.
+- **Kept apart from training.** A leakage check compared the 160 cases' 203 photos with all 61,591 training images, the trained plant probe's 1,770 COCO photos among them, by perceptual hash (within 4 bits over the photo's 8 rotations and flips) and by BioCLIP 2 cosine (0.98 or more). The one match, at 0.983, is two different flowering tomato plants; the next closest pair is at 0.950 (M18's run on the final state, [report](../../ml/training/eval/reports/leakage-2026-10-23-m18.md); the Oct 20 run on the first 187 cases found the same, [report](../../ml/training/eval/reports/leakage-2026-10-20.md)). Edited copies of training images (halved, recompressed, rotated, mirrored, brightened) match in 98–100% of cases, but a copy with 5% cropped off each edge matches only 26% of the time, so a cropped copy could slip through ([evaluation 2](evaluation.md#where-the-photos-come-from)).
 - **What it lacks.** Every case is a published photo. None has the full set of shots the app asks for, and none shows a ladybug, a face or a scene without a plant. So the VLM's organisms, soil and beneficial insects aren't measured on the set ([evaluation 8](evaluation.md#vlm-results-2026-10-20--ran)), and neither is face blurring.
 
 ### Results so far: dev cases, held-out photos and benches
@@ -123,37 +122,44 @@ Each result says where it was measured. The dev numbers are M16's re-runs on the
 
 ### Test split, scored once by M18
 
-The test cases: 58, of which 9 are `sure`: 5 corn and 4 tomato, 6 sick and 3 healthy ([#147](https://github.com/aacruzgon/GreenLens/pull/147)). Pending. Each rate is reported as k of n with its 95% Wilson interval. A target counts as met or missed only when the whole interval is on one side of it; otherwise it is undecided at that count ([#135](https://github.com/aacruzgon/GreenLens/pull/135)). Each row names the cases it rests on. Report: `⟨M18: report link⟩`.
+The test cases: 58, of which 9 are `sure`: 5 corn and 4 tomato, 6 sick and 3 healthy ([#147](https://github.com/aacruzgon/GreenLens/pull/147)). M18 scored them once on Oct 23 with the final manifest's files at the values they ship, fitting and changing nothing ([report](../../ml/training/eval/reports/test-split-2026-10-23.md)). Each rate is k of n with its 95% Wilson interval. A target counts as met or missed only when the whole interval is on one side of it; otherwise it is undecided at that count ([evaluation 4](evaluation.md#4-metrics-and-acceptance-targets)). Each row names the cases it rests on. "Without the 7" leaves out the test cases that were dev cases when choices were made (section 3, above).
 
 **Offline, from the scripts that score the dev cases:**
 
 | ID | Stage | Metric | Target | Cases | Test result |
 |---|---|---|---|---|---|
-| T1 | Plant check | Recall on cases with a plant | 99% or more | Every test case | `⟨M18: T1, k of n, interval⟩` |
-| T2 | Species, BioCLIP 2 | Top-1 on the five crops | 85% or more | Test cases of the five crops | `⟨M18: T2, k of n, interval⟩` |
-| T3 | Species, BioCLIP 2 | Top-3 on the five crops | 95% or more | As T2 | `⟨M18: T3, k of n, interval⟩` |
-| T4 | Species, with the VLM | Cases where BioCLIP 2 (0.8 or more) and the VLM agree on a wrong species | 3% or less | Tomato and corn test cases | `⟨M18: T4, k of n, interval⟩` |
-| T5 | Disease head | True problem in the top 3, per leaf, restricted to the species | 85% or more | Test leaf photos with a problem, `sure` and `probable`, as on dev; the `sure` ones beside them | `⟨M18: T5, k of n, interval, guessing %⟩` |
-| T6 | Disease head | Macro F1 of the top-1, per crop | Report | Test leaf photos | `⟨M18: T6, F1 per crop⟩` |
-| T7 | Disease head | Expected calibration error at the temperature that ships | 0.05 or less | Test leaf photos | `⟨M18: T7, ECE⟩` |
-| T8 | VLM | Calls that decode and validate on the first try | 99% or more; 100% after one retry | Tomato and corn test cases | `⟨M18: T8, k of n calls⟩` |
-| T9 | VLM | Species guess, top-1 | Report beside BioCLIP 2's | Tomato and corn test cases | `⟨M18: T9, k of n⟩` |
-| T10 | VLM | Job time at p95, two jobs at once | Under 2.5 minutes | Tomato and corn test cases | `⟨M18: T10, s⟩` |
+| T1 | Plant check | Recall on cases with a plant | 99% or more | Every test case | 58 of 58 (93.8–100%): undecided. Without the 7: 51 of 51 |
+| T2 | Species, BioCLIP 2 | Top-1 on the five crops | 85% or more | Test cases of the five crops | 41 of 56, 73.2% (60.4–83.0%): missed. Without the 7: 36 of 50, 72.0% |
+| T3 | Species, BioCLIP 2 | Top-3 on the five crops | 95% or more | As T2 | 52 of 56, 92.9% (83.0–97.2%): undecided. Without the 7: 46 of 50, 92.0% |
+| T4 | Species, with the VLM | Cases where BioCLIP 2 (0.8 or more) and the VLM agree on a wrong species | 3% or less | Tomato and corn test cases | 0 of 41 (0–8.6%): undecided. Without the 7: 0 of 38 |
+| T5 | Disease head | True problem in the top 3, per leaf, restricted to the species | 85% or more | Test leaf photos with a problem, `sure` and `probable`, as on dev; the `sure` ones beside them | 36 of 43, 83.7% (70.0–91.9%), against 60% guessing: undecided. Without the 7 and the 2 repeat leaves: 32 of 38, 84.2%. The `sure` photos: 5 of 5 (56.6–100%) |
+| T6 | Disease head | Macro F1 of the top-1, per crop | Report | Test leaf photos | Apple 0.29 (5 photos), corn 0.46 (12), grape 1.00 (6), tomato 0.34 (28); top-1 26 of 51 |
+| T7 | Disease head | Expected calibration error at the temperature that ships | 0.05 or less | Test leaf photos | 0.210 on 51 photos at 1.82: missed (dev 0.087) |
+| T8 | VLM | Calls that decode and validate on the first try | 99% or more; 100% after one retry | Tomato and corn test cases | 82 of 82 calls (95.5–100%): undecided; 41 of 41 jobs finished with no retry: met |
+| T9 | VLM | Species guess, top-1 | Report beside BioCLIP 2's | Tomato and corn test cases | 40 of 41, 97.6% (87.4–99.6%); BioCLIP 2's top-1 on the same 41: 27 |
+| T10 | VLM | Job time at p95, two jobs at once | Under 2.5 minutes | Tomato and corn test cases | 8.8 s (median 6.3 s) on the 5070 Ti: met |
 
-**Through the API, once the end-to-end harness (J5) runs:**
+**Through the API, and at upload:**
 
 | ID | Stage | Metric | Target | Cases | Test result |
 |---|---|---|---|---|---|
-| T11 | Diagnosis | Precision of `confirmed`: the primary problem is a true one | 90% or more; 3 `confirmed` of 3 is 44–100% | The 9 `sure` test cases | `⟨M18: T11, k of n, interval⟩` |
-| T12 | Diagnosis | Diseased cases that end `confirmed` | Report | The 6 diseased `sure` test cases | `⟨M18: T12, k of n⟩` |
-| T13 | Diagnosis | Healthy plants diagnosed with a problem | 10% or less; one miss is 33%, and even 0 of 3 is 0–56% | The 3 healthy `sure` test cases | `⟨M18: T13, k of n, interval⟩` |
-| T14 | Diagnosis | Sick plants diagnosed `healthy` | 5% or less; one miss is 17%, and even 0 of 6 is 0–39% | The 6 diseased `sure` test cases | `⟨M18: T14, k of n, interval⟩` |
-| T15 | Timing | Submit to `diagnosed`, p95, GPU path | 90 s or less | Every test case | `⟨M18: T15, s⟩` |
-| T16 | Timing | The same on the fallback worker | Report | Every test case | `⟨M18: T16, s⟩` |
-| T17 | Upload | Good photos rejected by the blur and exposure check | 5% or less | Every test photo | `⟨M18: T17, k of n⟩` |
-| T18 | Upload | Plant photos with a false face blurred over them | 2% or less | Every test photo | `⟨M18: T18, k of n⟩` |
+| T11 | Diagnosis | Precision of `confirmed`: the primary problem is a true one | 90% or more; 3 `confirmed` of 3 is 44–100% | The 9 `sure` test cases | Not measured: J5's end-to-end harness wasn't built |
+| T12 | Diagnosis | Diseased cases that end `confirmed` | Report | The 6 diseased `sure` test cases | Not measured: as T11 |
+| T13 | Diagnosis | Healthy plants diagnosed with a problem | 10% or less; one miss is 33%, and even 0 of 3 is 0–56% | The 3 healthy `sure` test cases | Not measured: as T11 |
+| T14 | Diagnosis | Sick plants diagnosed `healthy` | 5% or less; one miss is 17%, and even 0 of 6 is 0–39% | The 6 diseased `sure` test cases | Not measured: as T11 |
+| T15 | Timing | Submit to `diagnosed`, p95, GPU path | 90 s or less | Every test case | Not measured: as T11 |
+| T16 | Timing | The same on the fallback worker | Report | Every test case | Not measured: as T11 |
+| T17 | Upload | Good photos rejected by the blur and exposure check | 5% or less | Every test photo | 3 of 73, 4.1% (1.4–11.4%): undecided; 2 too blurry, 1 too bright |
+| T18 | Upload | Plant photos with a false face blurred over them | 2% or less | Every test photo | 38 of 73, 52.1% (40.8–63.1%): missed (dev 67 of 130) |
 
-T11–T14 can't pass or fail their targets at these counts, so M18 reports them beside the dev split's, and beside the species and detection rows on all 58 test cases.
+T17 and T18 come from the API's own quality gate and face detector at its settings (`vision`'s `face_check` example, YuNet at 0.3, on each photo as uploaded), not from a scan. T11–T16 need cases through the API, and J5's end-to-end harness wasn't built, so the rows above are each stage on its own, not the diagnosis a scan ends with.
+
+What the test split says, against the dev cases:
+
+- **It matches dev wherever dev had a number.** Species zero-shot 73% top 1 and 93% top 3 (dev 74% and 90%), the disease head's top 3 84% (dev 93%; guessing 60% here, 62% there), the plant check passing every case, the VLM valid on every call, and a face box on about half the photos (dev 52%). Leaving out the 7 former dev cases moves no rate by more than 1.3 points.
+- **Tomato is the weak species again:** 14 of the 15 wrong top-1 species are tomato leaves, called potato 7 times and pepper 3. On the 41 tomato and corn cases the VLM names the species on 40, against BioCLIP 2's 27, and the two never agree on a wrong one.
+- **The disease head's calibration misses.** Its mean confidence matches its accuracy (0.50 against 26 of 51 right), but the 14 photos it scores 0.4–0.6 are right 4 times, and 51 photos in 15 bins make the ECE noisy. The temperature stays the file's 1.82: the test split chooses nothing.
+- **The face blur would cover half the plant photos.** At the shipped threshold, YuNet finds a face on 38 of the 73 test photos, all of them false, as on dev; the choice of a stricter setting is D13 ([#159](https://github.com/aacruzgon/GreenLens/issues/159)).
 
 **Not measurable on this test split.** The rest of [evaluation 4](evaluation.md#4-metrics-and-acceptance-targets) needs cases or labels the set doesn't have. The manifest's truth holds each case's outcome, species, problems, organisms and damage, and every case's organisms and damage are empty ([manifest](../../ml/training/eval/manifest.jsonl)).
 
@@ -195,7 +201,7 @@ T11–T14 can't pass or fail their targets at these counts, so M18 reports them 
 - **A disease head that does its job on garden-like photos (dev):** the true problem in its top 3 on 67 of the 72 dev leaf photos with a problem (93%), against 62% for guessing, on the 102 dev cases after the second review (section 3).
 - **The VLM benchmarked through the worker's own code,** not a notebook: every call valid, two jobs at once on one card (section 3).
 - **The weaknesses are written down with their numbers,** beside the strengths, in the documents and here.
-- **On the test split, scored once:** `⟨M18: one sentence with T2, T5 and T11⟩`.
+- **On the test split, scored once:** BioCLIP 2 names the species first on 41 of 56 cases (73%, short of its 85% target), the disease head has the true problem in its top 3 on 36 of 43 leaf photos with a problem (84%, against 60% for guessing), and the diagnosis through the API (T11) wasn't measured, since its end-to-end harness wasn't built (section 3).
 
 ---
 
@@ -217,7 +223,7 @@ T11–T14 can't pass or fail their targets at these counts, so M18 reports them 
 
 *Devpost field: What's next for PDM (the ML part).*
 
-- **Freeze and score:** the final manifest (M17, [#167](https://github.com/aacruzgon/GreenLens/pull/167)) and the test split scored once (M18); M16 refitted the temperatures on the 102 dev cases ([#156](https://github.com/aacruzgon/GreenLens/pull/156)) ([dev-roadmap](dev-roadmap.md#phase-4-oct-2223-calibration-then-freeze-the-models)).
+- **Freeze and score:** the final manifest (M17, [#167](https://github.com/aacruzgon/GreenLens/pull/167)) and the test split scored once (M18, [report](../../ml/training/eval/reports/test-split-2026-10-23.md)); M16 refitted the temperatures on the 102 dev cases ([#156](https://github.com/aacruzgon/GreenLens/pull/156)) ([dev-roadmap](dev-roadmap.md#phase-4-oct-2223-calibration-then-freeze-the-models)).
 - **Disease as damage:** the structural fix for the VLM's `leaf_mines` (P11).
 - **The other four crops' classes** into `classifier_labels.yaml` once their profiles are signed ([#125](https://github.com/aacruzgon/GreenLens/issues/125)).
 - **The species head in the worker,** with a rule that lets it lift its crops' share, which zero-shot gets right on only 74% of dev cases ([models 6](models.md#6-species-bioclip)).
@@ -299,43 +305,44 @@ Sources: [training 3](training.md#3-datasets-and-licences), [NOTICES, Datasets](
 
 ## 10. For M18
 
-Fill each placeholder from the scored test run, then commit this file with the report. The offline scripts score the dev cases today: `calibrate` and `species_check` read only `split == "dev"`, with no option for test, and `plant_check` scores the training splits, not the evaluation cases. Each needs a test option, or `score.py` ([evaluation 9](evaluation.md#9-harness-and-reports)) needs writing, before M18.
+M18 filled every placeholder on Oct 23 from one run, [test-split-2026-10-23](../../ml/training/eval/reports/test-split-2026-10-23.md), written by `python -m ml.training.eval.score_test_split`. It runs `species_check`'s, `calibrate`'s, `plant_check`'s, `vlm_bench`'s and `face_check`'s code on the test cases at the values the final manifest ships, and fits nothing; on the dev split it reproduced every committed dev number first. The checks below are kept as the record, and the pasting checks are left.
 
 Before scoring:
 
-- [ ] #134, #135 and #140 are merged. Refresh every count marked pending (sections 2 and 3, the T rows' case counts and intervals), and replace each link to those pull requests with a link to the document or report it added.
-- [ ] Every dev number in sections 2 to 6 is re-run on the 102 dev cases after #147, and updated:
+- [x] #134, #135 and #140 are merged, and no count is marked pending any more. Replacing their links is a pasting check, below.
+- [x] Every dev number in sections 2 to 6 is re-run on the 102 dev cases after #147, and updated:
   - `species_check` with the seed's matrix: zero-shot, the species head and their average; done in #156 ([report](../../ml/training/eval/reports/species-check-2026-10-23.md));
   - `calibrate` on v3c: the disease head's top 3, its top-1 and its temperature (M16); done in #156 ([report](../../ml/training/eval/reports/calibration-2026-10-23.md)), with the temperature's choice left to M17;
   - `vlm_bench` on `findings@5`, the rerun [vlm.md 13](vlm.md#results-and-the-choice-2026-10-20--ran) promises; done in #156 ([vlm.md 13](vlm.md#re-check-on-the-shipped-prompts-2026-10-23--ran));
-  - `plant_check` on the test cases at M17's pair: the trained probe v2 at 0.94 / 0.31.
+  - `plant_check` on the test cases at M17's pair: the trained probe v2 at 0.94 / 0.31; done by M18 ([report](../../ml/training/eval/reports/plant-check-test-cases-2026-10-23.md)).
 - [ ] No disputed case feeds `calibrate`'s fits: #135 drops every case the reviewer called wrong. Its fits still read `probable` cases; each dev number says so, or `calibrate` skips them.
-- [ ] M16's and M17's final values replace the word "provisional" for the temperatures and `τ_leaf` and `τ_plant` in section 3.
-- [ ] Each test number is reported twice: on all the test cases, and without the 7 that were dev cases when choices were made (`apple-inat-401743982`, `apple-inat-401742038`, `apple-inat-401735945`, `squash-inat-407881529`, `corn-maize-bd-2026-gray-leaf-spot-img-500`, `tomato-tomato-bd-2025-late-blight-late-blight-7`, `corn-maize-bd-2026-healthy-leaf-img-43`). T5's second line also leaves out the two repeat leaves.
-- [ ] `python -m ml.training.eval.check_leakage` on the final manifest passes: its report's header reads "0 not allowed". Update section 3's photo and image counts from it.
+- [x] M16's and M17's final values replace the word "provisional" for the temperatures and `τ_leaf` and `τ_plant` in section 3.
+- [x] Each test number is reported twice: on all the test cases, and without the 7 that were dev cases when choices were made (`apple-inat-401743982`, `apple-inat-401742038`, `apple-inat-401735945`, `squash-inat-407881529`, `corn-maize-bd-2026-gray-leaf-spot-img-500`, `tomato-tomato-bd-2025-late-blight-late-blight-7`, `corn-maize-bd-2026-healthy-leaf-img-43`). T5's second line also leaves out the two repeat leaves.
+- [x] `python -m ml.training.eval.check_leakage` on the final manifest passes: its report's header reads "0 not allowed". Update section 3's photo and image counts from it. Done: 61,591 training images, the probe's 1,770 among them, 1 match allowed ([report](../../ml/training/eval/reports/leakage-2026-10-23-m18.md)).
 - [ ] Each stage in section 1 runs live through the API. Real scans return 503 until #134 merges, and P2 (the perception harness) and J5 (the end-to-end harness) haven't started. A stage that doesn't run live by Oct 25 is described as built, not as running.
 
 Before pasting:
 
 - [ ] Make every link absolute (`https://github.com/aacruzgon/GreenLens/blob/main/…`); relative links don't resolve on Devpost.
+- [ ] Replace each link to #134, #135 and #140 with the document or report it added, where there is one.
 
-Each placeholder:
+How each placeholder was filled, all by `score_test_split` from the run named:
 
 | Placeholder | Script or report | Field |
 |---|---|---|
 | Report link | The committed test report | Its path, linked from section 3's "Test split" paragraph |
 | T1 | `plant_check` run on the test cases' plant photos at M17's pair | 1 minus the share of cases whose plant photos all fail (false `no_plant_found`), per case |
 | T2, T3 | `species_check` on the test cases with the final matrix | The "per case, zero-shot" row's Top-1 and Top-3; the "head" or "average" row instead if the worker runs the species head by then |
-| T4 | `calibrate`'s species stage at the final `species_temperature`, joined per case with `vlm_bench`'s species guesses | Share of cases with BioCLIP 2's top-1 at 0.8 or more, the VLM naming the same species at medium or high, and both wrong. No script joins them today |
+| T4 | `calibrate`'s species stage at the final `species_temperature`, joined per case with `vlm_bench`'s species guesses | Share of cases with BioCLIP 2's top-1 at 0.8 or more, the VLM naming the same species at medium or high, and both wrong, over the VLM's finished jobs |
 | T5 | `calibrate` with the final disease head, on test leaf photos with a problem, `sure` and `probable` | "Top 3 as sent" with its guessing in brackets; then the same on the `sure` photos alone, and without the two test leaves whose repeats were in dev (`tomato-tomato-bd-iphone-2025-early-blight-img-2624`, `tomato-tomato-bd-iphone-2025-late-blight-img-5537-02d`) |
-| T6 | `calibrate`'s JSON, its top-1 answers per true class | Macro F1 per crop, computed from those answers; not a column today |
+| T6 | `calibrate`'s JSON, its top-1 answers per true class | Macro F1 per crop, computed from those answers: the mean over the classes that are a photo's label or its top 1 |
 | T7 | `calibrate` with M17's head file, on the test leaf photos | `ece` (15 bins) in its "in the file" row: the temperature that ships. Never a temperature fitted on test |
 | T8 | `vlm_bench cases --split test`, `run` with the final model and pixel limit at 2 at once, then `score` | 1 minus "Retried calls" divided by the calls made, two per job in "Finished" |
 | T9 | Same `vlm_bench` report | "Species" |
 | T10 | Same `vlm_bench` report | "Job p95" at "At once" 2 |
-| T11–T16 | J5's end-to-end run through the API (`e2e.py`, `score.py`, [evaluation 9](evaluation.md#9-harness-and-reports)) | Evaluation 4's end-to-end metrics: `confirmed` precision, coverage, healthy with a problem and sick called healthy on the `sure` cases; p95 wall time on the GPU path and on the fallback on every case |
-| T17 | J5's run | Share of test photos the blur and exposure check rejects |
-| T18 | J5's run, if it records blurred regions, or YuNet at the API's settings over the test photos | Share of plant photos with a face box |
+| T11–T16 | Not measured: they need J5's end-to-end run through the API (`e2e.py`, `score.py`, [evaluation 9](evaluation.md#9-harness-and-reports)), which wasn't built | Evaluation 4's end-to-end metrics: `confirmed` precision, coverage, healthy with a problem and sick called healthy on the `sure` cases; p95 wall time on the GPU path and on the fallback on every case |
+| T17 | `face_check run --sets test --variants original --thresholds 0.3`: the API's quality gate on each photo as uploaded | Share of test photos the blur and exposure check rejects |
+| T18 | The same run: YuNet at the API's settings over the test photos | Share of plant photos with a face box |
 | Section 5's last line | This file's T2, T5 and T11 | One plain sentence, each number with its n |
 
 A row whose cases or harness don't exist when M18 runs gets "not measured" and the reason. Every test number goes in section 3's tables and section 5's last line, nowhere else.
