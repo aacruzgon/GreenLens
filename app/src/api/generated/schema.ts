@@ -1441,6 +1441,12 @@ export interface components {
         };
         /** @description `CandidateScore` ([contracts 7]). */
         CandidateScore: {
+            /**
+             * Format: int32
+             * @description What the disease classifier adds for this problem: 3 when it named it with high
+             *     confidence, 2 with medium, 0 otherwise. Diagnoses stored before the field read as 0.
+             */
+            classifier_weight: number;
             /** @description Answered `no`. */
             contradicted: components["schemas"]["IndicatorEvidence"][];
             /** @description Its kind. */
@@ -1453,7 +1459,7 @@ export interface components {
             problem_id: components["schemas"]["Slug"];
             /**
              * Format: int32
-             * @description Sum of matched weights minus contradicted weights.
+             * @description Sum of matched weights minus contradicted weights, plus `classifier_weight`.
              */
             score: number;
             /** @description Answered `unsure`. */

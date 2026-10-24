@@ -4,7 +4,7 @@
 //! | Status | When |
 //! |---|---|
 //! | `healthy` | no candidate above zero, no pest or damage finding at medium or more, no non-healthy classifier candidate at medium or more, **and** positive evidence: the classifier's best result is `healthy` at medium or more, or every candidate has at least 2 of its 3 indicators answered `no` (a measured `no` only from a clean image) |
-//! | `confirmed` | the top candidate above zero, leading the second by at least the margin, and no question open |
+//! | `confirmed` | the top candidate above zero with at least one matched indicator, leading the second by at least the margin, and no question open |
 //! | `uncertain` | everything else |
 //!
 //! `low_evidence` is `uncertain` plus the first three conditions of `healthy`.
@@ -57,7 +57,8 @@ pub struct StatusInput<'a> {
 /// Why a result is ambiguous, which picks the kind of question.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ambiguity {
-    /// Every score is zero because the indicators came back `unsure` (or unanswered): ask for
+    /// Every score is zero because the indicators came back `unsure` (or unanswered), and the
+    /// classifier named no candidate at medium or more (its weight makes a score): ask for
     /// a photo.
     AllUnsure,
     /// Scores differ but the lead is too small, or there is no positive evidence: ask an
@@ -110,7 +111,13 @@ pub fn decide(input: &StatusInput<'_>) -> StatusDecision {
     }
     if let Some(top) = scores.first() {
         let second = scores.get(1).map_or(0, |s| s.score);
-        if top.score > 0 && top.score - second >= input.margin && !input.question_open {
+        // The classifier's weight ranks a candidate but never confirms it alone: retrieve, then
+        // verify ([architecture 6.3]).
+        if top.score > 0
+            && !top.matched.is_empty()
+            && top.score - second >= input.margin
+            && !input.question_open
+        {
             return StatusDecision {
                 status: DiagnosisStatus::Confirmed,
                 low_evidence: false,
@@ -225,6 +232,7 @@ mod tests {
     use crate::{candidates::Candidate, fixtures, scoring::score_all};
     use domain::records::diagnosis::MeasuredValue;
     use domain::records::measurement::MeasureQuantity;
+    use domain::wire::Confidence;
 
     fn input<'a>(scores: &'a [CandidateScore], clean: &'a BTreeSet<ImageId>) -> StatusInput<'a> {
         StatusInput {
@@ -261,6 +269,87 @@ mod tests {
         let mut open = input(&s, &clean);
         open.question_open = true;
         assert_eq!(decide(&open).status, DiagnosisStatus::Uncertain);
+    }
+
+    /// Knowledge open question 3, decided in S4: a `label_only` species with no classifier
+    /// result has no candidates. It is `uncertain` with `low_evidence`, never `healthy`
+    /// without the classifier's own `healthy`, and no question is asked, since a photo can't
+    /// add a candidate the knowledge base doesn't hold.
+    #[test]
+    fn an_empty_candidate_set_is_low_evidence_and_asks_nothing() {
+        let empty: Vec<CandidateScore> = Vec::new();
+        let clean = BTreeSet::new();
+        let d = decide(&input(&empty, &clean));
+        assert_eq!(d.status, DiagnosisStatus::Uncertain);
+        assert!(d.low_evidence);
+        let ambiguity = d.ambiguity.unwrap();
+        assert!(choose_question(ambiguity, &[], &AnswerSet::default()).is_none());
+    }
+
+    #[test]
+    fn the_classifier_alone_ranks_but_never_confirms() {
+        let profiles = fixtures::problems();
+        let mut cands = fixtures::candidates(
+            &profiles,
+            &["tomato_early_blight", "tomato_septoria_leaf_spot"],
+        );
+        cands[0].classifier = Some(Confidence::saturating(0.9));
+        cands[0].head = cands[0].classifier;
+        let ranked = scored(&cands, &[]);
+        let s: Vec<_> = ranked.iter().map(|s| s.score.clone()).collect();
+        assert_eq!((s[0].score, s[0].classifier_weight), (3, 3));
+        let clean = BTreeSet::new();
+        let d = decide(&input(&s, &clean));
+        assert_eq!(d.status, DiagnosisStatus::Uncertain);
+        assert_eq!(d.ambiguity, Some(Ambiguity::Undecided));
+        // One matched indicator then confirms it.
+        let rings = cands[0].indicators().next().unwrap().id.clone();
+        let ev = vec![fixtures::evidence(
+            &rings,
+            3,
+            Answer::Yes,
+            EvidenceSource::User,
+        )];
+        let s: Vec<_> = scored(&cands, &ev).into_iter().map(|s| s.score).collect();
+        assert_eq!(s[0].score, 6);
+        assert_eq!(
+            decide(&input(&s, &clean)).status,
+            DiagnosisStatus::Confirmed
+        );
+    }
+
+    /// Contracts 7's example: the classifier's early blight at 0.71, every indicator `unsure`.
+    /// Its weight makes a score, so the run asks the user early blight's target rings (the
+    /// heaviest indicator nobody settled) instead of a close-up the classifier already read.
+    #[test]
+    fn a_head_call_with_unsure_indicators_asks_its_heaviest_indicator() {
+        let profiles = fixtures::problems();
+        let mut cands = fixtures::candidates(
+            &profiles,
+            &["tomato_early_blight", "tomato_septoria_leaf_spot"],
+        );
+        cands[0].classifier = Some(Confidence::saturating(0.71));
+        cands[0].head = cands[0].classifier;
+        let ev: Vec<_> = cands
+            .iter()
+            .flat_map(Candidate::indicators)
+            .map(|i| fixtures::evidence(&i.id, i.weight.get(), Answer::Unsure, EvidenceSource::Vlm))
+            .collect();
+        let ranked = scored(&cands, &ev);
+        let s: Vec<_> = ranked.iter().map(|s| s.score.clone()).collect();
+        let clean = BTreeSet::new();
+        let mut i = input(&s, &clean);
+        i.findings.classifier_problem = true;
+        let d = decide(&i);
+        assert_eq!(d.status, DiagnosisStatus::Uncertain);
+        assert!(!d.low_evidence);
+        assert_eq!(d.ambiguity, Some(Ambiguity::Undecided));
+        let q = choose_question(Ambiguity::Undecided, &ranked, &AnswerSet::new(&ev)).unwrap();
+        let QuestionChoice::Indicator { indicator, .. } = q else {
+            panic!("expected an indicator question, got {q:?}");
+        };
+        let heaviest = cands[0].indicators().max_by_key(|i| i.weight).unwrap();
+        assert_eq!(indicator.id, heaviest.id);
     }
 
     #[test]
@@ -389,6 +478,7 @@ mod props {
     use super::*;
     use crate::{fixtures, scoring::score_all};
     use domain::records::diagnosis::EvidenceSource;
+    use domain::wire::Confidence;
     use proptest::prelude::*;
 
     fn answer() -> impl Strategy<Value = Option<(Answer, EvidenceSource)>> {
@@ -409,10 +499,15 @@ mod props {
             answers in proptest::collection::vec(proptest::collection::vec(answer(), 3), 1..5),
             pest in any::<bool>(), problem in any::<bool>(), healthy in any::<bool>(),
             open in any::<bool>(), margin in 1i32..4,
+            heads in proptest::collection::vec(proptest::option::of(0.0f64..=1.0), 4),
         ) {
             let profiles = fixtures::problems();
             let names = ["tomato_early_blight", "tomato_septoria_leaf_spot", "tomato_late_blight", "tomato_flea_beetle_damage"];
-            let cands = fixtures::candidates(&profiles, &names[..answers.len().min(4)]);
+            let mut cands = fixtures::candidates(&profiles, &names[..answers.len().min(4)]);
+            for (c, h) in cands.iter_mut().zip(&heads) {
+                c.classifier = h.map(Confidence::saturating);
+                c.head = c.classifier;
+            }
             let mut ev = Vec::new();
             for (c, row) in cands.iter().zip(&answers) {
                 for (ind, a) in c.indicators().zip(row) {
@@ -439,6 +534,7 @@ mod props {
             }
             if d.status == DiagnosisStatus::Confirmed {
                 prop_assert!(scores[0].score > 0 && !open);
+                prop_assert!(!scores[0].matched.is_empty(), "the classifier never confirms alone");
                 prop_assert!(scores[0].score - scores.get(1).map_or(0, |s| s.score) >= margin);
             }
             prop_assert_eq!(d.ambiguity.is_some(), d.status == DiagnosisStatus::Uncertain);
@@ -447,12 +543,17 @@ mod props {
             }
         }
 
-        /// The score is matched minus contradicted weights, and a lower-ranked answer never
-        /// changes an indicator a higher-ranked source answered.
+        /// The score is matched minus contradicted weights plus the classifier's, and a
+        /// lower-ranked answer never changes an indicator a higher-ranked source answered.
         #[test]
-        fn score_is_arithmetic_and_respects_source_rank(row in proptest::collection::vec(answer(), 3), extra in answer()) {
+        fn score_is_arithmetic_and_respects_source_rank(
+            row in proptest::collection::vec(answer(), 3), extra in answer(),
+            head in proptest::option::of(0.0f64..=1.0),
+        ) {
             let profiles = fixtures::problems();
-            let cands = fixtures::candidates(&profiles, &["tomato_early_blight"]);
+            let mut cands = fixtures::candidates(&profiles, &["tomato_early_blight"]);
+            cands[0].classifier = head.map(Confidence::saturating);
+            cands[0].head = cands[0].classifier;
             let inds: Vec<_> = cands[0].indicators().collect();
             let mut ev = Vec::new();
             for (ind, a) in inds.iter().zip(&row) {
@@ -462,8 +563,10 @@ mod props {
             }
             let before = crate::scoring::score_candidate(&cands[0], &AnswerSet::new(&ev));
             let expected: i32 = before.matched.iter().map(|e| i32::from(e.weight.get())).sum::<i32>()
-                - before.contradicted.iter().map(|e| i32::from(e.weight.get())).sum::<i32>();
+                - before.contradicted.iter().map(|e| i32::from(e.weight.get())).sum::<i32>()
+                + i32::from(before.classifier_weight);
             prop_assert_eq!(before.score, expected);
+            prop_assert_eq!(before.classifier_weight > 0, head.is_some_and(|h| h >= 0.5));
             if let (Some((ans, src)), Some(Some((_, kept)))) = (extra, row.first())
                 && src < *kept
             {

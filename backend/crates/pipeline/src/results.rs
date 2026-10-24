@@ -33,7 +33,9 @@ pub struct ObsContext<'a> {
     pub scan: ScanId,
     /// The run.
     pub run: Run,
-    /// `vlm` or `llm_fallback` for VLM findings, by the worker's `model_versions`.
+    /// `vlm` or `llm_fallback` for VLM findings, by the worker's `model_versions`. On a fallback
+    /// perception result it also marks the disease stage `llm_fallback`, not `classifier`: the
+    /// hosted LLM made that call, and only the disease head's adds `classifier_weight`.
     pub vlm_source: ObservationSource,
     /// The model version recorded on each observation.
     pub model_version: &'a str,
@@ -152,6 +154,11 @@ pub fn perception_writes(
         ));
     }
     if let Some(disease) = &result.disease {
+        let disease_source = if ctx.vlm_source == ObservationSource::LlmFallback {
+            ObservationSource::LlmFallback
+        } else {
+            ObservationSource::Classifier
+        };
         let mut list = Vec::new();
         for d in disease {
             for top in &d.top {
@@ -171,7 +178,7 @@ pub fn perception_writes(
                     new_id(),
                     ObservationStage::Disease,
                     Stage::Disease,
-                    ObservationSource::Classifier,
+                    disease_source,
                     label,
                     top.confidence,
                 );
@@ -626,6 +633,35 @@ mod tests {
             .collect();
         // A species the knowledge base doesn't hold keeps the worker's label.
         assert_eq!(labels, ["Tomato", "a weed", "Late blight"]);
+    }
+
+    /// A fallback perception result's disease calls are the hosted LLM's, tagged `llm_fallback`
+    /// so they add no `classifier_weight` (PR #212's review); the disease head's stay `classifier`.
+    #[test]
+    fn a_fallback_disease_call_is_tagged_llm_fallback() {
+        let image: ImageId = "01JAX3K9T6R2B8V0QZ4M7D1E5A".parse().unwrap();
+        let source_of = |vlm_source| {
+            let mut c = ctx("v1");
+            c.vlm_source = vlm_source;
+            let mut n = 0;
+            perception_writes(&c, &result(), &[image], &names().lookups(), || {
+                n += 1;
+                format!("01JAX3K9T6R2B8V0QZ4M7D1E{n:02}").parse().unwrap()
+            })
+            .into_iter()
+            .flat_map(|w| w.observations)
+            .find(|o| o.stage == ObservationStage::Disease)
+            .unwrap()
+            .source
+        };
+        assert_eq!(
+            source_of(ObservationSource::Vlm),
+            ObservationSource::Classifier
+        );
+        assert_eq!(
+            source_of(ObservationSource::LlmFallback),
+            ObservationSource::LlmFallback
+        );
     }
 
     #[test]
