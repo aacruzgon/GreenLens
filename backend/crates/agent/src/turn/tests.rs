@@ -859,6 +859,82 @@ async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
     assert!(framed.ends_with("\n</data>"));
 }
 
+/// An `era` record's citation carries its text, rate included, in the stored message; the
+/// model's own sentence still never repeats the rate (connectors 7).
+#[tokio::test]
+async fn an_era_records_text_is_stored_with_its_citation_while_the_answer_drops_the_rate() {
+    use domain::connectors::ConnectorStatus;
+
+    use crate::testing::{connector, spray_log_hit};
+
+    let mut hit = spray_log_hit();
+    let rate = "1.75 g/L";
+    assert!(hit.text.contains(rate));
+    hit.citation.text = Some(hit.text.clone());
+    let mut farm = MockFarmRecordStore::new();
+    farm.expect_connectors()
+        .returning(|_| Ok(vec![connector(ConnectorStatus::Active, 4)]));
+    let found = hit.clone();
+    farm.expect_search_records()
+        .times(1)
+        .returning(move |_, _, _, _| {
+            Ok(vec![domain::ports::FarmRecordMatch {
+                hit: found.clone(),
+                similarity: 0.91,
+            }])
+        });
+    let (agent, _model, seen) = harness(Setup {
+        farm,
+        ..Setup::new(vec![
+            vec![
+                ChatChunk::ToolCall {
+                    call_id: "toolu_1".to_owned(),
+                    name: "search_farm_records".to_owned(),
+                    arguments: json!({"query": "copper on bed 3", "kind": "document"}),
+                },
+                ChatChunk::Done(StopReason::ToolUse),
+            ],
+            vec![
+                ChatChunk::TextDelta(
+                    "The spray log shows Kocide 3000 on bed 3 on 4 September. ".to_owned(),
+                ),
+                ChatChunk::TextDelta(format!("It was mixed at {rate}.")),
+                ChatChunk::Done(StopReason::EndTurn),
+            ],
+        ])
+    });
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Reviewer).await,
+            "When was bed 3 last sprayed?",
+        ))
+        .await
+        .unwrap();
+    let (events, outcome) = collect(stream).await;
+
+    // The dose check still covers the model's sentences only.
+    let text = text_of(&events);
+    assert!(!text.contains(rate));
+    assert!(text.ends_with(REPLACED_SENTENCE));
+
+    let TurnOutcome::Completed(message) = outcome else {
+        panic!("{outcome:?}")
+    };
+    assert_eq!(message.farm_citations.len(), 1);
+    assert_eq!(
+        message.farm_citations[0].text.as_deref(),
+        Some(hit.text.as_str())
+    );
+    let stored = seen.stored.lock().unwrap();
+    assert_eq!(stored[1].farm_citations, [hit.citation]);
+    assert!(
+        stored[1].farm_citations[0]
+            .text
+            .as_deref()
+            .is_some_and(|t| t.contains(rate))
+    );
+}
+
 /// A failed search or a failed query embedding reaches the model as the tool's plain
 /// "unavailable" refusal: no record, no vendor text, no farm citation.
 #[tokio::test]
