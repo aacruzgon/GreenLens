@@ -23,6 +23,10 @@ jest.mock("react-native-reanimated", () => require("react-native-reanimated/mock
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 jest.mock("react-native-safe-area-context", () => require("react-native-safe-area-context/jest/mock").default);
 
+// The keyboard controller is native; its package ships a mock (KeyboardAvoidingView as a View).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock("react-native-keyboard-controller", () => require("react-native-keyboard-controller/jest"));
+
 // Importing @clerk/expo starts clerk-js, which opens a MessagePort that keeps Jest from exiting.
 // Tests run the demo session, so Clerk is a stub here.
 jest.mock("@clerk/expo", () => {

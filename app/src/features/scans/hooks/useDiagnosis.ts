@@ -107,6 +107,7 @@ export function useDiagnosis(scanId: string) {
 
   return {
     loading: !detail,
+    gardenId: detail?.garden_id ?? "",
     error: events.error,
     gone: events.stream === "gone",
     /** The scan has no diagnosis yet (opened from a timeline while it still runs). */

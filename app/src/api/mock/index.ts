@@ -6,7 +6,7 @@ import { mockStore } from "./store";
 
 export { mockTransport } from "./transport";
 export { useScenario, scenario } from "./scenario";
-export type { NextScan, UploadFault, CallFault, DemoAccount, ScenarioState } from "./scenario";
+export type { NextScan, UploadFault, CallFault, ChatFault, DemoAccount, ScenarioState } from "./scenario";
 export { mockStore } from "./store";
 export { IDS } from "./fixtures";
 export type { PlantKey } from "./fixtures";

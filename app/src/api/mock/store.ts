@@ -1,7 +1,8 @@
 // The in-memory fixture store behind the mock transport (docs/frontend/README.md 15).
 // Resettable: `mockStore.reset()` re-seeds the demo story with dates relative to now.
 
-import { buildSeed, type StoredPlant, type StoredScan, type Seed } from "./fixtures";
+import { ChatState, seedChat } from "./chat";
+import { buildSeed, IDS, type StoredPlant, type StoredScan, type Seed } from "./fixtures";
 import { DateKit, nowTs, type S } from "./util";
 
 export type { StoredScan, StoredPlant };
@@ -46,6 +47,8 @@ export class MockStore {
   scans = new Map<string, StoredScan>();
   tasks: S["Task"][] = [];
   memories: S["Memory"][] = [];
+  /** Conversations, cards, replays and the demo farm connectors (chat.ts). */
+  chat = new ChatState();
   pushTokens = new Set<string>();
   scripts = new Map<string, Script>();
   /** Bumped by every reset; running scripts and open streams stop when it changes. */
@@ -86,6 +89,8 @@ export class MockStore {
     this.scans = new Map(seed.scans.map((s) => [s.scan.id, s]));
     this.tasks = seed.tasks;
     this.memories = seed.memories;
+    this.chat = new ChatState();
+    seedChat(this.chat, this.dates, seed.garden.id, { tomato1: IDS.tomato1, tomato2: IDS.tomato2 });
     this.pushTokens = new Set();
     this.scripts = new Map();
     this.counter = 1000;
@@ -100,6 +105,7 @@ export class MockStore {
     this.scans.clear();
     this.tasks = [];
     this.memories = [];
+    this.chat = new ChatState();
     this.scripts.clear();
     if (!this.nameSet) this.user.display_name = "";
   }

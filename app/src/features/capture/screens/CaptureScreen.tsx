@@ -20,6 +20,7 @@ import { DistanceChip } from "../components/DistanceChip";
 import { ModeBar } from "../components/ModeBar";
 import { useCaptureSession, type CaptureSessionView } from "../hooks/useCaptureSession";
 import { pauseText, shotFailedText, type CameraPause } from "../model/interruption";
+import { MODES } from "../model/shotPlan";
 
 export function CaptureScreen() {
   return (
@@ -30,8 +31,8 @@ export function CaptureScreen() {
 }
 
 function Capture() {
-  const { scanId } = useLocalSearchParams<{ scanId: string }>();
-  const session = useCaptureSession(scanId);
+  const { scanId, kind } = useLocalSearchParams<{ scanId: string; kind?: string }>();
+  const session = useCaptureSession(scanId, MODES.find((m) => m.kind === kind)?.kind);
   const access = useCameraAccess();
   const insets = useSafeAreaInsets();
   const preview = useRef<CameraPreviewHandle>(null);

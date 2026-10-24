@@ -39,4 +39,5 @@ export const qk = {
   conversation: (id: string) => ["conversations", "item", id] as const,
   memories: (gardenId: string, plantId?: string) => ["memories", gardenId, ...tail(plantId)] as const,
   map: (gardenId: string) => ["map", gardenId] as const,
+  connectors: (gardenId: string) => ["connectors", gardenId] as const,
 };

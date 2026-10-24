@@ -65,6 +65,11 @@ export function formatDateTime(iso: string, timeZone: string): string {
   return format(inZone(iso, timeZone), "MMM d, yyyy, h:mm a");
 }
 
+/** "Oct 19" in the garden's time zone. */
+export function formatMonthDay(iso: string, timeZone: string): string {
+  return format(inZone(iso, timeZone), "MMM d");
+}
+
 /** "Today", "Yesterday" or the date, by the garden's calendar. */
 export function formatDay(iso: string, timeZone: string, now: Date = new Date()): string {
   const d = inZone(iso, timeZone);
