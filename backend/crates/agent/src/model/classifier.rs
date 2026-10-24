@@ -16,17 +16,8 @@ use crate::{
     safety::routes::{FARM_ROUTE_LABELS, ROUTE_LABELS},
 };
 
-/// The memory gate's labels.
-pub const MEMORY_LABELS: [&str; 2] = ["remember", "skip"];
-
-/// The chunk topics ([contracts 10], `ChunkTopic`).
-pub const TOPIC_LABELS: [&str; 5] = [
-    "symptoms",
-    "conditions",
-    "management",
-    "care",
-    "recognition",
-];
+/// The memory gate's labels and the chunk topics, shared with Jev.
+pub use domain::ports::{MEMORY_LABELS, TOPIC_LABELS};
 
 /// What the model is told, and the labels, per task.
 pub const fn task_labels(task: ClassifierTask) -> (&'static str, &'static [&'static str]) {
