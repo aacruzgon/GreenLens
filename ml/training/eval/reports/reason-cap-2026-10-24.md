@@ -21,7 +21,7 @@ python -m ml.training.eval.vlm_bench score ml/training/runs/vlm-bench/qwen35-awq
 ```
 
 - **Scored before the rebase onto #210,** which adds a look-alike column these cases don't use. The runs' outputs were lost in that rebase: `main` now tracks `ml/training/runs` as a symlink, and checking it out removed the ignored directory. So the bench report and the figures here are the record; the Oct 23 run's outputs are still on the rig.
-- **Recording:** the command and the seven photos of the [Oct 23 report](fake-vlm-qwen35-2026-10-23.md), `--record ml/training/eval/recordings/worker-qwen35-9b-awq-2026-10-24.json`. The new file is the fake server's default: 7 recordings, all status 200, SHA-256 `0fca73e71f9dfa6ab674fedf59896b007cea9a3cd46e856341a4fc35a97d55db`. It holds no key and no local path.
+- **Recording:** the command and the seven photos of the [Oct 23 report](fake-vlm-qwen35-2026-10-23.md), `--record ml/training/eval/recordings/worker-qwen35-9b-awq-2026-10-24.json`. 7 recordings, all status 200, SHA-256 `0fca73e71f9dfa6ab674fedf59896b007cea9a3cd46e856341a4fc35a97d55db`, with no key and no local path. It isn't committed as the fake server's default: #213's `findings@6` changed the findings call first, so [#216](https://github.com/aacruzgon/GreenLens/issues/216) re-records the seven calls with both changes. The file is in this branch's history (60c6485).
 
 ## Results
 
@@ -56,6 +56,6 @@ The bench report is [vlm-bench-2026-10-24.md](vlm-bench-2026-10-24.md). Reasons 
 
 ## Checks
 
-- **Replay:** `python3 -m ml.training.eval.fake_vlm` on its new default, then `record_against_live_server` against it: 7 of 7 calls decode and validate (3.4 s), and the server logs no `conformed`, `synthesised` or `text drift`, so every call is an exact replay.
+- **Replay, before #213 merged:** `python3 -m ml.training.eval.fake_vlm` with that file as its default, then `record_against_live_server` against it: 7 of 7 calls decode and validate (3.4 s), and the server logs no `conformed`, `synthesised` or `text drift`, so every call is an exact replay.
 - **The worker:** a new test, `the_reason_cap_is_well_above_what_the_prompt_asks_for`, reads the prompt's "at most N" and fails unless the cap is at least N + 40. `cargo test -p worker -p domain`, `cargo clippy -p worker -p domain --all-targets -- -D warnings` and `cargo fmt --check` pass.
 - **`ml/`:** `vlm_check.py` (the day-1 check) has the same cap as the worker. `vlm_bench score` reports the reasons' lengths and the answers that differ from the first run, with a test. `python3 -m pytest ml/tests` passes, except `test_chunk_reads_a_two_column_pdf_by_type_size`, which needs `pdfminer`, missing from the rig's venv and unrelated to this change.

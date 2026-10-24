@@ -24,10 +24,12 @@ differ only in their text.
 
 Modes:
 
-  replay (default): --recordings FILE (default: recordings/worker-qwen35-9b-awq-2026-10-24.json
-    next to this file: the default VLM on the shipped prompts and schemas; the Oct 23 file has
-    the reason's old cap of 60, and the two Oct 16 files hold Qwen3-VL-8B FP8's and Qwen3.5's
-    answers to older prompts). A key hit answers with the
+  replay (default): --recordings FILE (default: recordings/worker-qwen35-9b-awq-2026-10-23.json
+    next to this file: the default VLM on `findings@5` and `indicators@3`; the two Oct 16 files
+    hold Qwen3-VL-8B FP8's and Qwen3.5's answers to older prompts). `findings@6` (task P11) added
+    a required `trace` to each damage finding, so the worker's findings call misses until it is
+    re-recorded on the rig and is answered conformed: each recorded damage finding gets an empty
+    trace, which the worker drops. That shows the drop works, not what the model reports. A key hit answers with the
     recorded status and body unchanged, header `x-fake-vlm: replay`. With several recordings
     under one key, it takes the one whose message text (every text part, images left out)
     equals the request's, preferring status 200. When no recording under the key has the
@@ -79,7 +81,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_RECORDINGS = HERE / "recordings/worker-qwen35-9b-awq-2026-10-24.json"
+DEFAULT_RECORDINGS = HERE / "recordings/worker-qwen35-9b-awq-2026-10-23.json"
 DEFAULT_PORT = 8001
 SERVED_NAME = "vlm"
 FAULTS = ["length", "http500", "http429", "bad-json", "slow"]

@@ -1,4 +1,4 @@
-//! The prompts of [vision vlm 7] (`system@2`, `findings@5`, `indicators@3`, `verify@3`,
+//! The prompts of [vision vlm 7] (`system@2`, `findings@6`, `indicators@3`, `verify@3`,
 //! `guided@1`), filled from the payload. They borrow the payload and return owned strings;
 //! nothing here allocates more than the text itself.
 //!
@@ -77,7 +77,7 @@ const SOIL: &str = "2. soil: for each aspect, the value you see in the image tha
 - erosion: none, rills (small channels), exposed_roots
 - weeds: none, few, many";
 
-const DAMAGE: &str = "4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant):
+const DAMAGE: &str = "4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant). Damage is made by an animal. For each pattern, first write trace: in a few words, the animal you can see or the trace it left, such as the insect, its larva, frass, webbing, slime, bite marks or footprints. If you can see neither, leave the pattern out. The patterns:
 - shot_holes: many small round holes, a few millimetres across
 - ragged_holes: large irregular holes, often with slime nearby
 - chewed_margins: leaf edges eaten away

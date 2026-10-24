@@ -355,6 +355,12 @@ pub struct OrganismRaw {
 /// `VlmFindingsRaw.damage[]` (at most 10).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DamageRaw {
+    /// The animal seen, or the trace it left, that shows an animal made the damage (a larva in
+    /// the mine, frass, webbing, bite marks), at most 60 characters; empty when none is visible.
+    /// Written first, so the pattern follows from it. A finding without one is dropped in
+    /// decoding (task P11): a disease lesion has no trace. Required: a reply without it is
+    /// invalid output, retried once like any other ([contracts 6], after decoding).
+    pub trace: String,
     /// The pattern.
     pub pattern: DamagePattern,
     /// With `"other"`, at most 100 characters.
@@ -676,6 +682,21 @@ mod tests {
             serde_json::to_string(&soil)
                 .unwrap()
                 .contains("\"surface\":null")
+        );
+    }
+
+    #[test]
+    fn a_damage_finding_carries_its_trace_first() {
+        let raw = r#"{"trace":"larva in the tunnel","pattern":"leaf_mines","other_description":null,"image":"img2","bbox_2d":null,"certainty":"medium"}"#;
+        let d: DamageRaw = serde_json::from_str(raw).unwrap();
+        assert_eq!(d.trace, "larva in the tunnel");
+        assert_eq!(serde_json::to_string(&d).unwrap(), raw);
+        // A server that ignores the schema and leaves it out sent invalid output.
+        assert!(
+            serde_json::from_str::<DamageRaw>(
+                r#"{"pattern":"other","other_description":"x","image":"img1","bbox_2d":null,"certainty":"low"}"#,
+            )
+            .is_err()
         );
     }
 

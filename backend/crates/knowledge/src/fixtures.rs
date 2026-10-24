@@ -86,6 +86,7 @@ pub fn candidate<'k>(profiles: &'k [ProblemSeed], id: &str) -> Candidate<'k> {
         profile: pool.get(&id.parse().expect("slug")).expect("fixture id"),
         source: SelectionSource::Species,
         classifier: None,
+        head: None,
         weather_fit: WeatherFit::Neutral,
     }
 }

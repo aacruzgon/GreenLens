@@ -231,6 +231,7 @@ export function makeScore(
     contradicted?: S["IndicatorEvidence"][];
     unsure?: S["IndicatorEvidence"][];
     fit?: S["WeatherFit"];
+    classifierWeight?: number;
   } = {},
 ): S["CandidateScore"] {
   return {
@@ -238,6 +239,7 @@ export function makeScore(
     name: problem.name,
     kind: problem.kind,
     score,
+    classifier_weight: parts.classifierWeight ?? 0,
     matched: parts.matched ?? [],
     contradicted: parts.contradicted ?? [],
     unsure: parts.unsure ?? [],
