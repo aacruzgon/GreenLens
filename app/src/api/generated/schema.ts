@@ -2781,6 +2781,11 @@ export interface components {
         Message: {
             /** @description The user's images. */
             attachments: components["schemas"]["Attachment"][];
+            /**
+             * @description The answer blocks an assistant message sent, in order, at most 3 ([contracts 8], answer
+             *     blocks); absent when it sent none, and read as empty from a message stored before them.
+             */
+            blocks?: components["schemas"]["AnswerBlock"][];
             /** @description Sources cited. */
             citations: components["schemas"]["Citation"][];
             /** @description When it was stored. */
