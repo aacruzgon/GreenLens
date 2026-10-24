@@ -190,9 +190,9 @@ def test_the_newest_committed_report_checked_the_current_manifest():
 
 def test_the_newest_committed_report_covered_every_required_folder():
     reports = [json.loads(p.read_text()) for p in cl.REPORTS.glob("leakage-*.json")]
-    newest = max(reports, key=lambda r: r["date"])
-    missing = sorted(set(cl.required_folders()) - set(newest["training_images_by_folder"]))
-    assert not missing, f"the newest leakage report has no images from {', '.join(missing)}: rerun it (evaluation.md §2)"
+    newest = max(r["date"] for r in reports)    # a same-day rerun counts, as above
+    missing = [sorted(set(cl.required_folders()) - set(r["training_images_by_folder"])) for r in reports if r["date"] == newest]
+    assert [] in missing, f"the newest leakage report has no images from {', '.join(min(missing))}: rerun it (evaluation.md §2)"
 
 
 def test_bioclip_skips_an_unreadable_training_file(tree, monkeypatch):
