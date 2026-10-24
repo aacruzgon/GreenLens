@@ -1,5 +1,10 @@
-# GPU rig. See infra/README.md. Architecture section 12 names this file.
-# The perception worker and the vlm worker are added here later by their owner.
+# GPU rig: sam-linux's RTX 5070 Ti (docs/infra/README.md section 4). Architecture section 12 names
+# this file. vllm-nv serves the VLM; vlm-worker-nv claims `vlm` jobs from the control plane's api and
+# calls it. The 3070's perception worker is in control-plane.compose.yml (profile `perception`).
+#
+# Settings: infra/.env, copied from infra/.env.example. Compose fills the ${...} values from it and
+# loads it whole into vllm-nv. The worker's token is in ${PDM_ENV}/.env.rig-5070ti-vlm-1 (infra
+# section 6), and the same token is in api's WORKER_TOKENS on the control plane.
 #
 # Image: vllm/vllm-openai:v0.31.0, pinned by digest below.
 # The entrypoint is overridden with bash so that environment values, the JSON
@@ -12,9 +17,22 @@
 # The defaults serve Qwen3.5-9B AWQ with thinking off and 2 slots (decision D1, 2026-10-20).
 # VLM_EXTRA_ARGS uses ${VAR-default}: unset gives thinking off, empty gives no extra flag,
 # which is what the Qwen3-VL checkpoints need (infra/README.md section 4).
+#
+# The worker reads the sidecar's own values, so the two can't drift apart: VLM_MODEL is
+# VLM_MODEL@VLM_REVISION, VLM_SLOTS is VLM_MAX_NUM_SEQS, and VLM_MAX_PIXELS and VLM_API_KEY are shared.
+
+x-logging: &logging
+  driver: json-file
+  # The live file up to 10 MB, plus four rotated files gzipped (compress): from about 12 MB per container.
+  options: { max-size: "10m", max-file: "5", compress: "true" }
+x-hardened: &hardened
+  read_only: true
+  tmpfs: ["/tmp:size=512m"]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
 
 services:
-  vllm:
+  vllm-nv:
     image: vllm/vllm-openai@sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
     entrypoint: ["/bin/bash", "-c"]
     command:
@@ -73,3 +91,33 @@ services:
       start_period: 600s   # model load and CUDA graph capture are slow
     stop_grace_period: 30s
     restart: "no"
+    logging: *logging
+
+  vlm-worker-nv:
+    # The worker's values have defaults and its token file is optional, so `up -d vllm-nv` still
+    # works on its own (benchmarks, headless runs) before they are set. The worker itself needs both.
+    image: ${WORKER_IMAGE:-worker:unset}   # ghcr.io/aacruzgon/greenlens/worker@sha256:…
+    restart: unless-stopped
+    <<: *hardened
+    command: ["--caps", "vlm"]
+    env_file:                       # WORKER_TOKEN; also in api's WORKER_TOKENS
+      - path: ${PDM_ENV:-/srv/pdm/env}/.env.rig-5070ti-vlm-1
+        required: false
+    environment:
+      WORKER_ID: rig-5070ti-vlm-1
+      API_BASE_URL: ${API_BASE_URL:-https://pdm-cp.tailb3ce07.ts.net}   # the control plane's public URL
+      VLM_BASE_URL: http://vllm-nv:8000
+      VLM_API_KEY: ${VLM_API_KEY:?set VLM_API_KEY in infra/.env}
+      VLM_ADAPTER: vllm
+      VLM_SERVED_NAME: vlm
+      VLM_MODEL: ${VLM_MODEL:-cyankiwi/Qwen3.5-9B-AWQ-4bit}@${VLM_REVISION:-156edc4bbeb8d1910ee7be9196bafaf1bc052156}
+      VLM_QUANT: ${VLM_QUANT:-awq_w4a16}
+      VLM_SERVER: vllm@v0.31.0
+      VLM_BOX_FORMAT: norm1000
+      VLM_CELL_PX: "32"
+      VLM_MAX_PIXELS: ${VLM_MAX_PIXELS:-1003520}
+      VLM_SLOTS: ${VLM_MAX_NUM_SEQS:-2}
+    # Claims only once vLLM's /health answers, so no job waits on a model still loading.
+    depends_on: { vllm-nv: { condition: service_healthy } }
+    stop_grace_period: 30s          # DRAIN_SECONDS (20) + 10 s, worker 12
+    logging: *logging
