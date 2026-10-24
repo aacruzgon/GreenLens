@@ -1,6 +1,6 @@
 # PDM Backend: `knowledge` crate
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: weather fit states that its only shared weather definition is the humid hour of `domain::rules::weather::WeatherThresholds`, and the test fixture's `frost_risk` follows that type's rule. v0.1: the knowledge store over an in-memory index and the HNSW chunk search, plus the pure rules of retrieve-then-verify (candidate ranking, weather fit, scoring, diagnosis status and the question choice), compiled on Rust 1.99.1 with 19 tests including two property tests.
+> **Status:** Draft v0.3, 2026-10-24. v0.3: the disease classifier's call counts in a candidate's score (`classifier_weight`), `confirmed` needs a matched indicator, and open questions 2 and 3 are settled (backend roadmap S4). v0.2: weather fit states that its only shared weather definition is the humid hour of `domain::rules::weather::WeatherThresholds`, and the test fixture's `frost_risk` follows that type's rule. v0.1: the knowledge store over an in-memory index and the HNSW chunk search, plus the pure rules of retrieve-then-verify (candidate ranking, weather fit, scoring, diagnosis status and the question choice), compiled on Rust 1.99.1 with 19 tests including two property tests.
 
 Companion to the [backend architecture](README.md). It implements [architecture 5, knowledge base](../architecture/README.md#knowledge-base) and [6.3, retrieve then verify](../architecture/README.md#63-retrieve-then-verify), [contracts 7, diagnosis](../architecture/contracts.md#diagnosis) and [contracts 10](../architecture/contracts.md#10-knowledge-seed-format), over [database 5](../database/README.md#5-reads-indexes-and-vector-search). Every listing is copied from `crates/knowledge` by the docgen tool. `cargo check`, `cargo clippy --all-targets` and `cargo test -p knowledge` pass.
 
@@ -677,7 +677,8 @@ pub const fn fit_rank(fit: WeatherFit) -> u8 {
 
 | Rule | Here |
 |---|---|
-| Score | Sum of the weights of matched (`yes`) indicators minus the weights of contradicted (`no`) ones |
+| Score | Sum of the weights of matched (`yes`) indicators minus the weights of contradicted (`no`) ones, plus `classifier_weight` |
+| `classifier_weight` | The disease classifier's call on the problem: 3 at high confidence, 2 at medium, 0 at low or when it didn't name it (`scoring::classifier_weight`). Without it the head only ranked candidates, and on the S5 rig run a candidate the photos couldn't show (blossom end rot, no fruit in either shot) won at 0 over the head's early blight at −2 |
 | `unsure` | Counts for nothing; listed in `unsure` |
 | One answer per indicator | Ranked `user`, then `measurement`, then `vlm` (the order of `EvidenceSource`); between two of the same source, the later one wins |
 | Settled | An indicator answered by the user or a measurement is never asked again |
@@ -748,11 +749,13 @@ pub fn score_candidate(candidate: &Candidate<'_>, answers: &AnswerSet<'_>) -> Ca
     let sum = |list: &[IndicatorEvidence]| -> i32 {
         list.iter().map(|e| i32::from(e.weight.get())).sum()
     };
+    let classifier_weight = classifier_weight(candidate);
     CandidateScore {
         problem_id: profile.id.clone(),
         name: profile.name.clone(),
         kind: profile.kind,
-        score: sum(&matched) - sum(&contradicted),
+        score: sum(&matched) - sum(&contradicted) + i32::from(classifier_weight),
+        classifier_weight,
         matched,
         contradicted,
         unsure,
@@ -798,7 +801,7 @@ pub fn score_all<'k>(candidates: &[Candidate<'k>], answers: &AnswerSet<'_>) -> V
 | Status | Condition | In code |
 |---|---|---|
 | `healthy` | No candidate above zero; no pest (or invasive) organism and no damage pattern at medium or more; no classifier candidate other than `healthy` at medium or more; **and** positive evidence: the classifier's best result is `healthy` at medium or more, or every candidate has at least 2 of its 3 indicators answered `no`. A measured `no` counts only from an image whose `lesion_count` and `hole_count` both have a `max` of 0 | `nothing_points && (classifier_healthy \|\| all_no)` |
-| `confirmed` | The top candidate above zero, leading the second (or zero, alone) by at least the margin, and no question open | `top.score > 0 && lead >= margin && !question_open` |
+| `confirmed` | The top candidate above zero with at least one matched indicator, leading the second (or zero, alone) by at least the margin, and no question open. The classifier's weight never confirms alone | `top.score > 0 && !top.matched.is_empty() && lead >= margin && !question_open` |
 | `uncertain` | Everything else | |
 | `low_evidence` | `uncertain` and the first three conditions of `healthy` | `nothing_points` on an uncertain result |
 
@@ -883,7 +886,13 @@ pub fn decide(input: &StatusInput<'_>) -> StatusDecision {
     }
     if let Some(top) = scores.first() {
         let second = scores.get(1).map_or(0, |s| s.score);
-        if top.score > 0 && top.score - second >= input.margin && !input.question_open {
+        // The classifier's weight ranks a candidate but never confirms it alone: retrieve, then
+        // verify ([architecture 6.3]).
+        if top.score > 0
+            && !top.matched.is_empty()
+            && top.score - second >= input.margin
+            && !input.question_open
+        {
             return StatusDecision {
                 status: DiagnosisStatus::Confirmed,
                 low_evidence: false,
@@ -1066,7 +1075,7 @@ The port's methods return `StoreError` ([domain 6](domain.md#6-errors)). `IndexE
 | Store | Lookups through a `MockKnowledgeRepo`, `prey_of` only for beneficials, the species list filtered and paged |
 | Ranking | Classifier hits (3 distinct, `healthy` ignored); the classifier first, look-alikes filling, the cap before look-alikes; outside candidates skip the set |
 | Weather fit | Early blight in warm humid, cold dry and warm dry weather; no stated conditions |
-| Scoring | Source ranking; matched minus contradicted with `unsure` at zero |
+| Scoring | Source ranking; matched minus contradicted with `unsure` at zero; the classifier's weight by band |
 | Status | `confirmed` needs the margin and no open question; all `unsure` is ambiguous and asks for a close-up; early blight at 0.71 is not `low_evidence`; `healthy` from the classifier or from `no` answers; a measured `no` counts only from a clean image; the indicator question skips settled indicators |
 
 Two property tests (proptest 1.12, 256 cases each):
@@ -1079,10 +1088,14 @@ fn status_invariants(
     answers in proptest::collection::vec(proptest::collection::vec(answer(), 3), 1..5),
     pest in any::<bool>(), problem in any::<bool>(), healthy in any::<bool>(),
     open in any::<bool>(), margin in 1i32..4,
+    heads in proptest::collection::vec(proptest::option::of(0.0f64..=1.0), 4),
 ) {
     let profiles = fixtures::problems();
     let names = ["tomato_early_blight", "tomato_septoria_leaf_spot", "tomato_late_blight", "tomato_flea_beetle_damage"];
-    let cands = fixtures::candidates(&profiles, &names[..answers.len().min(4)]);
+    let mut cands = fixtures::candidates(&profiles, &names[..answers.len().min(4)]);
+    for (c, h) in cands.iter_mut().zip(&heads) {
+        c.classifier = h.map(Confidence::saturating);
+    }
     let mut ev = Vec::new();
     for (c, row) in cands.iter().zip(&answers) {
         for (ind, a) in c.indicators().zip(row) {
@@ -1109,6 +1122,7 @@ fn status_invariants(
     }
     if d.status == DiagnosisStatus::Confirmed {
         prop_assert!(scores[0].score > 0 && !open);
+        prop_assert!(!scores[0].matched.is_empty(), "the classifier never confirms alone");
         prop_assert!(scores[0].score - scores.get(1).map_or(0, |s| s.score) >= margin);
     }
     prop_assert_eq!(d.ambiguity.is_some(), d.status == DiagnosisStatus::Uncertain);
@@ -1119,12 +1133,16 @@ fn status_invariants(
 ```
 
 ```rust
-/// The score is matched minus contradicted weights, and a lower-ranked answer never
-/// changes an indicator a higher-ranked source answered.
+/// The score is matched minus contradicted weights plus the classifier's, and a
+/// lower-ranked answer never changes an indicator a higher-ranked source answered.
 #[test]
-fn score_is_arithmetic_and_respects_source_rank(row in proptest::collection::vec(answer(), 3), extra in answer()) {
+fn score_is_arithmetic_and_respects_source_rank(
+    row in proptest::collection::vec(answer(), 3), extra in answer(),
+    head in proptest::option::of(0.0f64..=1.0),
+) {
     let profiles = fixtures::problems();
-    let cands = fixtures::candidates(&profiles, &["tomato_early_blight"]);
+    let mut cands = fixtures::candidates(&profiles, &["tomato_early_blight"]);
+    cands[0].classifier = head.map(Confidence::saturating);
     let inds: Vec<_> = cands[0].indicators().collect();
     let mut ev = Vec::new();
     for (ind, a) in inds.iter().zip(&row) {
@@ -1134,8 +1152,10 @@ fn score_is_arithmetic_and_respects_source_rank(row in proptest::collection::vec
     }
     let before = crate::scoring::score_candidate(&cands[0], &AnswerSet::new(&ev));
     let expected: i32 = before.matched.iter().map(|e| i32::from(e.weight.get())).sum::<i32>()
-        - before.contradicted.iter().map(|e| i32::from(e.weight.get())).sum::<i32>();
+        - before.contradicted.iter().map(|e| i32::from(e.weight.get())).sum::<i32>()
+        + i32::from(before.classifier_weight);
     prop_assert_eq!(before.score, expected);
+    prop_assert_eq!(before.classifier_weight > 0, head.is_some_and(|h| h >= 0.5));
     if let (Some((ans, src)), Some(Some((_, kept)))) = (extra, row.first())
         && src < *kept
     {
@@ -1154,8 +1174,8 @@ fn score_is_arithmetic_and_respects_source_rank(row in proptest::collection::vec
 These belong in [contracts 12](../architecture/contracts.md#12-open-questions):
 
 1. **Weather fit arithmetic.** Contracts 7 defines the three values but not how they are computed. Section 6 fixes "all stated conditions met / none / some" over now, the past week and 3 forecast days.
-2. **The confirmed margin** stays open question 3 of contracts 12. The pipeline's default is 2 (one weight-2 indicator), in `PipelineConfig::diagnosis_margin`.
-3. **Empty candidate sets.** A `label_only` species with no classifier result has no candidates. Section 8 keeps it from being `healthy` without the classifier's own `healthy` result. Confirm that reading.
+2. **The confirmed margin.** Settled for the submission in backend roadmap S4 (contracts 12, question 3): 2, one weight-2 indicator, in `PipelineConfig::diagnosis_margin`, with the classifier's weight in the score. It is fitted with the indicator weights once the evaluation harness exists.
+3. **Empty candidate sets.** Settled in backend roadmap S4: a `label_only` species with no classifier result has no candidates; it is `uncertain` with `low_evidence`, never `healthy` without the classifier's own `healthy` result, and `choose_question` asks nothing, since a photo can't add a candidate the knowledge base doesn't hold (test `an_empty_candidate_set_is_low_evidence_and_asks_nothing`).
 
 ---
 

@@ -1,6 +1,6 @@
 # PDM Backend: `knowledge` crate
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: weather fit states that its only shared weather definition is the humid hour of `domain::rules::weather::WeatherThresholds`, and the test fixture's `frost_risk` follows that type's rule. v0.1: the knowledge store over an in-memory index and the HNSW chunk search, plus the pure rules of retrieve-then-verify (candidate ranking, weather fit, scoring, diagnosis status and the question choice), compiled on Rust 1.99.1 with 19 tests including two property tests.
+> **Status:** Draft v0.3, 2026-10-24. v0.3: the disease classifier's call counts in a candidate's score (`classifier_weight`), `confirmed` needs a matched indicator, and open questions 2 and 3 are settled (backend roadmap S4). v0.2: weather fit states that its only shared weather definition is the humid hour of `domain::rules::weather::WeatherThresholds`, and the test fixture's `frost_risk` follows that type's rule. v0.1: the knowledge store over an in-memory index and the HNSW chunk search, plus the pure rules of retrieve-then-verify (candidate ranking, weather fit, scoring, diagnosis status and the question choice), compiled on Rust 1.99.1 with 19 tests including two property tests.
 
 Companion to the [backend architecture](README.md). It implements [architecture 5, knowledge base](../architecture/README.md#knowledge-base) and [6.3, retrieve then verify](../architecture/README.md#63-retrieve-then-verify), [contracts 7, diagnosis](../architecture/contracts.md#diagnosis) and [contracts 10](../architecture/contracts.md#10-knowledge-seed-format), over [database 5](../database/README.md#5-reads-indexes-and-vector-search). Every listing is copied from `crates/knowledge` by the docgen tool. `cargo check`, `cargo clippy --all-targets` and `cargo test -p knowledge` pass.
 
@@ -166,7 +166,8 @@ Every number compared here is the profile's own. The one shared weather definiti
 
 | Rule | Here |
 |---|---|
-| Score | Sum of the weights of matched (`yes`) indicators minus the weights of contradicted (`no`) ones |
+| Score | Sum of the weights of matched (`yes`) indicators minus the weights of contradicted (`no`) ones, plus `classifier_weight` |
+| `classifier_weight` | The disease classifier's call on the problem: 3 at high confidence, 2 at medium, 0 at low or when it didn't name it (`scoring::classifier_weight`). Without it the head only ranked candidates, and on the S5 rig run a candidate the photos couldn't show (blossom end rot, no fruit in either shot) won at 0 over the head's early blight at −2 |
 | `unsure` | Counts for nothing; listed in `unsure` |
 | One answer per indicator | Ranked `user`, then `measurement`, then `vlm` (the order of `EvidenceSource`); between two of the same source, the later one wins |
 | Settled | An indicator answered by the user or a measurement is never asked again |
@@ -187,7 +188,7 @@ Every number compared here is the profile's own. The one shared weather definiti
 | Status | Condition | In code |
 |---|---|---|
 | `healthy` | No candidate above zero; no pest (or invasive) organism and no damage pattern at medium or more; no classifier candidate other than `healthy` at medium or more; **and** positive evidence: the classifier's best result is `healthy` at medium or more, or every candidate has at least 2 of its 3 indicators answered `no`. A measured `no` counts only from an image whose `lesion_count` and `hole_count` both have a `max` of 0 | `nothing_points && (classifier_healthy \|\| all_no)` |
-| `confirmed` | The top candidate above zero, leading the second (or zero, alone) by at least the margin, and no question open | `top.score > 0 && lead >= margin && !question_open` |
+| `confirmed` | The top candidate above zero with at least one matched indicator, leading the second (or zero, alone) by at least the margin, and no question open. The classifier's weight never confirms alone | `top.score > 0 && !top.matched.is_empty() && lead >= margin && !question_open` |
 | `uncertain` | Everything else | |
 | `low_evidence` | `uncertain` and the first three conditions of `healthy` | `nothing_points` on an uncertain result |
 
@@ -241,7 +242,7 @@ The port's methods return `StoreError` ([domain 6](domain.md#6-errors)). `IndexE
 | Store | Lookups through a `MockKnowledgeRepo`, `prey_of` only for beneficials, the species list filtered and paged |
 | Ranking | Classifier hits (3 distinct, `healthy` ignored); the classifier first, look-alikes filling, the cap before look-alikes; outside candidates skip the set |
 | Weather fit | Early blight in warm humid, cold dry and warm dry weather; no stated conditions |
-| Scoring | Source ranking; matched minus contradicted with `unsure` at zero |
+| Scoring | Source ranking; matched minus contradicted with `unsure` at zero; the classifier's weight by band |
 | Status | `confirmed` needs the margin and no open question; all `unsure` is ambiguous and asks for a close-up; early blight at 0.71 is not `low_evidence`; `healthy` from the classifier or from `no` answers; a measured `no` counts only from a clean image; the indicator question skips settled indicators |
 
 Two property tests (proptest 1.12, 256 cases each):
@@ -257,8 +258,8 @@ Two property tests (proptest 1.12, 256 cases each):
 These belong in [contracts 12](../architecture/contracts.md#12-open-questions):
 
 1. **Weather fit arithmetic.** Contracts 7 defines the three values but not how they are computed. Section 6 fixes "all stated conditions met / none / some" over now, the past week and 3 forecast days.
-2. **The confirmed margin** stays open question 3 of contracts 12. The pipeline's default is 2 (one weight-2 indicator), in `PipelineConfig::diagnosis_margin`.
-3. **Empty candidate sets.** A `label_only` species with no classifier result has no candidates. Section 8 keeps it from being `healthy` without the classifier's own `healthy` result. Confirm that reading.
+2. **The confirmed margin.** Settled for the submission in backend roadmap S4 (contracts 12, question 3): 2, one weight-2 indicator, in `PipelineConfig::diagnosis_margin`, with the classifier's weight in the score. It is fitted with the indicator weights once the evaluation harness exists.
+3. **Empty candidate sets.** Settled in backend roadmap S4: a `label_only` species with no classifier result has no candidates; it is `uncertain` with `low_evidence`, never `healthy` without the classifier's own `healthy` result, and `choose_question` asks nothing, since a photo can't add a candidate the knowledge base doesn't hold (test `an_empty_candidate_set_is_low_evidence_and_asks_nothing`).
 
 ---
 

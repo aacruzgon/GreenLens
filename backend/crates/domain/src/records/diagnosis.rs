@@ -131,8 +131,13 @@ pub struct CandidateScore {
     pub name: String,
     /// Its kind.
     pub kind: ProblemKind,
-    /// Sum of matched weights minus contradicted weights.
+    /// Sum of matched weights minus contradicted weights, plus `classifier_weight`.
     pub score: i32,
+    /// What the disease classifier adds for this problem: 3 when it named it with high
+    /// confidence, 2 with medium, 0 otherwise. Diagnoses stored before the field read as 0.
+    #[serde(default)]
+    #[schema(required = true)]
+    pub classifier_weight: u8,
     /// Answered `yes`.
     pub matched: Vec<IndicatorEvidence>,
     /// Answered `no`.
