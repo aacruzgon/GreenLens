@@ -18,6 +18,8 @@ Every plant shot of every dev case is embedded whole by BioCLIP 2, as the worker
 
 Each matrix's report also gives zero-shot's top-1 per true species per case (what a species is
 taken for) and zero-shot's share of the head's crops per shot (how often it is under one half).
+Wikimedia Commons cases are also scored on their own, beside the other cases: their photos are
+from before 2026 (`taken`), and BioCLIP 2 may have trained on them through EOL (evaluation.md §2).
 
 Each is scored per shot and per case, the shots combined with the worker's weights (whole plant
 and flower or fruit 2, leaf close-up and underside 1; `vision::perception::heads::combine_species`).
@@ -66,6 +68,12 @@ def matrices(entries: list[dict]) -> list[dict]:
             rows, ids = matrix_species(e)
             out.append({"version": e["version"], "source": e["source"], "rows": rows, "ids": ids})
     return out
+
+
+def commons_cases(manifest: Path) -> set[str]:
+    """The cases from Wikimedia Commons (commons.py), whose photos BioCLIP 2 may have trained on."""
+    return {c["case_id"] for c in map(json.loads, filter(str.strip, manifest.read_text().splitlines()))
+            if "commons.wikimedia.org" in c.get("source", "")}
 
 
 def by_case(rows: list[dict], p: np.ndarray) -> tuple[list[str], np.ndarray]:
@@ -125,6 +133,8 @@ def main(argv=None) -> int:
     on_crop = np.asarray([t in crops for t in truth])
     case_truth, p_head_case = by_case(rows, p_head)
     case_on_crop = np.asarray([t in crops for t in case_truth])
+    commons = commons_cases(args.manifest)
+    case_commons = np.asarray([c in commons for c in sorted({r["case"] for r in rows})])   # by_case's order
     everything = np.ones(len(truth), bool)
 
     results = []
@@ -139,6 +149,10 @@ def main(argv=None) -> int:
         r["case"] = {"zero-shot, all cases": score(case_truth, p_zs_case, m["ids"], np.ones(len(case_truth), bool)),
                      "zero-shot": score(case_truth, p_zs_case, m["ids"], case_on_crop),
                      "head": score(case_truth, p_head_case, crops, case_on_crop)}
+        if case_commons.any():   # BioCLIP 2 may have trained on these, so they are their own slice
+            r["case"]["zero-shot, all Commons cases"] = score(case_truth, p_zs_case, m["ids"], case_commons)
+            if (~case_commons).any():
+                r["case"]["zero-shot, all other cases"] = score(case_truth, p_zs_case, m["ids"], ~case_commons)
         if not missing:
             p_avg = combine(p_zs, m["ids"], p_head, crops)
             _, p_avg_case = by_case(rows, p_avg)
@@ -157,7 +171,7 @@ def main(argv=None) -> int:
     kinds = collections.Counter(r["kind"] for r in rows)
     report = {"date": today, "head": args.head, "head_crops": crops, "species_temperature": t_species,
               "shots": len(rows),
-              "cases": len(case_truth), "kinds": dict(kinds), "results": results}
+              "cases": len(case_truth), "commons_cases": int(case_commons.sum()), "kinds": dict(kinds), "results": results}
     REPORTS.mkdir(parents=True, exist_ok=True)
     (REPORTS / f"{args.out}.json").write_text(json.dumps(report, indent=2) + "\n")
     (REPORTS / f"{args.out}.md").write_text(markdown(report, args.out))
@@ -175,6 +189,9 @@ def markdown(rep: dict, name: str) -> str:
              f"{rep.get('species_temperature', 1.0):g}; \"head\" is the species head alone; "
              "\"average\" is models.md 6's rule (with every species of the matrix one of the head's crops, "
              "the plain average). Rows without \"all\" count only the head's crops, so the three compare.", ""]
+    if n := rep.get("commons_cases"):
+        lines += [f"{n} of the cases are from Wikimedia Commons, with photos from before 2026 that BioCLIP 2 may have "
+                  "trained on, so zero-shot is also scored on them and on the other cases apart.", ""]
     for r in rep["results"]:
         lines += [f"## Matrix `{r['matrix']}`: {r['species']} species", "", f"{r['source']}.", ""]
         if r["missing_crops"]:

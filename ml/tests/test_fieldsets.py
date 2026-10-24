@@ -33,7 +33,8 @@ def test_every_class_names_a_problem_the_training_mappings_know():
         for folder, c in s["classes"].items():
             assert c["outcome"] in ("diagnosed", "healthy"), folder
             assert set(c["problems"]) <= known, folder
-            assert bool(c["problems"]) == (c["outcome"] == "diagnosed"), folder
+            inat.check_truth(c["outcome"], c["problems"], c.get("look_alike"), folder)  # a look-alike names no problem
+            assert bool(c["problems"]) == (c["outcome"] == "diagnosed" and not c.get("look_alike")), folder
 
 
 def test_the_pick_order_is_stable_and_skips_non_images():
@@ -132,12 +133,21 @@ def test_neighbouring_frames_share_the_lowest_frames_plant_key_and_split():
     files = ["fieldsets/s/a/leaf-10.jpg", "fieldsets/s/a/leaf-7.jpg", "fieldsets/s/a/leaf-8.jpg",
              "fieldsets/s/a/leaf-14.jpg", "fieldsets/s/b/leaf-9.jpg", "fieldsets/s/a/leaf.jpg"]
     cases = [one_photo(f, split="test") for f in files] + [one_photo("inat/1/2.jpg", "inat-1", "test")]
+    cases[0] = {**cases[0], "split": "dev"}
     out = fs.group_frames(cases)
     assert [c["plant_key"] for c in out[:3]] == ["s-a-leaf-7"] * 3
-    assert {c["split"] for c in out[:3]} == {inat.split_of("s-a-leaf-7")}
-    assert out[3]["plant_key"] == "s-a-leaf-14" and out[3]["split"] == inat.split_of("s-a-leaf-14")
+    assert {c["split"] for c in out[:3]} == {"test"}  # one of its cases is in test, so the plant is
+    assert out[3]["plant_key"] == "s-a-leaf-14" and out[3]["split"] == "test"
     assert out[4]["plant_key"] == "s-b-leaf-9"
     assert out[5:] == cases[5:]
+    before = fs.group_frames(cases, frozen=False)  # the rule before M18: the key's split
+    assert {c["split"] for c in before[:3]} == {inat.split_of("s-a-leaf-7")} == {"dev"}
+
+
+def test_a_new_plant_goes_to_dev_since_the_test_split_is_frozen():
+    files = ["fieldsets/s/a/leaf-1.jpg", "fieldsets/s/a/leaf-2.jpg", "fieldsets/s/c/leaf-5.jpg"]
+    out = fs.group_frames([one_photo(f) for f in files] + [one_photo("fieldsets/s/c/leaf-6.jpg", split="test")])
+    assert [c["split"] for c in out] == ["dev", "dev", "test", "test"]
 
 
 def add_beside(photo, monkeypatch, there: str):
@@ -157,23 +167,21 @@ KEY_201 = "maize-bd-2026-common-rust-img-201"
 
 
 def test_add_gives_a_case_already_there_its_new_neighbours_key(photo, monkeypatch):
-    manifest, args = add_beside(photo, monkeypatch, "fieldsets/maize-bd-2026/common-rust/img-203.jpg")
-    assert inat.split_of("maize-bd-2026-common-rust-img-203") == inat.split_of(KEY_201)
-    assert fs.main(args) == 0
-    cases = [json.loads(line) for line in manifest.read_text().splitlines()]
-    assert [(c["plant_key"], c["split"]) for c in cases] == [(KEY_201, inat.split_of(KEY_201))] * 2
-
-
-def test_add_moves_a_case_already_there_to_another_split_only_when_told(photo, monkeypatch, capsys):
     there = "fieldsets/maize-bd-2026/common-rust/img-204.jpg"
     manifest, args = add_beside(photo, monkeypatch, there)
-    was, now = inat.split_of(fs.own_key(there)), inat.split_of(KEY_201)
-    assert was != now
+    assert json.loads(manifest.read_text())["split"] == inat.split_of(fs.own_key(there)) == "dev"
+    assert fs.main(args) == 0
+    cases = [json.loads(line) for line in manifest.read_text().splitlines()]
+    assert [(c["plant_key"], c["split"]) for c in cases] == [(KEY_201, "dev")] * 2
+
+
+def test_add_leaves_out_a_new_neighbour_of_a_test_case(photo, monkeypatch, capsys):
+    there = "fieldsets/maize-bd-2026/common-rust/img-203.jpg"
+    manifest, args = add_beside(photo, monkeypatch, there)
     before = manifest.read_text()
-    assert fs.main(args) == 1 and manifest.read_text() == before
-    assert f"{there}: {was} -> {now}" in capsys.readouterr().err
-    assert fs.main(args + ["--resplit"]) == 0
-    assert [json.loads(line)["split"] for line in manifest.read_text().splitlines()] == [now, now]
+    assert json.loads(before)["split"] == "test"
+    assert fs.main(args) == 1 and manifest.read_text() == before  # nor is the test case rekeyed
+    assert "a neighbouring frame of a test case" in capsys.readouterr().err
 
 
 def test_a_key_set_by_hand_is_kept_and_its_run_takes_it():
@@ -182,9 +190,10 @@ def test_a_key_set_by_hand_is_kept_and_its_run_takes_it():
              one_photo(a + "80.jpg", "plant-x"), one_photo("fieldsets/s/b/leaf-3.jpg", "plant-x"), one_photo(a + "60.jpg")]
     out = fs.group_frames(cases)
     assert [c["plant_key"] for c in out] == ["s-a-leaf-42"] * 3 + ["plant-x"] * 2 + ["s-a-leaf-60"]
-    assert {c["split"] for c in out[:3]} == {inat.split_of("s-a-leaf-42")}
-    assert {c["split"] for c in out[3:5]} == {inat.split_of("plant-x")}
+    assert {c["split"] for c in out} == {"dev"}
     assert fs.group_frames(out) == out
+    before = fs.group_frames(cases, frozen=False)
+    assert {c["split"] for c in before[3:5]} == {inat.split_of("plant-x")} == {"test"}
 
 
 def test_a_key_grouping_set_follows_its_run_when_a_lower_frame_joins():
@@ -218,3 +227,15 @@ def test_regroup_groups_the_manifest_and_moves_a_case_only_when_told(tmp_path):
 def test_the_manifests_neighbouring_frames_share_a_plant_key():
     lines = inat.MANIFEST.read_text().splitlines()
     assert fs.regroup(lines) == lines, "run `python -m ml.training.eval.fieldsets regroup` (evaluation.md §2, Splits)"
+
+
+def test_the_copy_check_skips_sources_the_leakage_check_skips(tmp_path, monkeypatch):
+    (tmp_path / "raw/plantdoc_cls/a").mkdir(parents=True)
+    (tmp_path / "raw/plantdoc_cls/a/1.jpg").write_bytes(b"x")
+    sources = tmp_path / "sources.yaml"
+    sources.write_text(yaml.safe_dump({"datasets": [{"name": "plantdoc_cls"}, {"name": "coco_val2017"},
+                                                    {"name": "plantseg", "leakage": False},
+                                                    {"name": "openimages_v7_faces"}]}))
+    monkeypatch.setattr(fs, "SOURCES", sources)
+    monkeypatch.setattr(fs, "RAW", tmp_path / "raw")
+    assert fs.training_images() == [tmp_path / "raw/plantdoc_cls/a/1.jpg"]  # plantseg and the face tables aren't on disk, and aren't needed

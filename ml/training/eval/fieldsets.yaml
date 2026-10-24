@@ -94,3 +94,43 @@ sets:
         problems: [tomato_septoria_leaf_spot]
         outcome: diagnosed
         note: The only Septoria source found. Keep small round spots with dark edges and pale centres.
+
+  # --- Look-alikes (M10, 2026-10-24): abiotic problems that mimic disease ----------------------
+  # A look-alike is diagnosed with no problems and names its disorder (inat.LOOK_ALIKES), since the
+  # knowledge base has none: the scan should end without a confirmed disease (evaluation.md §3).
+  - name: maize-in-2025
+    title: Maize Nutrient Deficiency Dataset
+    dataset: 34gb2gr7p2
+    version: 1
+    licence: CC BY 4.0
+    citation: "Khade V. (2025) Mendeley Data V1, doi:10.17632/34gb2gr7p2.1"
+    taken: >-
+      maize fields in Mangsuli and Bedag, near the Maharashtra-Karnataka border, India, on a Redmi Note 13s,
+      in field surveys led by domain experts; published 2025-06-18
+    classes:
+      "Maize Nutrient Deficiency Dataset/Nitrogen":
+        {species_id: corn, problems: [], outcome: diagnosed, look_alike: nitrogen_deficiency}
+      "Maize Nutrient Deficiency Dataset/Pottasium":
+        {species_id: corn, problems: [], outcome: diagnosed, look_alike: potassium_deficiency}
+      "Maize Nutrient Deficiency Dataset/Magnessium":
+        {species_id: corn, problems: [], outcome: diagnosed, look_alike: magnesium_deficiency}
+      "Maize Nutrient Deficiency Dataset/Phosphorous":
+        {species_id: corn, problems: [], outcome: diagnosed, look_alike: phosphorus_deficiency}
+
+  # tomato-bd-2025's set again, for its magnesium class only: a separate name, so fetching it
+  # leaves tomato-bd-2025's picks as they are. Its leaf-miner class waits: the knowledge base has no
+  # leaf-miner problem, so a case of it has no truth to give yet.
+  - name: tomato-bd-2025-mg
+    title: Tomato Leaf Disease Classification Dataset (its magnesium deficiency class)
+    dataset: jttrv2w27r
+    version: 2
+    licence: CC BY 4.0
+    citation: "Rachin N., Likhon N. (2025) Mendeley Data V2, doi:10.17632/jttrv2w27r.2"
+    taken: fields across Bangladesh, March 10-20, 2025
+    classes:
+      "Tomato Dataset/Magnesium Deficiency":
+        species_id: tomato
+        problems: []
+        outcome: diagnosed
+        look_alike: magnesium_deficiency
+        note: Keep yellowing between the veins with the veins still green, starting on older leaves.
