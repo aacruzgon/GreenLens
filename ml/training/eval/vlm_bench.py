@@ -375,12 +375,31 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         "healthy_with_animals_left_out": healthy_with_animals,
         "look_alike_no_candidate": look_clean / look_n if look_n else None, "look_alike_n": look_n,
         "unsure_share": unsure / answers_n if answers_n else None, "top_ties": ties,
-        "damage_findings": dict(damage), "organisms_reported": organisms,
+        "damage_findings": dict(damage), "organisms_reported": organisms, "reasons": reason_lengths(rows),
         "indicators": {k: {side: dict(c) for side, c in v.items()} for k, v in sorted(per_indicator.items())},
         "certainty": {"species_guess": {k: {"n": n, "right": h} for k, (n, h) in sorted(certainty["species_guess"].items())},
                       "damage": dict(sorted(certainty["damage"].items())),
                       "organisms": dict(sorted(certainty["organisms"].items()))},
     }
+
+
+def reason_lengths(rows: list[dict]) -> dict:
+    """The indicator reasons as decoded: their lengths in characters, and how many end without a full
+    stop. On Qwen3.5 a reason with none is one the schema's `maxLength` stopped (#183)."""
+    rs = [x.get("reason") or "" for r in rows if r["ok"] for x in r["result"]["indicators"]["answers"]]
+    lengths = [len(x) for x in rs]
+    return {"n": len(rs), "median": pct(lengths, 0.5), "p90": pct(lengths, 0.9), "max": max(lengths, default=None),
+            "no_closing_stop": sum(not x.rstrip().endswith((".", "!", "?")) for x in rs)}
+
+
+def answer_changes(rows: list[dict], base: list[dict]) -> dict:
+    """The indicator answers that differ from another run's on the same case and indicator."""
+    def answers(rs):
+        return {(r["case_id"], x["indicator_id"]): x["answer"] for r in rs if r["ok"]
+                for x in r["result"]["indicators"]["answers"]}
+    mine, theirs = answers(rows), answers(base)
+    shared = mine.keys() & theirs.keys()
+    return {"shared": len(shared), "changed": sum(mine[k] != theirs[k] for k in shared)}
 
 
 def conf_key(c) -> str:
@@ -457,7 +476,7 @@ def cases_label(path: Path) -> dict:
 
 
 def score(args) -> int:
-    report = []
+    report, first = [], None
     for run_root in args.runs:
         for d in run_dirs(Path(run_root)):
             try:
@@ -470,6 +489,10 @@ def score(args) -> int:
                 continue
             s = score_run(rows, cases_by_id)
             s["jobs"] = len(cases_by_id)   # every case, so a run cut short shows the jobs it never ran
+            if first is None:
+                first = (meta["label"], rows)
+            else:
+                s["answers_vs_first"] = {"run": first[0], **answer_changes(rows, first[1])}
             model = meta["models"][0].get("root") or meta["models"][0]["id"] if meta["models"] else None
             report.append({**{k: meta[k] for k in ("label", "max_pixels", "concurrency", "peak_gpu_mib", "peak_kv_cache")},
                            "exit": meta.get("exit"), "seconds": meta.get("seconds"), "model": model,
@@ -495,11 +518,27 @@ def score(args) -> int:
     if left := max((r.get("healthy_with_animals_left_out", 0) for r in report), default=0):
         lines += ["", f"{left} healthy case{'s' * (left != 1)} with an animal on {'them' if left != 1 else 'it'} "
                       f"(`organisms_unboxed`) {'are' if left != 1 else 'is'} left out of the healthy columns until the boxes are drawn."]
+    lines += reason_table(report)
     lines += certainty_tables(report)
     lines += indicator_tables(report)
     (REPORTS / f"vlm-bench-{args.out}.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
     return 0
+
+
+def reason_table(report: list[dict]) -> list[str]:
+    """Each run's indicator reasons, and its answers that differ from the first run's."""
+    out = ["", "## Indicator reasons", "",
+           "Each reason's length in characters as decoded, and the reasons with no closing full stop: on Qwen3.5, "
+           "the sign of one the schema's `maxLength` stopped (#183). Answers changed: on the same case and "
+           "indicator as the first run.", "",
+           "| Run | Reasons | Median | p90 | Longest | No closing stop | Answers changed from the first run |",
+           "|---|---|---|---|---|---|---|"]
+    for r in report:
+        q, vs = r["reasons"], r.get("answers_vs_first")
+        changed = f"{vs['changed']} of {vs['shared']}" if vs else "—"
+        out.append(f"| {r['label']} | {q['n']} | {q['median']} | {q['p90']} | {q['max']} | {q['no_closing_stop']} | {changed} |")
+    return out
 
 
 def main(argv=None) -> int:

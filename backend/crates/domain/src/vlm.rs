@@ -391,7 +391,8 @@ pub struct VlmFindingsRaw {
 /// One value of `VlmIndicatorsRaw`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndicatorAnswerRaw {
-    /// At most 60 characters; written first, so the answer follows from it.
+    /// At most 100 characters (the prompt asks for at most 60); written first, so the answer
+    /// follows from it.
     pub reason: String,
     /// The answer; `"unsure"` only when none of the indicator's kinds is in the call.
     pub answer: Answer,
