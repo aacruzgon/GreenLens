@@ -56,6 +56,17 @@ pub enum Stop {
     Refusal,
 }
 
+/// The tokens a call used, as the backend reported them. `input` is the API's `input_tokens`
+/// alone, which is every input token while the hosted backend sets no `cache_control`; with
+/// caching on, the cache-creation and cache-read tokens would have to be added to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tokens {
+    /// Input tokens, images included.
+    pub input: u32,
+    /// Output tokens, thinking included.
+    pub output: u32,
+}
+
 /// The answer's text (JSON) and how it ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VlmReply {
@@ -63,6 +74,8 @@ pub struct VlmReply {
     pub text: String,
     /// Why it stopped.
     pub stop: Stop,
+    /// The tokens used, when the backend reports them (the hosted API does).
+    pub tokens: Option<Tokens>,
 }
 
 /// A VLM backend. The adapter is generic over it (`VlmAdapter<B>`), so the trait is never a
@@ -146,6 +159,7 @@ impl VlmBackend for OpenAiBackend {
                     Stop::Complete
                 }
             },
+            tokens: None,
         })
     }
 }
@@ -222,6 +236,10 @@ impl VlmBackend for AnthropicBackend {
                 Some(anthropic::StopReason::Refusal) => Stop::Refusal,
                 _ => Stop::Complete,
             },
+            tokens: Some(Tokens {
+                input: message.usage.input_tokens,
+                output: message.usage.output_tokens,
+            }),
         })
     }
 }

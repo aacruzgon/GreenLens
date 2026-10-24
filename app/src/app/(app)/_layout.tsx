@@ -41,6 +41,10 @@ export default function AppLayout() {
           options={{ presentation: "formSheet", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }}
         />
         <Stack.Screen name="plants/[plantId]/index" />
+        {/* The LiDAR day-1 check and evaluation captures: a camera, so full screen (roadmap F5). */}
+        <Stack.Screen name="dev/depth-check" options={{ presentation: "fullScreenModal" }} />
+        {/* The garden mapping session: the camera, full screen (roadmap F5; flows 11). */}
+        <Stack.Screen name="garden/map-session" options={{ presentation: "fullScreenModal" }} />
         {/* A new task, or an edit of the user's own (screens 3.7). */}
         <Stack.Screen
           name="tasks/edit"

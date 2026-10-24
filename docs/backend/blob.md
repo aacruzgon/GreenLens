@@ -1,6 +1,6 @@
 # PDM Backend: `blob` crate
 
-> **Status:** Draft v0.2.1, 2026-10-16. v0.2.1: the research notes are no longer named by a path outside the repository. v0.2: a delete's only deadline is the client's 120-second operation timeout per attempt (storage v1.2.3), no task timeout around it. v0.1: `S3BlobStore`, the object store over `RustFS` 1.0.1 with `aws-sdk-s3` 1.152, a `DeleteQueue` that runs every delete detached so it is never cancelled, an in-memory store for tests and the orphan sweep's listing side, run against the pinned `RustFS` image.
+> **Status:** Draft v0.2.2, 2026-10-23. v0.2.2: `DeleteQueue::queued_store` gives `pipeline` an `Arc<dyn BlobStore>` whose deletes go through the queue (`QueuedDeletes`), for the masks it deletes when a job's lease is lost after their puts. v0.2.1: the research notes are no longer named by a path outside the repository. v0.2: a delete's only deadline is the client's 120-second operation timeout per attempt (storage v1.2.3), no task timeout around it. v0.1: `S3BlobStore`, the object store over `RustFS` 1.0.1 with `aws-sdk-s3` 1.152, a `DeleteQueue` that runs every delete detached so it is never cancelled, an in-memory store for tests and the orphan sweep's listing side, run against the pinned `RustFS` image.
 
 Companion to the [backend architecture](README.md) and the [storage notes](../storage/README.md). The port it implements, `BlobStore`, and the key types `ObjectKey` and `ObjectPrefix` are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/blob` with the docgen tool: `cargo check -p blob`, `cargo clippy -p blob --all-targets` and `cargo test -p blob` (4 unit tests) pass on Rust 1.99.1, and the ignored integration test passes against `rustfs/rustfs:1.0.1` by digest.
 
@@ -30,7 +30,7 @@ Companion to the [backend architecture](README.md) and the [storage notes](../st
 
 **What it never does.** It builds no key from user input (keys come from `domain`'s `ObjectKey`, built only from typed ids); it never presigns a URL (the API serves the bytes, [storage 3](../storage/README.md#3-how-images-are-served)); it never touches the database. No AWS type appears in its public API: errors are the domain's `BlobError` and bodies are the domain's `ByteStream`, so `api` doesn't depend on `aws-sdk-s3`.
 
-**Who calls it.** `api` holds `Arc<dyn BlobStore>` for puts and gets, and a `DeleteQueue` for every delete; the deletion cascade and the orphan sweep go through the queue.
+**Who calls it.** `api` holds `Arc<dyn BlobStore>` for puts and gets, and a `DeleteQueue` for every delete; the deletion cascade and the orphan sweep go through the queue. `pipeline` holds only `Arc<dyn BlobStore>`, so `api` gives it the queue's store (`DeleteQueue::queued_store`), whose deletes go through the queue too.
 
 **Where it departs from the storage notes** (each is in section 13):
 
@@ -94,7 +94,7 @@ crates/blob/
 │  ├─ client.rs    BlobConfig, storage_client (storage 5 with a pinned behaviour version)
 │  ├─ s3.rs        S3BlobStore: the BlobStore port over aws-sdk-s3
 │  ├─ error.rs     map_sdk_error: SdkError → BlobError, 412 by status or code
-│  ├─ delete.rs    DeleteQueue, DeleteJob, DeleteHandle, DeleteOutcome: detached, never cancelled
+│  ├─ delete.rs    DeleteQueue, DeleteJob, DeleteHandle, DeleteOutcome, QueuedDeletes: detached, never cancelled
 │  ├─ memory.rs    MemoryBlobStore, the in-memory fake with RustFS's rules
 │  └─ sweep.rs     orphan_candidates: the garden's objects older than an hour
 └─ tests/rustfs.rs ignored: put, 412, streamed get, 1005 keys listed and deleted against RustFS 1.0.1
@@ -480,6 +480,25 @@ impl DeleteQueue {
     pub fn in_flight(&self) -> usize {
         self.tracker.len()
     }
+
+    /// The queue's store, with every delete sent through the queue: for code that holds only
+    /// `Arc<dyn BlobStore>` (`pipeline`, whose deletes would otherwise run inside a request
+    /// future). See [`QueuedDeletes`].
+    pub fn queued_store(&self) -> Arc<dyn BlobStore> {
+        Arc::new(QueuedDeletes {
+            queue: self.clone(),
+        })
+    }
+}
+```
+
+```rust
+/// A [`BlobStore`] whose `delete_keys` and `delete_prefix` [`submit`](DeleteQueue::submit) a
+/// job and wait for its outcome, so a caller dropped while it waits leaves the delete running;
+/// puts, gets and lists go straight to the queue's store. A delete that gave up is the
+/// `DeleteReport` of the keys still failed, or the last attempt's error.
+pub struct QueuedDeletes {
+    queue: DeleteQueue,
 }
 ```
 
@@ -743,6 +762,7 @@ The SDK error stays the `source`; `DisplayErrorContext` prints the whole chain i
 | `memory::puts_never_overwrite_and_gets_stream` | The fake's put, `AlreadyExists`, the streamed body, `NotFound` |
 | `delete::a_dropped_handle_never_stops_the_delete` | A handle dropped at once; the prefix is still deleted |
 | `delete::the_outcome_reports_the_deleted_keys` | A missing key counts as deleted |
+| `delete::a_queued_stores_delete_outlives_its_caller` | `queued_store`'s put goes to the store; its delete, dropped after one poll, still runs and `drain` waits for it |
 | `sweep::only_objects_older_than_an_hour_are_candidates` | The age cut-off, on the injected clock |
 | `tests/rustfs.rs` (ignored) | Against `rustfs/rustfs:1.0.1` by digest: the put, the `412` as `AlreadyExists`, the streamed get with its quoted `ETag`, `NotFound`, 1005 keys listed in two pages and deleted in two batches through the `DeleteQueue`, another prefix left alone ✓ (2026-10-16) |
 

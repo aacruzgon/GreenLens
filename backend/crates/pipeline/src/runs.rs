@@ -5,16 +5,17 @@
 use domain::{
     authz::{Editor, Membership, Viewer},
     events::{ResolvedBy, RunReason, ScanEventBody, Stage},
-    id::{PlantId, ScanId},
+    id::{PlantId, ScanId, SpeciesId},
     jobs::{Capability, JobKind, JobSpec, PriorRegion, RegionClass},
-    ports::{IdGenExt, LiveWorker, NewJob, RunStart, ScanSnapshot},
+    ports::{Conflict, IdGenExt, LiveWorker, NewJob, RunStart, ScanSnapshot, StoreError},
     records::observation::ObservationStage,
     rules::{
         scan_state::{SpeciesFollow, SubmitDecision, decide_submit, species_follow},
         stages::{EarlierRun, perception_stages, run_stages},
     },
-    scan::{Plant, Scan, ScanStatus, SpeciesChoice},
+    scan::{Plant, Scan, ScanStatus, SpeciesChoice, SpeciesStatus},
     url::Stored,
+    wire::Timestamp,
 };
 
 use crate::{Pipeline, PipelineError, findings, payloads, steps::status_change};
@@ -33,6 +34,12 @@ pub struct SubmitOutcome {
 pub const LABEL_SET_KEY: &str = "label_set_version";
 /// The classifier labels' key.
 pub const CLASSIFIER_LABELS_KEY: &str = "classifier_labels_version";
+
+/// How many times a species confirmation tries to give a `queued` scan's run the species
+/// before it answers with a conflict. A refused adopt means the scan moved on since the
+/// snapshot (a claim, a new run), so a second try decides on a scan that isn't `queued` in
+/// almost every case.
+const MAX_ADOPT_ATTEMPTS: u32 = 3;
 
 /// Whether a `perception` job may name these versions ([contracts 5], versions a worker
 /// hasn't loaded): some live perception or fallback worker reports both, or no such worker is
@@ -96,6 +103,18 @@ pub fn prior_regions(snap: &ScanSnapshot) -> Vec<PriorRegion> {
         .collect()
 }
 
+/// The plant's confirmed species: what a submitted run's `perception` job names, and the
+/// working species that run starts with. Otherwise `None`, and the run's working species is
+/// the best candidate of its own `species_suggested` ([architecture 6.2], step 4); a
+/// resubmitted run doesn't keep the earlier run's suggestion, since it identifies the species
+/// again.
+fn confirmed_species(snap: &ScanSnapshot) -> Option<SpeciesId> {
+    match snap.plant.species_status {
+        SpeciesStatus::Confirmed => snap.plant.species.as_ref().map(|s| s.id.clone()),
+        _ => None,
+    }
+}
+
 impl Pipeline {
     /// The run's `perception` job for these stages, after checking the label versions.
     async fn perception_job(
@@ -117,11 +136,9 @@ impl Pipeline {
         let (species_id, skip) = match choice {
             Some(SpeciesChoice::Known(id)) => (Some(id.clone()), false),
             Some(SpeciesChoice::Custom(_)) => (None, true),
-            None => match snap.plant.species_status {
-                domain::scan::SpeciesStatus::Confirmed => {
-                    (snap.plant.species.as_ref().map(|s| s.id.clone()), false)
-                }
-                _ => (None, snap.custom_species),
+            None => match confirmed_species(snap) {
+                Some(id) => (Some(id), false),
+                None => (None, snap.custom_species),
             },
         };
         let id = self.deps.ids.id();
@@ -182,7 +199,7 @@ impl Pipeline {
                     reason,
                     expected_status: current.status,
                     expected_run: current.run,
-                    working_species: snap.working_species.clone(),
+                    working_species: confirmed_species(&snap),
                     first_job: job,
                     now: self.now(),
                 },
@@ -201,9 +218,58 @@ impl Pipeline {
         })
     }
 
+    /// What the confirmed `species` does to the plant's most recent scan, decided on a
+    /// snapshot taken after the confirmation committed, with that snapshot, so a new run's
+    /// guard (`expected_status`, `expected_run`) is the state the decision saw. A `queued`
+    /// scan's run adopts the species here.
+    async fn follow_species(
+        &self,
+        scan: ScanId,
+        created_at: Timestamp,
+        species: Option<&SpeciesId>,
+    ) -> Result<(SpeciesFollow, ScanSnapshot), PipelineError> {
+        let mut adopts = 0;
+        loop {
+            let snap = self.deps.store.snapshot(scan).await?;
+            let follow = species_follow(
+                snap.scan.status,
+                created_at,
+                self.now(),
+                snap.working_species.as_ref() != species,
+            );
+            if follow != SpeciesFollow::AtRunStart || snap.scan.status != ScanStatus::Queued {
+                return Ok((follow, snap));
+            }
+            // The run started before the confirmation, without it: its working species and
+            // its queued `perception` job's payload take the plant's confirmed species now,
+            // before the job is claimed and before `retrieve` and the `vlm` job read it.
+            if self
+                .deps
+                .store
+                .adopt_confirmed_species(scan, snap.scan.run)
+                .await?
+            {
+                return Ok((follow, snap));
+            }
+            // A worker claimed the job (the scan is `analysing`) or the run changed since the
+            // snapshot: decide again on the scan as it is now, so a claimed run whose job
+            // runs without the species gets a species-change run. Each retry needs the scan
+            // to have moved on; one that keeps doing so is answered as a retryable conflict.
+            adopts += 1;
+            if adopts == MAX_ADOPT_ATTEMPTS {
+                return Err(StoreError::Conflict(Conflict::Retries).into());
+            }
+        }
+    }
+
     /// `POST /plants/{id}/species` ([contracts 3]): confirms or corrects the species; the
     /// plant's most recent scan follows it, with a new run when it is past `queued` and the
-    /// species differs from the run's working species.
+    /// species differs from the run's working species. A `queued` scan's run takes the new
+    /// species as its working species and in its queued `perception` job's payload; a
+    /// `pending` scan's run starts with it at submit. When a worker claims the job between
+    /// the snapshot and that write, the write is refused and the decision is made again on
+    /// the scan as it now is (at most 3 times, then a retryable
+    /// `Conflict::Retries`), so the confirmation is never dropped.
     pub async fn species_confirmed(
         &self,
         editor: Membership<Editor>,
@@ -226,13 +292,9 @@ impl Pipeline {
             SpeciesChoice::Custom(n) => Some(n.clone()),
             SpeciesChoice::Known(_) => None,
         };
-        let follow = species_follow(
-            recent.status,
-            recent.created_at,
-            self.now(),
-            recent.working_species != new_species,
-        );
-        let snap = self.deps.store.snapshot(recent.scan).await?;
+        let (follow, snap) = self
+            .follow_species(recent.scan, recent.created_at, new_species.as_ref())
+            .await?;
         if follow != SpeciesFollow::NewRun {
             if snap.scan.run.0 > 0 {
                 self.emit(

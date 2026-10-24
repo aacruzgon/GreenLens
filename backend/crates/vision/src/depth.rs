@@ -211,7 +211,7 @@ pub fn encode_confidence_png(conf: ConfidenceMap<'_>) -> Result<Vec<u8>, png::En
     encode_png(conf.width, conf.height, png::BitDepth::Eight, conf.levels)
 }
 
-fn encode_png(
+pub(crate) fn encode_png(
     w: u32,
     h: u32,
     depth: png::BitDepth,

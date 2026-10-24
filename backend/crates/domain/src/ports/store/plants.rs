@@ -8,7 +8,7 @@ use crate::{
     ports::StoreError,
     scan::{Plant, PlantStatus, ScanStatus, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
     url::Stored,
-    wire::{Page, PageRequest, Timestamp},
+    wire::{Page, PageRequest, Run, Timestamp},
 };
 
 /// `POST /plants`, with its id.
@@ -87,14 +87,32 @@ pub trait PlantRepo: Send + Sync {
         choice: SpeciesChoice,
     ) -> Result<SpeciesConfirmation, StoreError>;
 
-    /// The pipeline's species suggestion: candidates and `suggested`, unless already confirmed.
+    /// The pipeline's species suggestion for the scan's run `run`, in one transaction: the
+    /// scan's plant gets the candidates and `suggested` with `working` as its species, unless
+    /// already confirmed, and the scan's `working_species` becomes `working` unless the run
+    /// already has one (a confirmed species, set when the run started). Returns `false`, and
+    /// writes nothing, when `run` is no longer the scan's current run, or when the scan, its
+    /// plant or its garden is being deleted (the scan is no longer visible).
     async fn suggest_species(
         &self,
-        plant: PlantId,
+        scan: ScanId,
+        run: Run,
         candidates: Vec<SpeciesCandidate<Stored>>,
         working: Option<SpeciesId>,
         status: SpeciesStatus,
-    ) -> Result<(), StoreError>;
+    ) -> Result<bool, StoreError>;
+
+    /// A species confirmed while the scan is `queued` ([contracts 3]: the run uses the new
+    /// species): the scan's run `run`, which started without it, takes the plant's confirmed
+    /// species as its working species, read in the same transaction, so the latest
+    /// confirmation wins (none for a custom species). In the same transaction the run's
+    /// `perception` job, while still `queued`, gets the payload a run started with that
+    /// species would have queued: `species_id` the species, or for a custom species none,
+    /// `skip_species_identification` and no `species` stage. Returns `false`, and writes
+    /// nothing, under the same conditions as [`PlantRepo::suggest_species`], when the scan is
+    /// no longer `queued` (a worker's claim moves it to `analysing`), or when the plant's
+    /// species is not confirmed.
+    async fn adopt_confirmed_species(&self, scan: ScanId, run: Run) -> Result<bool, StoreError>;
 
     /// The plant's status after a scan's diagnosis.
     async fn set_plant_status(&self, plant: PlantId, status: PlantStatus)

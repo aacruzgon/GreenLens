@@ -10,7 +10,7 @@ A user photographs a plant. Computer vision on a home GPU rig assesses the plant
 
 **Stack:** Expo SDK 57 / React Native app with Clerk authentication (and a Swift LiDAR module), Rust backend (axum, tokio) in a Cargo workspace, SurrealDB 3.3.4, RustFS 1.0.1 for images, pull-based GPU workers (`ort`/CUDA and a vLLM or llama.cpp VLM sidecar), Python for model training and knowledge ingestion.
 
-**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated, the training, export and evaluation code in `ml/` ([ml/README.md](ml/README.md)), and in `infra/` the rig's VLM server ([infra/README.md](infra/README.md)) and the dev services for a laptop (`infra/dev.compose.yml`, [docs/infra §4](docs/infra/README.md#infradevcomposeyml)). CI runs from `.github/workflows/ci.yml` on two self-hosted runners on the rig ([docs/infra §2](docs/infra/README.md#runners-and-budget)). The Expo app is in `app/` ([app/AGENTS.md](app/AGENTS.md)): slice F0 of the [app roadmap](docs/frontend/roadmap.md), with its layers, the api layer, mock mode, Conservatory's design layer and Clerk sign-in. The LiDAR module (`app/modules/lidar`) doesn't exist yet.
+**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated, the training, export and evaluation code in `ml/` ([ml/README.md](ml/README.md)), and in `infra/` the rig's VLM server ([infra/README.md](infra/README.md)) and the dev services for a laptop (`infra/dev.compose.yml`, [docs/infra §4](docs/infra/README.md#infradevcomposeyml)). CI runs from `.github/workflows/ci.yml` on two self-hosted runners on the rig ([docs/infra §2](docs/infra/README.md#runners-and-budget)). The Expo app is in `app/` ([app/AGENTS.md](app/AGENTS.md)): slice F0 of the [app roadmap](docs/frontend/roadmap.md), with its layers, the api layer, mock mode, Conservatory's design layer and Clerk sign-in. Slice F5's native work is in `app/modules/lidar` (depth capture, the garden mapping session, the 3D `GardenView`) and `app/modules/live-activity` with its widget extension in `app/targets/scan-activity`; it compiles and waits on the iPhone for its checks ([roadmap 11](docs/frontend/roadmap.md#11-f5-the-iphones-native-work)).
 
 ## Where to find things
 
@@ -102,7 +102,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 
 ## Repository layout
 
-From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `infra/` holds the rig's VLM server so far; `app/` holds the Expo app, without its LiDAR module yet.
+From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `infra/` holds the rig's VLM server so far; `app/` holds the Expo app with its local native modules.
 
 ```
 PDM/
