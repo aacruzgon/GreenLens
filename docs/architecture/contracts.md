@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.34, 2026-10-23. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.35, 2026-10-23. Companion to the [architecture document](README.md).
+> **v0.10.35**: `SpeciesSeed.frost?: "tender" | "hardy"` (section 10), a top-level field outside `care`: tender is damaged by a light frost, hardy stands one, absent when the sources don't say; `get_species_profile` returns it with the profile (section 8); backend roadmap S5 work 9's domain and schema half, the seed values are the knowledge track's.
 > **v0.10.34**: the dose check reads a clock time after an opening parenthesis as it would without one, so "on 31 August (22:40 UTC)" passes while "Mix copper (18:40 utc)" still fails (EON gap G20's re-run).
 > **v0.10.33**: section 7 says a necrotic group under `min_spot_share` (2e-5) of its leaf is a speck the `SpotSegmenter` folds into the leaf, not a spot, for the spot measurements and the `healthy` rule, and open question 10's spot colour thresholds are set (vision evaluation 6, M15); no wire shape changed.
 > **v0.10.32**: plan validation checks farm citations (EON E5.4): a step citing a farm record the plan writer wasn't given, or citing farm records without a knowledge source, fails, and `ActionPlan.farm_records` holds the records the passing steps cite; the plan writer's output steps (and `revise_plan`'s `changed_steps`) take the optional `farm_citations`, as strings, so an id that doesn't parse fails its step and not the answer; no API wire shape changed.
@@ -2341,6 +2342,8 @@ interface SpeciesSeed {
     mature_height_cm?: number;       // the growth_stalled rule stops here
     notes?: string;
   };
+  frost?: "tender" | "hardy";       // tender: damaged by a light frost; hardy: stands one; absent when the sources don't say.
+                                     // Not hardiness_zones: "annual" there means grown as an annual, and lettuce is one that stands a light frost
   classifier_supported: boolean;     // checked against classifier_labels.yaml at ingestion
   bioclip_label: string;             // the class text BioCLIP's prompt templates wrap ("a photo of {label}."):
                                      // "<scientific name> with common name <common name>", e.g.
@@ -2512,6 +2515,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.32: plan validation's farm-citation rules; the plan writer's steps take `farm_citations` | none (7, farm connectors, already says the plan writer passes its top 4 hits and a plan lists the records it cites) |
 | v0.10.33: a necrotic group under `min_spot_share` of its leaf is a speck folded into the leaf, not a spot, for the spot measurements and the `healthy` rule; open question 10's spot colour thresholds are set | 6.7 (spots), 15 (decision 17) |
 | v0.10.34: a clock time after an opening parenthesis is a clock time to the dose check ("on 31 August (22:40 UTC)") | none: 11 names clock times only as a category, which this doesn't change |
+| v0.10.35: `SpeciesSeed.frost` (`tender` or `hardy`), top-level, absent when unknown | 5 (Species profiles) |
 
 ---
 

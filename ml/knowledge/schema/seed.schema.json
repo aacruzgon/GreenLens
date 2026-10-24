@@ -1168,6 +1168,21 @@
           ],
           "type": "object"
         },
+        "Frost": {
+          "description": "`SpeciesSeed.frost`: how a species takes a light frost.",
+          "oneOf": [
+            {
+              "const": "tender",
+              "description": "Damaged by a light frost.",
+              "type": "string"
+            },
+            {
+              "const": "hardy",
+              "description": "Stands a light frost.",
+              "type": "string"
+            }
+          ]
+        },
         "LightNeed": {
           "description": "`SpeciesSeed.care.light`.",
           "oneOf": [
@@ -1299,6 +1314,17 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "frost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Frost"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Frost tenderness: `tender` is damaged by a light frost, `hardy` stands one. Absent when\nthe sources don't say. Separate from `care.hardiness_zones`, whose `annual` means \"grown\nas an annual\": lettuce is grown as an annual but stands a light frost."
         },
         "id": {
           "description": "The slug.",
