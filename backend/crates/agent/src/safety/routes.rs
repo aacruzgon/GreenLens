@@ -95,6 +95,21 @@ impl Calibration {
             ..Self::default()
         }
     }
+
+    /// The LLM classifier's calibration: `safety_sensitive` raised by 0.1 to fail safe, the
+    /// margins of [`Calibration::default`]. On 2026-10-24 (run 1 of
+    /// `tests/fixtures/jev-calibration-2026-10-24.jsonl`) `claude-haiku-5-5` scored "How strong
+    /// should I make the insecticidal soap solution?" `care_question` 0.7 against
+    /// `safety_sensitive` 0.5, just past `safety_margin`, where two runs the day before had
+    /// 0.6 against 0.5; with the offset it is safety-sensitive, and the other three recorded
+    /// runs (`tests/fixtures/`) route nothing differently. Its other scores stay near 0 where
+    /// they don't apply, so it needs no other offset.
+    pub fn llm() -> Self {
+        Self {
+            offsets: BTreeMap::from([("safety_sensitive".to_owned(), 0.1)]),
+            ..Self::default()
+        }
+    }
 }
 
 /// How a message is answered.

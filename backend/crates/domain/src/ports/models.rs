@@ -210,6 +210,25 @@ pub struct LabelScore {
     pub score: f64,
 }
 
+/// The conversation's last exchange before the message being routed: context for
+/// [`ClassifierTask::Route`], so a follow-up such as "what did you just tell me about the
+/// forecast?" is routed with what it refers to, not on its own words. The caller cuts each text
+/// to its limit; both are absent in a conversation's first message.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PriorExchange {
+    /// The gardener's previous message.
+    pub user: Option<String>,
+    /// The assistant's previous reply.
+    pub assistant: Option<String>,
+}
+
+impl PriorExchange {
+    /// Whether there is nothing to give.
+    pub const fn is_empty(&self) -> bool {
+        self.user.is_none() && self.assistant.is_none()
+    }
+}
+
 /// The fast text classifier: Jev, or the cheapest LLM with structured output.
 #[cfg_attr(feature = "mock", mockall::automock)]
 #[async_trait::async_trait]
@@ -220,6 +239,19 @@ pub trait TextClassifier: Send + Sync {
         task: ClassifierTask,
         text: &str,
     ) -> Result<Vec<LabelScore>, ModelError>;
+
+    /// [`classify`](Self::classify) with the conversation's last exchange as context, which only
+    /// the route reads: the router calls this. An empty exchange asks exactly as `classify`
+    /// does; the default ignores the context.
+    async fn classify_with_context(
+        &self,
+        task: ClassifierTask,
+        text: &str,
+        prior: &PriorExchange,
+    ) -> Result<Vec<LabelScore>, ModelError> {
+        let _ = prior;
+        self.classify(task, text).await
+    }
 }
 
 /// The pinned text-embedding model (architecture 10): its name, version and dimension, which

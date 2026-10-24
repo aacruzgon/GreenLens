@@ -17,10 +17,10 @@
 //! `api` wires this adapter only when `JEV_*` is configured; otherwise it wires `agent`'s LLM
 //! classifier.
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{borrow::Cow, collections::BTreeMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use domain::ports::{ClassifierTask, LabelScore, ModelError, TextClassifier};
+use domain::ports::{ClassifierTask, LabelScore, ModelError, PriorExchange, TextClassifier};
 use reqwest::StatusCode;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -76,20 +76,48 @@ pub struct JevClassifier {
     config: Arc<JevConfig>,
 }
 
-/// `SystemOneRequest`. `'a` borrows the configured model and the turn's text.
+/// `SystemOneRequest`. `'a` borrows the configured model, the turn's text and its context.
 #[derive(Debug, Serialize)]
 struct SystemOneRequest<'a> {
     model: &'a str,
-    state: &'a str,
+    state: State<'a>,
     questions: BTreeMap<&'static str, Question>,
 }
+
+/// The `state`: the text alone, or for a route with context, an object that names the message
+/// to judge and the exchange before it.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum State<'a> {
+    Text(&'a str),
+    WithContext {
+        earlier: Earlier<'a>,
+        message: &'a str,
+    },
+}
+
+/// The exchange before the message, under `earlier`.
+#[derive(Debug, Serialize)]
+struct Earlier<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gardener: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    assistant: Option<&'a str>,
+}
+
+/// Put before each route question when the state carries the earlier exchange. It goes in
+/// every question because the request has no instructions shared by all questions, and
+/// `TypeSafe`'s guidance keeps the judgment in the questions and the content in the state; it
+/// is kept short (about 20 tokens a question).
+const CONTEXT_PREFIX: &str = "Judge the gardener's newest `message`; `earlier` is the exchange \
+                              before it, for context only. ";
 
 /// A question, tagged by `type`.
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Question {
     /// Yes or no, answered with the probability of yes.
-    Noul { instructions: &'static str },
+    Noul { instructions: Cow<'static, str> },
     /// One of `criteria`, answered with a probability for each.
     Choice {
         instructions: &'static str,
@@ -137,7 +165,9 @@ struct StatusError {
 /// The route labels' questions. Each asks whether the message is that kind, as `agent`'s LLM
 /// prompt describes the label.
 fn route_questions(farm_records: bool) -> BTreeMap<&'static str, Question> {
-    let noul = |instructions| Question::Noul { instructions };
+    let noul = |instructions: &'static str| Question::Noul {
+        instructions: Cow::Borrowed(instructions),
+    };
     let mut q = BTreeMap::from([
         (
             "diagnosis_question",
@@ -195,6 +225,22 @@ fn route_questions(farm_records: bool) -> BTreeMap<&'static str, Question> {
     q
 }
 
+/// The route questions for a state with the earlier exchange: each says which part to judge.
+fn with_context(questions: BTreeMap<&'static str, Question>) -> BTreeMap<&'static str, Question> {
+    questions
+        .into_iter()
+        .map(|(name, q)| match q {
+            Question::Noul { instructions } => (
+                name,
+                Question::Noul {
+                    instructions: Cow::Owned(format!("{CONTEXT_PREFIX}{instructions}")),
+                },
+            ),
+            other @ Question::Choice { .. } => (name, other),
+        })
+        .collect()
+}
+
 /// The questions of a task.
 fn questions(task: ClassifierTask) -> BTreeMap<&'static str, Question> {
     match task {
@@ -202,9 +248,11 @@ fn questions(task: ClassifierTask) -> BTreeMap<&'static str, Question> {
         ClassifierTask::MemoryWorthy => BTreeMap::from([(
             MEMORY_LABELS[0],
             Question::Noul {
-                instructions: "Does this exchange contain a fact the gardener stated that will \
-                               still matter in later conversations: something done to a plant, \
-                               or something true about a plant or the garden?",
+                instructions: Cow::Borrowed(
+                    "Does this exchange contain a fact the gardener stated that will still \
+                     matter in later conversations: something done to a plant, or something \
+                     true about a plant or the garden?",
+                ),
             },
         )]),
         ClassifierTask::ChunkTopic => BTreeMap::from([(
@@ -311,6 +359,34 @@ impl TextClassifier for JevClassifier {
         task: ClassifierTask,
         text: &str,
     ) -> Result<Vec<LabelScore>, ModelError> {
+        self.classify_with_context(task, text, &PriorExchange::default())
+            .await
+    }
+
+    /// For a route with an earlier exchange, the state is `{"earlier": {"gardener", "assistant"},
+    /// "message"}` and each question says to judge `message`; otherwise the text alone, as
+    /// `classify` sends it. The other tasks ignore the context.
+    async fn classify_with_context(
+        &self,
+        task: ClassifierTask,
+        text: &str,
+        prior: &PriorExchange,
+    ) -> Result<Vec<LabelScore>, ModelError> {
+        let prior =
+            Some(prior).filter(|p| matches!(task, ClassifierTask::Route { .. }) && !p.is_empty());
+        let (state, questions) = match prior {
+            Some(p) => (
+                State::WithContext {
+                    earlier: Earlier {
+                        gardener: p.user.as_deref(),
+                        assistant: p.assistant.as_deref(),
+                    },
+                    message: text,
+                },
+                with_context(questions(task)),
+            ),
+            None => (State::Text(text), questions(task)),
+        };
         let unavailable = |source| ModelError::Unavailable {
             model: MODEL,
             source,
@@ -329,8 +405,8 @@ impl TextClassifier for JevClassifier {
             .timeout(self.config.timeout)
             .json(&SystemOneRequest {
                 model: &self.config.model,
-                state: text,
-                questions: questions(task),
+                state,
+                questions,
             })
             .send()
             .await
@@ -755,6 +831,88 @@ mod tests {
         };
         assert!(source.downcast_ref::<TransportError>().unwrap().timeout);
         server.abort();
+    }
+
+    /// A follow-up's route names the message to judge and the exchange before it, and each
+    /// question says to judge the message; an empty exchange and the other tasks send the text.
+    #[tokio::test]
+    async fn a_route_with_context_sends_the_earlier_exchange_and_marks_the_message() {
+        let all: Vec<(&str, f64)> = ROUTE_LABELS.iter().map(|l| (*l, 0.1)).collect();
+        let prior = PriorExchange {
+            user: Some("Will the frost hurt my tomatoes?".to_owned()),
+            assistant: Some("Frost is likely on Thursday night.".to_owned()),
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(nouls(&all)))
+            .mount(&server)
+            .await;
+        jev(&server)
+            .classify_with_context(ROUTE, "What did you just tell me?", &prior)
+            .await
+            .unwrap();
+        let body = sent_body(&server).await;
+        assert_eq!(
+            body["state"],
+            json!({
+                "earlier": {
+                    "gardener": "Will the frost hurt my tomatoes?",
+                    "assistant": "Frost is likely on Thursday night.",
+                },
+                "message": "What did you just tell me?",
+            })
+        );
+        for q in body["questions"].as_object().unwrap().values() {
+            let instructions = q["instructions"].as_str().unwrap();
+            assert!(instructions.starts_with(CONTEXT_PREFIX), "{instructions}");
+            assert!(instructions.ends_with('?'));
+        }
+
+        // Only the assistant half: no `gardener` key.
+        let reply_only = PriorExchange {
+            user: None,
+            assistant: prior.assistant.clone(),
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(nouls(&all)))
+            .mount(&server)
+            .await;
+        jev(&server)
+            .classify_with_context(ROUTE, "And the second one?", &reply_only)
+            .await
+            .unwrap();
+        let body = sent_body(&server).await;
+        assert_eq!(
+            body["state"]["earlier"],
+            json!({"assistant": "Frost is likely on Thursday night."})
+        );
+
+        // No exchange, or another task: the text alone, as `classify` sends it.
+        for (task, answer) in [
+            (ROUTE, nouls(&all)),
+            (ClassifierTask::MemoryWorthy, nouls(&[("remember", 0.5)])),
+        ] {
+            for p in [PriorExchange::default(), prior.clone()] {
+                if task == ROUTE && !p.is_empty() {
+                    continue;
+                }
+                let server = MockServer::start().await;
+                Mock::given(method("POST"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(answer.clone()))
+                    .mount(&server)
+                    .await;
+                jev(&server)
+                    .classify_with_context(task, "hello", &p)
+                    .await
+                    .unwrap();
+                let body = sent_body(&server).await;
+                assert_eq!(body["state"], "hello");
+                for q in body["questions"].as_object().unwrap().values() {
+                    assert!(!q["instructions"].as_str().unwrap().contains("`earlier`"));
+                }
+            }
+        }
     }
 
     #[test]

@@ -28,7 +28,7 @@ pub const EXTRACTION_PROMPT_VERSION: &str = "extract/2026-10-17.1";
 /// The summary prompt's version.
 pub const SUMMARY_PROMPT_VERSION: &str = "summary/2026-10-16.1";
 /// The classifier fallback's version.
-pub const CLASSIFIER_PROMPT_VERSION: &str = "classify/2026-10-20.2";
+pub const CLASSIFIER_PROMPT_VERSION: &str = "classify/2026-10-24.1";
 /// The version recorded on the fixed poison-control answer, which no model wrote.
 pub const POISON_CONTROL_VERSION: &str = "poison_control/2026-10-16.1";
 

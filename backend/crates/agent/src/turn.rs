@@ -42,7 +42,7 @@ use domain::{
     id::{ChatImageId, MessageId},
     ports::{
         CallUsage, ChatChunk, ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask,
-        ContentPart, IdGenExt as _, ModelError, NewMessage, ObjectKey, StopReason,
+        ContentPart, IdGenExt as _, ModelError, NewMessage, ObjectKey, PriorExchange, StopReason,
     },
     records::diagnosis::Citation,
     rules::limits::{MESSAGE_MAX_CHARS, MESSAGE_MAX_IMAGES},
@@ -214,17 +214,14 @@ impl ChatAgent {
             .into());
         }
 
-        let first = PageRequest {
+        // The two newest messages: the anchor, and the exchange the router reads as context.
+        let newest = PageRequest {
             cursor: None,
-            limit: Some(1),
+            limit: Some(2),
         };
-        let anchor = deps
-            .stores
-            .chats
-            .conversation_detail(owner, first)
-            .await?
-            .conversation
-            .anchor;
+        let detail = deps.stores.chats.conversation_detail(owner, newest).await?;
+        let anchor = detail.conversation.anchor;
+        let prior = prior_exchange(&detail.messages.items).unwrap_or_default();
 
         let mut image_keys = Vec::with_capacity(image_ids.len());
         for id in &image_ids {
@@ -237,7 +234,7 @@ impl ChatAgent {
             image_keys.push(object.key);
         }
 
-        let (decision, farm_records) = route(deps, member, &text).await;
+        let (decision, farm_records) = route(deps, member, &text, &prior).await;
 
         let user_message = deps.ids.id();
         deps.stores
@@ -290,16 +287,83 @@ impl ChatAgent {
     }
 }
 
+/// The longest previous user message the router reads, in characters.
+pub const ROUTE_CONTEXT_USER_CHARS: usize = 300;
+
+/// The longest previous assistant reply the router reads, in characters.
+pub const ROUTE_CONTEXT_ASSISTANT_CHARS: usize = 1_000;
+
+/// The first `max` characters of `text`, marked with `…` when cut.
+fn cut_start(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((end, _)) => format!("{}…", text[..end].trim_end()),
+        None => text.to_owned(),
+    }
+}
+
+/// The last `max` characters of `text`, marked with `…` when cut: a long question usually
+/// ends with what it asks.
+fn cut_end(text: &str, max: usize) -> String {
+    let count = text.chars().count();
+    if count <= max {
+        return text.to_owned();
+    }
+    let start = text.char_indices().nth(count - max).map_or(0, |(i, _)| i);
+    format!("…{}", text[start..].trim_start())
+}
+
+/// The exchange before this message, from the conversation's newest messages (newest first),
+/// so a follow-up is routed with what it refers to. `None` in a conversation's first message.
+///
+/// - The assistant half is the last reply, its first [`ROUTE_CONTEXT_ASSISTANT_CHARS`]. It is
+///   left out when empty, and when the reply cites farm records: such a reply can quote Slack
+///   messages or Drive files that people outside PDM wrote, which must not reach a classifier
+///   that has no data framing (Jev's `state`).
+/// - The user half is the user message before it, or the newest message itself when no reply
+///   followed it (an interrupted turn): its last [`ROUTE_CONTEXT_USER_CHARS`].
+pub fn prior_exchange<U: domain::url::UrlState>(newest: &[Message<U>]) -> Option<PriorExchange> {
+    fn said<U: domain::url::UrlState>(m: &Message<U>) -> Option<&str> {
+        Some(m.text.trim()).filter(|t| !t.is_empty())
+    }
+    let user_half = |m: Option<&Message<U>>| {
+        m.filter(|m| m.role == MessageRole::User)
+            .and_then(said)
+            .map(|t| cut_end(t, ROUTE_CONTEXT_USER_CHARS))
+    };
+    let first = newest.first()?;
+    let prior = if first.role == MessageRole::Assistant {
+        PriorExchange {
+            assistant: said(first)
+                .filter(|_| first.farm_citations.is_empty())
+                .map(|t| cut_start(t, ROUTE_CONTEXT_ASSISTANT_CHARS)),
+            user: user_half(newest.get(1)),
+        }
+    } else {
+        PriorExchange {
+            assistant: None,
+            user: user_half(Some(first)),
+        }
+    };
+    (!prior.is_empty()).then_some(prior)
+}
+
 /// Routes the message. Whether the garden has farm records is read first, once per turn: the
 /// classifier is asked for the `farm_records` label only then, so a question about the garden's
 /// own records is on topic only then (gap G10), and the same fact offers `search_farm_records`
-/// (gap G6). A classifier that fails or is slower than `classifier_timeout` leaves no scores.
-async fn route(deps: &AgentDeps, member: Membership<Viewer>, text: &str) -> (RouteDecision, bool) {
+/// (gap G6). The exchange before the message goes with it, so a follow-up such as "what did you
+/// just tell me?" is routed as the conversation it continues. A classifier that fails or is
+/// slower than `classifier_timeout` leaves no scores.
+async fn route(
+    deps: &AgentDeps,
+    member: Membership<Viewer>,
+    text: &str,
+    prior: &PriorExchange,
+) -> (RouteDecision, bool) {
     let farm_records = context::has_farm_records(deps, member).await;
     let scores = tokio::time::timeout(
         deps.config.classifier_timeout,
         deps.classifier
-            .classify(ClassifierTask::Route { farm_records }, text),
+            .classify_with_context(ClassifierTask::Route { farm_records }, text, prior),
     )
     .await
     .ok()

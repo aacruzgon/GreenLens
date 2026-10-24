@@ -587,14 +587,14 @@ fn pipeline_api(
 }
 
 /// The router calibration of the classifier `build` wires: `Calibration::jev()` with Jev,
-/// the default with the LLM classifier, whose scores differ ([agent 7]).
+/// `Calibration::llm()` with the LLM classifier, whose scores differ ([agent 7]).
 ///
 /// [agent 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/backend/agent.md#7-router-and-safety-gate
 fn router_calibration(config: &Config) -> Calibration {
     if config.providers.jev.is_some() {
         Calibration::jev()
     } else {
-        Calibration::default()
+        Calibration::llm()
     }
 }
 
