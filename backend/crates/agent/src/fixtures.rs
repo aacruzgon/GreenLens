@@ -103,6 +103,7 @@ pub fn step(id: &str, order: u32) -> PlanStepDraft {
         targets: vec![PlanTarget::Disease("tomato_early_blight".parse().unwrap())],
         plant_id: None,
         citations: sources(),
+        farm_citations: Vec::new(),
     }
 }
 

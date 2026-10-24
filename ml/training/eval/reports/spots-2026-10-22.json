@@ -1,0 +1,1256 @@
+{
+  "date": "2026-10-22",
+  "manifest_versions": {
+    "leaf_detector": "rfdetr-s-leaf-2026-10-19-bglic",
+    "sam_encoder": "sam2.1-hiera-tiny@de431c40",
+    "sam_decoder": "sam2.1-hiera-tiny@de431c40"
+  },
+  "defaults": {
+    "dark_value": 0.45,
+    "brown_hue_min": 10.0,
+    "brown_hue_max": 45.0,
+    "brown_saturation": 0.25,
+    "brown_value": 0.85,
+    "pale_saturation": 0.15,
+    "pale_value": 1.25,
+    "halo_hue_min": 45.0,
+    "halo_hue_max": 70.0,
+    "halo_saturation": 0.35,
+    "min_spot_share": 0.0
+  },
+  "fitted": {
+    "dark_value": 0.2,
+    "brown_hue_min": 0.0,
+    "brown_hue_max": 45.0,
+    "brown_saturation": 0.0,
+    "brown_value": 2.5,
+    "pale_saturation": 0.08,
+    "pale_value": 0.0,
+    "halo_hue_min": 45.0,
+    "halo_hue_max": 66.0,
+    "halo_saturation": 0.0,
+    "min_spot_share": 2e-05
+  },
+  "descent": [
+    {
+      "round": 0,
+      "mean_iou": 0.3934
+    },
+    {
+      "round": 1,
+      "mean_iou": 0.4781,
+      "thresholds": {
+        "dark_value": 0.3,
+        "brown_hue_min": 0.0,
+        "brown_hue_max": 45.0,
+        "brown_saturation": 0.0,
+        "brown_value": 2.5,
+        "pale_saturation": 0.08,
+        "pale_value": 0.0,
+        "halo_hue_min": 45.0,
+        "halo_hue_max": 62.0,
+        "halo_saturation": 0.0
+      }
+    },
+    {
+      "round": 2,
+      "mean_iou": 0.4797,
+      "thresholds": {
+        "dark_value": 0.2,
+        "brown_hue_min": 0.0,
+        "brown_hue_max": 45.0,
+        "brown_saturation": 0.0,
+        "brown_value": 2.5,
+        "pale_saturation": 0.08,
+        "pale_value": 0.0,
+        "halo_hue_min": 45.0,
+        "halo_hue_max": 66.0,
+        "halo_saturation": 0.0
+      }
+    },
+    {
+      "round": 3,
+      "mean_iou": 0.4797,
+      "thresholds": {
+        "dark_value": 0.2,
+        "brown_hue_min": 0.0,
+        "brown_hue_max": 45.0,
+        "brown_saturation": 0.0,
+        "brown_value": 2.5,
+        "pale_saturation": 0.08,
+        "pale_value": 0.0,
+        "halo_hue_min": 45.0,
+        "halo_hue_max": 66.0,
+        "halo_saturation": 0.0
+      }
+    }
+  ],
+  "halves": {
+    "fit spots": {
+      "scored": 357,
+      "no_leaf_found": 33,
+      "defaults": {
+        "photos": 357,
+        "leaves": 736,
+        "mean_iou": 0.394,
+        "lesion_iou": 0.203,
+        "leaf_iou": 0.584,
+        "pooled_lesion_iou": 0.202,
+        "mean_necrotic_iou": 0.103,
+        "affected_pct_error": {
+          "median": 16.3,
+          "p90": 74.5
+        },
+        "lesion_share_pct": 31.0,
+        "affected_share_pct": 17.9,
+        "by_crop": {
+          "apple": 0.4,
+          "corn": 0.344,
+          "grape": 0.374,
+          "pepper": 0.47,
+          "tomato": 0.406
+        },
+        "by_disease": {
+          "apple black rot": 0.347,
+          "apple rust": 0.419,
+          "apple scab": 0.402,
+          "bell pepper bacterial spot": 0.491,
+          "bell pepper frogeye leaf spot": 0.438,
+          "corn gray leaf spot": 0.381,
+          "corn rust": 0.311,
+          "grape black rot": 0.358,
+          "grape leaf spot": 0.383,
+          "tomato bacterial leaf spot": 0.367,
+          "tomato early blight": 0.471,
+          "tomato septoria leaf spot": 0.377
+        },
+        "photos_by_crop": {
+          "apple": 77,
+          "corn": 76,
+          "grape": 53,
+          "pepper": 38,
+          "tomato": 113
+        },
+        "photos_by_disease": {
+          "apple black rot": 14,
+          "apple rust": 37,
+          "apple scab": 26,
+          "bell pepper bacterial spot": 23,
+          "bell pepper frogeye leaf spot": 15,
+          "corn gray leaf spot": 36,
+          "corn rust": 40,
+          "grape black rot": 18,
+          "grape leaf spot": 35,
+          "tomato bacterial leaf spot": 35,
+          "tomato early blight": 38,
+          "tomato septoria leaf spot": 40
+        }
+      },
+      "fitted": {
+        "photos": 357,
+        "leaves": 736,
+        "mean_iou": 0.481,
+        "lesion_iou": 0.346,
+        "leaf_iou": 0.615,
+        "pooled_lesion_iou": 0.308,
+        "mean_necrotic_iou": 0.241,
+        "affected_pct_error": {
+          "median": 13.6,
+          "p90": 73.6
+        },
+        "lesion_share_pct": 31.0,
+        "affected_share_pct": 21.3,
+        "by_crop": {
+          "apple": 0.478,
+          "corn": 0.448,
+          "grape": 0.454,
+          "pepper": 0.604,
+          "tomato": 0.475
+        },
+        "by_disease": {
+          "apple black rot": 0.446,
+          "apple rust": 0.5,
+          "apple scab": 0.465,
+          "bell pepper bacterial spot": 0.623,
+          "bell pepper frogeye leaf spot": 0.576,
+          "corn gray leaf spot": 0.491,
+          "corn rust": 0.41,
+          "grape black rot": 0.477,
+          "grape leaf spot": 0.442,
+          "tomato bacterial leaf spot": 0.387,
+          "tomato early blight": 0.614,
+          "tomato septoria leaf spot": 0.419
+        },
+        "photos_by_crop": {
+          "apple": 77,
+          "corn": 76,
+          "grape": 53,
+          "pepper": 38,
+          "tomato": 113
+        },
+        "photos_by_disease": {
+          "apple black rot": 14,
+          "apple rust": 37,
+          "apple scab": 26,
+          "bell pepper bacterial spot": 23,
+          "bell pepper frogeye leaf spot": 15,
+          "corn gray leaf spot": 36,
+          "corn rust": 40,
+          "grape black rot": 18,
+          "grape leaf spot": 35,
+          "tomato bacterial leaf spot": 35,
+          "tomato early blight": 38,
+          "tomato septoria leaf spot": 40
+        }
+      }
+    },
+    "fit areas": {
+      "scored": 250,
+      "no_leaf_found": 14,
+      "defaults": {
+        "photos": 250,
+        "leaves": 543,
+        "mean_iou": 0.339,
+        "lesion_iou": 0.163,
+        "leaf_iou": 0.515,
+        "pooled_lesion_iou": 0.12,
+        "mean_necrotic_iou": 0.068,
+        "affected_pct_error": {
+          "median": 30.8,
+          "p90": 95.8
+        },
+        "lesion_share_pct": 49.2,
+        "affected_share_pct": 9.9,
+        "by_crop": {
+          "corn": 0.479,
+          "grape": 0.404,
+          "pepper": 0.293,
+          "squash": 0.182,
+          "tomato": 0.467
+        },
+        "by_disease": {
+          "bell pepper powdery mildew": 0.293,
+          "corn northern leaf blight": 0.479,
+          "grape downy mildew": 0.404,
+          "squash powdery mildew": 0.075,
+          "tomato late blight": 0.446,
+          "tomato leaf mold": 0.48,
+          "zucchini downy mildew": 0.403,
+          "zucchini powdery mildew": 0.163
+        },
+        "photos_by_crop": {
+          "corn": 39,
+          "grape": 37,
+          "pepper": 9,
+          "squash": 100,
+          "tomato": 65
+        },
+        "photos_by_disease": {
+          "bell pepper powdery mildew": 9,
+          "corn northern leaf blight": 39,
+          "grape downy mildew": 37,
+          "squash powdery mildew": 39,
+          "tomato late blight": 25,
+          "tomato leaf mold": 40,
+          "zucchini downy mildew": 22,
+          "zucchini powdery mildew": 39
+        }
+      },
+      "fitted": {
+        "photos": 250,
+        "leaves": 543,
+        "mean_iou": 0.427,
+        "lesion_iou": 0.306,
+        "leaf_iou": 0.549,
+        "pooled_lesion_iou": 0.211,
+        "mean_necrotic_iou": 0.19,
+        "affected_pct_error": {
+          "median": 23.1,
+          "p90": 96.6
+        },
+        "lesion_share_pct": 49.2,
+        "affected_share_pct": 13.9,
+        "by_crop": {
+          "corn": 0.711,
+          "grape": 0.462,
+          "pepper": 0.314,
+          "squash": 0.234,
+          "tomato": 0.552
+        },
+        "by_disease": {
+          "bell pepper powdery mildew": 0.314,
+          "corn northern leaf blight": 0.711,
+          "grape downy mildew": 0.462,
+          "squash powdery mildew": 0.125,
+          "tomato late blight": 0.616,
+          "tomato leaf mold": 0.511,
+          "zucchini downy mildew": 0.429,
+          "zucchini powdery mildew": 0.232
+        },
+        "photos_by_crop": {
+          "corn": 39,
+          "grape": 37,
+          "pepper": 9,
+          "squash": 100,
+          "tomato": 65
+        },
+        "photos_by_disease": {
+          "bell pepper powdery mildew": 9,
+          "corn northern leaf blight": 39,
+          "grape downy mildew": 37,
+          "squash powdery mildew": 39,
+          "tomato late blight": 25,
+          "tomato leaf mold": 40,
+          "zucchini downy mildew": 22,
+          "zucchini powdery mildew": 39
+        }
+      }
+    },
+    "holdout spots": {
+      "scored": 219,
+      "no_leaf_found": 32,
+      "defaults": {
+        "photos": 219,
+        "leaves": 469,
+        "mean_iou": 0.382,
+        "lesion_iou": 0.195,
+        "leaf_iou": 0.569,
+        "pooled_lesion_iou": 0.214,
+        "mean_necrotic_iou": 0.093,
+        "affected_pct_error": {
+          "median": 16.0,
+          "p90": 79.7
+        },
+        "lesion_share_pct": 37.7,
+        "affected_share_pct": 18.2,
+        "by_crop": {
+          "apple": 0.42,
+          "corn": 0.292,
+          "grape": 0.329,
+          "pepper": 0.494,
+          "tomato": 0.398
+        },
+        "by_disease": {
+          "apple black rot": 0.477,
+          "apple rust": 0.418,
+          "apple scab": 0.412,
+          "bell pepper bacterial spot": 0.508,
+          "bell pepper frogeye leaf spot": 0.461,
+          "corn gray leaf spot": 0.343,
+          "corn rust": 0.26,
+          "grape black rot": 0.345,
+          "grape leaf spot": 0.316,
+          "tomato bacterial leaf spot": 0.403,
+          "tomato early blight": 0.434,
+          "tomato septoria leaf spot": 0.347
+        },
+        "photos_by_crop": {
+          "apple": 51,
+          "corn": 49,
+          "grape": 23,
+          "pepper": 23,
+          "tomato": 73
+        },
+        "photos_by_disease": {
+          "apple black rot": 4,
+          "apple rust": 25,
+          "apple scab": 22,
+          "bell pepper bacterial spot": 16,
+          "bell pepper frogeye leaf spot": 7,
+          "corn gray leaf spot": 19,
+          "corn rust": 30,
+          "grape black rot": 10,
+          "grape leaf spot": 13,
+          "tomato bacterial leaf spot": 17,
+          "tomato early blight": 32,
+          "tomato septoria leaf spot": 24
+        }
+      },
+      "fitted": {
+        "photos": 219,
+        "leaves": 469,
+        "mean_iou": 0.497,
+        "lesion_iou": 0.381,
+        "leaf_iou": 0.612,
+        "pooled_lesion_iou": 0.4,
+        "mean_necrotic_iou": 0.268,
+        "affected_pct_error": {
+          "median": 10.2,
+          "p90": 73.3
+        },
+        "lesion_share_pct": 37.7,
+        "affected_share_pct": 25.0,
+        "by_crop": {
+          "apple": 0.501,
+          "corn": 0.467,
+          "grape": 0.404,
+          "pepper": 0.616,
+          "tomato": 0.505
+        },
+        "by_disease": {
+          "apple black rot": 0.671,
+          "apple rust": 0.53,
+          "apple scab": 0.438,
+          "bell pepper bacterial spot": 0.626,
+          "bell pepper frogeye leaf spot": 0.595,
+          "corn gray leaf spot": 0.459,
+          "corn rust": 0.472,
+          "grape black rot": 0.463,
+          "grape leaf spot": 0.358,
+          "tomato bacterial leaf spot": 0.438,
+          "tomato early blight": 0.606,
+          "tomato septoria leaf spot": 0.419
+        },
+        "photos_by_crop": {
+          "apple": 51,
+          "corn": 49,
+          "grape": 23,
+          "pepper": 23,
+          "tomato": 73
+        },
+        "photos_by_disease": {
+          "apple black rot": 4,
+          "apple rust": 25,
+          "apple scab": 22,
+          "bell pepper bacterial spot": 16,
+          "bell pepper frogeye leaf spot": 7,
+          "corn gray leaf spot": 19,
+          "corn rust": 30,
+          "grape black rot": 10,
+          "grape leaf spot": 13,
+          "tomato bacterial leaf spot": 17,
+          "tomato early blight": 32,
+          "tomato septoria leaf spot": 24
+        }
+      }
+    },
+    "holdout areas": {
+      "scored": 175,
+      "no_leaf_found": 26,
+      "defaults": {
+        "photos": 175,
+        "leaves": 409,
+        "mean_iou": 0.311,
+        "lesion_iou": 0.16,
+        "leaf_iou": 0.461,
+        "pooled_lesion_iou": 0.145,
+        "mean_necrotic_iou": 0.081,
+        "affected_pct_error": {
+          "median": 47.9,
+          "p90": 96.1
+        },
+        "lesion_share_pct": 52.1,
+        "affected_share_pct": 12.9,
+        "by_crop": {
+          "corn": 0.488,
+          "grape": 0.34,
+          "pepper": 0.3,
+          "squash": 0.196,
+          "tomato": 0.45
+        },
+        "by_disease": {
+          "bell pepper powdery mildew": 0.3,
+          "corn northern leaf blight": 0.488,
+          "grape downy mildew": 0.34,
+          "squash powdery mildew": 0.127,
+          "tomato late blight": 0.425,
+          "tomato leaf mold": 0.462,
+          "zucchini downy mildew": 0.48,
+          "zucchini powdery mildew": 0.209
+        },
+        "photos_by_crop": {
+          "corn": 20,
+          "grape": 29,
+          "pepper": 4,
+          "squash": 84,
+          "tomato": 38
+        },
+        "photos_by_disease": {
+          "bell pepper powdery mildew": 4,
+          "corn northern leaf blight": 20,
+          "grape downy mildew": 29,
+          "squash powdery mildew": 37,
+          "tomato late blight": 12,
+          "tomato leaf mold": 26,
+          "zucchini downy mildew": 7,
+          "zucchini powdery mildew": 40
+        }
+      },
+      "fitted": {
+        "photos": 175,
+        "leaves": 409,
+        "mean_iou": 0.39,
+        "lesion_iou": 0.29,
+        "leaf_iou": 0.49,
+        "pooled_lesion_iou": 0.249,
+        "mean_necrotic_iou": 0.184,
+        "affected_pct_error": {
+          "median": 34.8,
+          "p90": 95.7
+        },
+        "lesion_share_pct": 52.1,
+        "affected_share_pct": 21.5,
+        "by_crop": {
+          "corn": 0.74,
+          "grape": 0.413,
+          "pepper": 0.323,
+          "squash": 0.238,
+          "tomato": 0.531
+        },
+        "by_disease": {
+          "bell pepper powdery mildew": 0.323,
+          "corn northern leaf blight": 0.74,
+          "grape downy mildew": 0.413,
+          "squash powdery mildew": 0.157,
+          "tomato late blight": 0.601,
+          "tomato leaf mold": 0.499,
+          "zucchini downy mildew": 0.487,
+          "zucchini powdery mildew": 0.268
+        },
+        "photos_by_crop": {
+          "corn": 20,
+          "grape": 29,
+          "pepper": 4,
+          "squash": 84,
+          "tomato": 38
+        },
+        "photos_by_disease": {
+          "bell pepper powdery mildew": 4,
+          "corn northern leaf blight": 20,
+          "grape downy mildew": 29,
+          "squash powdery mildew": 37,
+          "tomato late blight": 12,
+          "tomato leaf mold": 26,
+          "zucchini downy mildew": 7,
+          "zucchini powdery mildew": 40
+        }
+      }
+    }
+  },
+  "selected": {
+    "fit spots": 422,
+    "fit areas": 271,
+    "holdout spots": 273,
+    "holdout areas": 206
+  },
+  "with_results": 1172,
+  "errors": 0,
+  "specks": {
+    "date": "2026-10-23",
+    "shares": [
+      0.0,
+      1e-05,
+      2e-05,
+      5e-05,
+      0.0001,
+      0.0002,
+      0.0005,
+      0.001,
+      0.002,
+      0.005,
+      0.01
+    ],
+    "tolerance": 0.01,
+    "chosen": 2e-05,
+    "groups": {
+      "plantseg fit spots": {
+        "0.0": {
+          "photos": 357,
+          "clean_pct": 1.7,
+          "clean_with_holes_pct": 0.3,
+          "median_spots_per_leaf": 34.5,
+          "mean_iou": 0.481
+        },
+        "1e-05": {
+          "photos": 357,
+          "clean_pct": 2.0,
+          "clean_with_holes_pct": 0.3,
+          "median_spots_per_leaf": 28.0,
+          "mean_iou": 0.481
+        },
+        "2e-05": {
+          "photos": 357,
+          "clean_pct": 2.5,
+          "clean_with_holes_pct": 0.3,
+          "median_spots_per_leaf": 25.5,
+          "mean_iou": 0.48
+        },
+        "5e-05": {
+          "photos": 357,
+          "clean_pct": 3.1,
+          "clean_with_holes_pct": 0.6,
+          "median_spots_per_leaf": 19.0,
+          "mean_iou": 0.48
+        },
+        "0.0001": {
+          "photos": 357,
+          "clean_pct": 3.9,
+          "clean_with_holes_pct": 0.6,
+          "median_spots_per_leaf": 14.0,
+          "mean_iou": 0.48
+        },
+        "0.0002": {
+          "photos": 357,
+          "clean_pct": 4.2,
+          "clean_with_holes_pct": 0.6,
+          "median_spots_per_leaf": 11.0,
+          "mean_iou": 0.478
+        },
+        "0.0005": {
+          "photos": 357,
+          "clean_pct": 7.3,
+          "clean_with_holes_pct": 1.4,
+          "median_spots_per_leaf": 7.0,
+          "mean_iou": 0.476
+        },
+        "0.001": {
+          "photos": 357,
+          "clean_pct": 10.4,
+          "clean_with_holes_pct": 2.0,
+          "median_spots_per_leaf": 4.0,
+          "mean_iou": 0.471
+        },
+        "0.002": {
+          "photos": 357,
+          "clean_pct": 14.6,
+          "clean_with_holes_pct": 2.8,
+          "median_spots_per_leaf": 3.0,
+          "mean_iou": 0.465
+        },
+        "0.005": {
+          "photos": 357,
+          "clean_pct": 26.3,
+          "clean_with_holes_pct": 4.5,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.455
+        },
+        "0.01": {
+          "photos": 357,
+          "clean_pct": 36.7,
+          "clean_with_holes_pct": 5.9,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.446
+        }
+      },
+      "plantseg fit areas": {
+        "0.0": {
+          "photos": 250,
+          "clean_pct": 5.6,
+          "clean_with_holes_pct": 0.4,
+          "median_spots_per_leaf": 22.0,
+          "mean_iou": 0.427
+        },
+        "1e-05": {
+          "photos": 250,
+          "clean_pct": 6.4,
+          "clean_with_holes_pct": 0.4,
+          "median_spots_per_leaf": 17.0,
+          "mean_iou": 0.427
+        },
+        "2e-05": {
+          "photos": 250,
+          "clean_pct": 8.4,
+          "clean_with_holes_pct": 0.8,
+          "median_spots_per_leaf": 12.0,
+          "mean_iou": 0.427
+        },
+        "5e-05": {
+          "photos": 250,
+          "clean_pct": 10.0,
+          "clean_with_holes_pct": 1.2,
+          "median_spots_per_leaf": 9.0,
+          "mean_iou": 0.427
+        },
+        "0.0001": {
+          "photos": 250,
+          "clean_pct": 11.6,
+          "clean_with_holes_pct": 1.2,
+          "median_spots_per_leaf": 7.0,
+          "mean_iou": 0.426
+        },
+        "0.0002": {
+          "photos": 250,
+          "clean_pct": 14.0,
+          "clean_with_holes_pct": 1.2,
+          "median_spots_per_leaf": 5.0,
+          "mean_iou": 0.425
+        },
+        "0.0005": {
+          "photos": 250,
+          "clean_pct": 19.2,
+          "clean_with_holes_pct": 1.2,
+          "median_spots_per_leaf": 2.0,
+          "mean_iou": 0.423
+        },
+        "0.001": {
+          "photos": 250,
+          "clean_pct": 26.8,
+          "clean_with_holes_pct": 1.6,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.421
+        },
+        "0.002": {
+          "photos": 250,
+          "clean_pct": 33.2,
+          "clean_with_holes_pct": 1.6,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.418
+        },
+        "0.005": {
+          "photos": 250,
+          "clean_pct": 42.8,
+          "clean_with_holes_pct": 2.0,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.414
+        },
+        "0.01": {
+          "photos": 250,
+          "clean_pct": 48.8,
+          "clean_with_holes_pct": 2.4,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.41
+        }
+      },
+      "plantseg holdout spots": {
+        "0.0": {
+          "photos": 219,
+          "clean_pct": 1.4,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 34.0,
+          "mean_iou": 0.497
+        },
+        "1e-05": {
+          "photos": 219,
+          "clean_pct": 1.4,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 27.0,
+          "mean_iou": 0.497
+        },
+        "2e-05": {
+          "photos": 219,
+          "clean_pct": 1.4,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 23.0,
+          "mean_iou": 0.496
+        },
+        "5e-05": {
+          "photos": 219,
+          "clean_pct": 2.3,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 19.0,
+          "mean_iou": 0.496
+        },
+        "0.0001": {
+          "photos": 219,
+          "clean_pct": 2.3,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 13.0,
+          "mean_iou": 0.496
+        },
+        "0.0002": {
+          "photos": 219,
+          "clean_pct": 2.3,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 10.0,
+          "mean_iou": 0.494
+        },
+        "0.0005": {
+          "photos": 219,
+          "clean_pct": 5.9,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 6.0,
+          "mean_iou": 0.491
+        },
+        "0.001": {
+          "photos": 219,
+          "clean_pct": 11.0,
+          "clean_with_holes_pct": 0.5,
+          "median_spots_per_leaf": 4.0,
+          "mean_iou": 0.487
+        },
+        "0.002": {
+          "photos": 219,
+          "clean_pct": 15.5,
+          "clean_with_holes_pct": 1.4,
+          "median_spots_per_leaf": 2.0,
+          "mean_iou": 0.481
+        },
+        "0.005": {
+          "photos": 219,
+          "clean_pct": 25.6,
+          "clean_with_holes_pct": 3.2,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.469
+        },
+        "0.01": {
+          "photos": 219,
+          "clean_pct": 32.9,
+          "clean_with_holes_pct": 4.1,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.461
+        }
+      },
+      "plantseg holdout areas": {
+        "0.0": {
+          "photos": 175,
+          "clean_pct": 5.1,
+          "clean_with_holes_pct": 0.6,
+          "median_spots_per_leaf": 30.0,
+          "mean_iou": 0.39
+        },
+        "1e-05": {
+          "photos": 175,
+          "clean_pct": 5.7,
+          "clean_with_holes_pct": 0.6,
+          "median_spots_per_leaf": 27.0,
+          "mean_iou": 0.39
+        },
+        "2e-05": {
+          "photos": 175,
+          "clean_pct": 6.3,
+          "clean_with_holes_pct": 0.6,
+          "median_spots_per_leaf": 23.0,
+          "mean_iou": 0.389
+        },
+        "5e-05": {
+          "photos": 175,
+          "clean_pct": 7.4,
+          "clean_with_holes_pct": 1.1,
+          "median_spots_per_leaf": 17.0,
+          "mean_iou": 0.389
+        },
+        "0.0001": {
+          "photos": 175,
+          "clean_pct": 10.3,
+          "clean_with_holes_pct": 1.1,
+          "median_spots_per_leaf": 12.0,
+          "mean_iou": 0.389
+        },
+        "0.0002": {
+          "photos": 175,
+          "clean_pct": 13.7,
+          "clean_with_holes_pct": 1.1,
+          "median_spots_per_leaf": 8.0,
+          "mean_iou": 0.388
+        },
+        "0.0005": {
+          "photos": 175,
+          "clean_pct": 18.3,
+          "clean_with_holes_pct": 1.1,
+          "median_spots_per_leaf": 4.0,
+          "mean_iou": 0.386
+        },
+        "0.001": {
+          "photos": 175,
+          "clean_pct": 21.1,
+          "clean_with_holes_pct": 1.7,
+          "median_spots_per_leaf": 2.0,
+          "mean_iou": 0.385
+        },
+        "0.002": {
+          "photos": 175,
+          "clean_pct": 25.1,
+          "clean_with_holes_pct": 1.7,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.382
+        },
+        "0.005": {
+          "photos": 175,
+          "clean_pct": 36.0,
+          "clean_with_holes_pct": 3.4,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.379
+        },
+        "0.01": {
+          "photos": 175,
+          "clean_pct": 45.7,
+          "clean_with_holes_pct": 3.4,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.375
+        }
+      },
+      "dev spots": {
+        "0.0": {
+          "photos": 82,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 70.5,
+          "mean_iou": 0.356
+        },
+        "1e-05": {
+          "photos": 82,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 43.5,
+          "mean_iou": 0.356
+        },
+        "2e-05": {
+          "photos": 82,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 33.5,
+          "mean_iou": 0.357
+        },
+        "5e-05": {
+          "photos": 82,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 23.0,
+          "mean_iou": 0.357
+        },
+        "0.0001": {
+          "photos": 82,
+          "clean_pct": 1.2,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 14.0,
+          "mean_iou": 0.357
+        },
+        "0.0002": {
+          "photos": 82,
+          "clean_pct": 1.2,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 10.0,
+          "mean_iou": 0.358
+        },
+        "0.0005": {
+          "photos": 82,
+          "clean_pct": 3.7,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 6.0,
+          "mean_iou": 0.359
+        },
+        "0.001": {
+          "photos": 82,
+          "clean_pct": 8.5,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 4.5,
+          "mean_iou": 0.361
+        },
+        "0.002": {
+          "photos": 82,
+          "clean_pct": 18.3,
+          "clean_with_holes_pct": 4.9,
+          "median_spots_per_leaf": 3.0,
+          "mean_iou": 0.363
+        },
+        "0.005": {
+          "photos": 82,
+          "clean_pct": 23.2,
+          "clean_with_holes_pct": 7.3,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.366
+        },
+        "0.01": {
+          "photos": 82,
+          "clean_pct": 26.8,
+          "clean_with_holes_pct": 8.5,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.369
+        }
+      },
+      "dev areas": {
+        "0.0": {
+          "photos": 15,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 40.5,
+          "mean_iou": 0.235
+        },
+        "1e-05": {
+          "photos": 15,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 29.5,
+          "mean_iou": 0.235
+        },
+        "2e-05": {
+          "photos": 15,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 23.5,
+          "mean_iou": 0.235
+        },
+        "5e-05": {
+          "photos": 15,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 13.5,
+          "mean_iou": 0.235
+        },
+        "0.0001": {
+          "photos": 15,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 8.5,
+          "mean_iou": 0.236
+        },
+        "0.0002": {
+          "photos": 15,
+          "clean_pct": 0.0,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 5.5,
+          "mean_iou": 0.236
+        },
+        "0.0005": {
+          "photos": 15,
+          "clean_pct": 6.7,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 4.0,
+          "mean_iou": 0.237
+        },
+        "0.001": {
+          "photos": 15,
+          "clean_pct": 6.7,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 3.0,
+          "mean_iou": 0.237
+        },
+        "0.002": {
+          "photos": 15,
+          "clean_pct": 6.7,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 2.0,
+          "mean_iou": 0.238
+        },
+        "0.005": {
+          "photos": 15,
+          "clean_pct": 6.7,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 1.5,
+          "mean_iou": 0.239
+        },
+        "0.01": {
+          "photos": 15,
+          "clean_pct": 6.7,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.24
+        }
+      },
+      "healthy": {
+        "0.0": {
+          "photos": 114,
+          "clean_pct": 13.2,
+          "clean_with_holes_pct": 3.5,
+          "median_spots_per_leaf": 4.0,
+          "mean_iou": 0.495
+        },
+        "1e-05": {
+          "photos": 114,
+          "clean_pct": 17.5,
+          "clean_with_holes_pct": 3.5,
+          "median_spots_per_leaf": 2.0,
+          "mean_iou": 0.503
+        },
+        "2e-05": {
+          "photos": 114,
+          "clean_pct": 21.1,
+          "clean_with_holes_pct": 5.3,
+          "median_spots_per_leaf": 2.0,
+          "mean_iou": 0.508
+        },
+        "5e-05": {
+          "photos": 114,
+          "clean_pct": 33.3,
+          "clean_with_holes_pct": 11.4,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.512
+        },
+        "0.0001": {
+          "photos": 114,
+          "clean_pct": 38.6,
+          "clean_with_holes_pct": 14.0,
+          "median_spots_per_leaf": 1.0,
+          "mean_iou": 0.521
+        },
+        "0.0002": {
+          "photos": 114,
+          "clean_pct": 45.6,
+          "clean_with_holes_pct": 14.9,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.521
+        },
+        "0.0005": {
+          "photos": 114,
+          "clean_pct": 51.8,
+          "clean_with_holes_pct": 14.9,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.522
+        },
+        "0.001": {
+          "photos": 114,
+          "clean_pct": 59.6,
+          "clean_with_holes_pct": 16.7,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.526
+        },
+        "0.002": {
+          "photos": 114,
+          "clean_pct": 65.8,
+          "clean_with_holes_pct": 17.5,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.526
+        },
+        "0.005": {
+          "photos": 114,
+          "clean_pct": 78.9,
+          "clean_with_holes_pct": 20.2,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.527
+        },
+        "0.01": {
+          "photos": 114,
+          "clean_pct": 85.1,
+          "clean_with_holes_pct": 21.9,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.527
+        }
+      }
+    },
+    "check_photos": {
+      "rows": 212,
+      "with_leaf": 211,
+      "by_group": {
+        "plantseg fit spots": 357,
+        "plantseg fit areas": 250,
+        "plantseg holdout spots": 219,
+        "plantseg holdout areas": 175,
+        "dev spots": 82,
+        "dev areas": 15,
+        "healthy": 114
+      },
+      "eval_manifest": {
+        "path": "ml/training/eval/manifest.jsonl",
+        "sha256": "e48d59e7852da8537e06e0e5fe8633a9811b37c62730a727af65d87e78302bec",
+        "dev_cases": 102,
+        "dev_cases_used": 93
+      }
+    },
+    "healthy_holes": {
+      "leaves": 405,
+      "holes": 1582,
+      "median_px": 8.0,
+      "p90_px": 84.90000000000009,
+      "up_to_20_px": 1107,
+      "photos_with_no_hole_if_smaller_ignored": {
+        "0.0": 27,
+        "0.0001": 46,
+        "0.001": 81
+      }
+    },
+    "healthy_by_source": {
+      "dev": {
+        "0.0": {
+          "photos": 17,
+          "clean_pct": 11.8,
+          "clean_with_holes_pct": 5.9,
+          "median_spots_per_leaf": 44.0,
+          "mean_iou": 0.486
+        },
+        "2e-05": {
+          "photos": 17,
+          "clean_pct": 23.5,
+          "clean_with_holes_pct": 5.9,
+          "median_spots_per_leaf": 7.0,
+          "mean_iou": 0.545
+        }
+      },
+      "plantdoc:test": {
+        "0.0": {
+          "photos": 37,
+          "clean_pct": 24.3,
+          "clean_with_holes_pct": 8.1,
+          "median_spots_per_leaf": 2.0,
+          "mean_iou": 0.493
+        },
+        "2e-05": {
+          "photos": 37,
+          "clean_pct": 40.5,
+          "clean_with_holes_pct": 10.8,
+          "median_spots_per_leaf": 0.0,
+          "mean_iou": 0.493
+        }
+      },
+      "plantdoc:train": {
+        "0.0": {
+          "photos": 60,
+          "clean_pct": 6.7,
+          "clean_with_holes_pct": 0.0,
+          "median_spots_per_leaf": 3.0,
+          "mean_iou": 0.498
+        },
+        "2e-05": {
+          "photos": 60,
+          "clean_pct": 8.3,
+          "clean_with_holes_pct": 1.7,
+          "median_spots_per_leaf": 2.0,
+          "mean_iou": 0.506
+        }
+      }
+    }
+  },
+  "parity": {
+    "2e-05": {
+      "date": "2026-10-23",
+      "thresholds": "fitted",
+      "min_spot_share": 2e-05,
+      "leaves": 40,
+      "pixels": 27776291,
+      "different": 0,
+      "speck_pixels_turned_to_leaf": 6090,
+      "leaves_by_disease": {
+        "apple black rot": 2,
+        "apple rust": 2,
+        "apple scab": 2,
+        "bell pepper bacterial spot": 2,
+        "bell pepper frogeye leaf spot": 2,
+        "bell pepper powdery mildew": 2,
+        "corn gray leaf spot": 2,
+        "corn northern leaf blight": 2,
+        "corn rust": 2,
+        "grape black rot": 2,
+        "grape downy mildew": 2,
+        "grape leaf spot": 2,
+        "squash powdery mildew": 2,
+        "tomato bacterial leaf spot": 2,
+        "tomato early blight": 2,
+        "tomato late blight": 2,
+        "tomato leaf mold": 2,
+        "tomato septoria leaf spot": 2,
+        "zucchini downy mildew": 2,
+        "zucchini powdery mildew": 2
+      }
+    },
+    "0.005": {
+      "date": "2026-10-23",
+      "thresholds": "fitted",
+      "min_spot_share": 0.005,
+      "leaves": 20,
+      "pixels": 16922066,
+      "different": 0,
+      "speck_pixels_turned_to_leaf": 97350,
+      "leaves_by_disease": {
+        "apple black rot": 1,
+        "apple rust": 1,
+        "apple scab": 1,
+        "bell pepper bacterial spot": 1,
+        "bell pepper frogeye leaf spot": 1,
+        "bell pepper powdery mildew": 1,
+        "corn gray leaf spot": 1,
+        "corn northern leaf blight": 1,
+        "corn rust": 1,
+        "grape black rot": 1,
+        "grape downy mildew": 1,
+        "grape leaf spot": 1,
+        "squash powdery mildew": 1,
+        "tomato bacterial leaf spot": 1,
+        "tomato early blight": 1,
+        "tomato late blight": 1,
+        "tomato leaf mold": 1,
+        "tomato septoria leaf spot": 1,
+        "zucchini downy mildew": 1,
+        "zucchini powdery mildew": 1
+      }
+    }
+  }
+}

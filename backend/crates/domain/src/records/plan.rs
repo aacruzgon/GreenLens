@@ -298,6 +298,12 @@ pub struct PlanStepDraft {
     pub plant_id: Option<PlantId>,
     /// At least one source.
     pub citations: Vec<SourceId>,
+    /// Farm records the step cites, by `record_id`, from those given ([connectors 7]); never
+    /// instead of a source. Strings as the model wrote them: validation parses each, so an id
+    /// that doesn't parse refuses the step, never the whole answer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schemars(with = "Vec<FarmRecordId>")]
+    pub farm_citations: Vec<String>,
 }
 
 /// The plan writer's structured output: the fixed shape whose JSON Schema the agent sends to
