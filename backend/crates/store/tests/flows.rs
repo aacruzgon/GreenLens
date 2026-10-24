@@ -1662,6 +1662,7 @@ async fn chat_flow() {
         attachments: Vec::new(),
         citations: Vec::new(),
         farm_citations: Vec::new(),
+        blocks: Vec::new(),
         tool_calls: parts,
         route: None,
         interrupted: false,

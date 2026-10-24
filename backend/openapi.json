@@ -4509,6 +4509,45 @@
           "unsure"
         ]
       },
+      "AnswerBlock": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BlockBody",
+            "description": "The kind and its records."
+          },
+          {
+            "type": "object",
+            "required": [
+              "call_id"
+            ],
+            "properties": {
+              "call_id": {
+                "type": "string",
+                "description": "The anchor: the tool call of the same turn whose result the block shows."
+              }
+            }
+          }
+        ],
+        "description": "`AnswerBlock` ([contracts 8], answer blocks): a native component the app draws in an answer.\nThe API builds it from one tool result of the turn (its anchor, `call_id`) and the store, so\nit holds records and ids only, never text the model wrote."
+      },
+      "AnswerBlockEvent": {
+        "type": "object",
+        "description": "`answer_block` data: sent when `show_block` succeeds, so always after its anchor's\n`tool_finished`.",
+        "required": [
+          "v",
+          "block"
+        ],
+        "properties": {
+          "block": {
+            "$ref": "#/components/schemas/AnswerBlock",
+            "description": "The block, as stored in `Message.blocks`."
+          },
+          "v": {
+            "$ref": "#/components/schemas/V1",
+            "description": "`1`."
+          }
+        }
+      },
       "AnswerRequest": {
         "type": "object",
         "description": "`POST /scans/{id}/answers` ([contracts 3]).",
@@ -4672,6 +4711,215 @@
           "value": {
             "type": "string",
             "description": "The memory's text."
+          }
+        }
+      },
+      "BlockBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "From `get_garden_map`.",
+            "required": [
+              "map",
+              "neighbours",
+              "plants",
+              "focus_plant_ids",
+              "kind"
+            ],
+            "properties": {
+              "focus_plant_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Id"
+                },
+                "description": "The plants the answer is about, from the `show_block` call; each is pinned on the\nmap. May be empty."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "garden_map"
+                ]
+              },
+              "map": {
+                "$ref": "#/components/schemas/GardenMap",
+                "description": "The map, from the result."
+              },
+              "neighbours": {
+                "type": "object",
+                "description": "Plant → plants within `NEIGHBOUR_RADIUS_M`, from the result.",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "propertyNames": {
+                  "type": "string",
+                  "description": "ULID record key, without the table prefix",
+                  "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                }
+              },
+              "plants": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BlockPlant"
+                },
+                "description": "Every plant pinned on the map, from the store."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "From `get_forecast`, or from `get_scan`'s weather snapshot.",
+            "required": [
+              "days",
+              "kind"
+            ],
+            "properties": {
+              "days": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ForecastDay"
+                },
+                "description": "Daily rows: the forecast, or the scan's snapshot of it at scan time."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "weather_hours"
+                ]
+              },
+              "scan_id": {
+                "$ref": "#/components/schemas/Id",
+                "description": "Set when the anchor is `get_scan`."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "From `get_forecast`.",
+            "required": [
+              "nights",
+              "plants",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "frost_planner"
+                ]
+              },
+              "nights": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ForecastDay"
+                },
+                "description": "The result's days with `frost_risk`, first first."
+              },
+              "plants": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FrostPlant"
+                },
+                "description": "The garden's live plants, from the store, with their species' frost tenderness."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "From `get_plant_measurements`.",
+            "required": [
+              "plant_id",
+              "plant_name",
+              "quantity",
+              "points",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "measurement_trend"
+                ]
+              },
+              "plant_id": {
+                "$ref": "#/components/schemas/Id",
+                "description": "The plant, from the call's arguments."
+              },
+              "plant_name": {
+                "type": "string",
+                "description": "Its name, from the store."
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MeasurementPoint"
+                },
+                "description": "As returned, oldest first."
+              },
+              "quantity": {
+                "$ref": "#/components/schemas/GrowthQuantity",
+                "description": "The quantity the points measure."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "From `compare_lookalikes`.",
+            "required": [
+              "disease",
+              "lookalikes",
+              "kind"
+            ],
+            "properties": {
+              "disease": {
+                "$ref": "#/components/schemas/ProblemRef",
+                "description": "The problem asked about: its id from the call, its name from the knowledge base."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "candidates"
+                ]
+              },
+              "lookalikes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Lookalike"
+                },
+                "description": "The look-alikes, from the result."
+              }
+            }
+          }
+        ],
+        "description": "`AnswerBlock`'s kinds, tagged by `kind`."
+      },
+      "BlockPlant": {
+        "type": "object",
+        "description": "`BlockPlant`: a plant as a block shows it, filled in from the store.",
+        "required": [
+          "plant_id",
+          "name",
+          "status"
+        ],
+        "properties": {
+          "height_cm": {
+            "type": "number",
+            "format": "double",
+            "description": "cm: its latest `plant_height_cm` point; absent when it has none."
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name."
+          },
+          "plant_id": {
+            "$ref": "#/components/schemas/Id",
+            "description": "The plant."
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlantStatus",
+            "description": "Its health status."
           }
         }
       },
@@ -4874,6 +5122,10 @@
           {
             "$ref": "#/components/schemas/RescanRequested",
             "description": "`rescan_requested`"
+          },
+          {
+            "$ref": "#/components/schemas/AnswerBlockEvent",
+            "description": "`answer_block`"
           },
           {
             "$ref": "#/components/schemas/MessageCompleted",
@@ -6656,6 +6908,24 @@
           }
         }
       },
+      "FrostPlant": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BlockPlant",
+            "description": "Every field of `BlockPlant`."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "frost_tender": {
+                "type": "boolean",
+                "description": "`true` for a species with `frost: tender`, `false` for `hardy`; absent when the species\nis unknown or its sources don't say. Never `false` for \"don't know\"."
+              }
+            }
+          }
+        ],
+        "description": "`FrostPlant = BlockPlant & { frost_tender?: boolean }`."
+      },
       "Garden": {
         "type": "object",
         "description": "`Garden` ([contracts 9]). Raw coordinates are never returned.",
@@ -7629,6 +7899,29 @@
           "postal_code",
           "city"
         ]
+      },
+      "Lookalike": {
+        "type": "object",
+        "description": "`compare_lookalikes` items, and `candidates.lookalikes`.",
+        "required": [
+          "problem_id",
+          "name",
+          "how_to_tell"
+        ],
+        "properties": {
+          "how_to_tell": {
+            "type": "string",
+            "description": "How to tell them apart."
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name."
+          },
+          "problem_id": {
+            "$ref": "#/components/schemas/Slug",
+            "description": "The look-alike."
+          }
+        }
       },
       "MapResponse": {
         "type": "object",
@@ -8642,6 +8935,13 @@
                     "$ref": "#/components/schemas/Attachment"
                   },
                   "description": "The user's images."
+                },
+                "blocks": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AnswerBlock"
+                  },
+                  "description": "The answer blocks an assistant message sent, in order, at most 3 ([contracts 8], answer\nblocks); absent when it sent none, and read as empty from a message stored before them."
                 },
                 "citations": {
                   "type": "array",

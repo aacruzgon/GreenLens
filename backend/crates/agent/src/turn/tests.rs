@@ -113,6 +113,7 @@ fn stored_message(m: &NewMessage) -> Message<Stored> {
         citations: m.citations.clone(),
         farm_citations: m.farm_citations.clone(),
         pending_actions: Vec::new(),
+        blocks: m.blocks.clone(),
         interrupted: m.interrupted,
         created_at: m.created_at,
     }

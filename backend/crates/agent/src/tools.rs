@@ -306,6 +306,7 @@ pub const fn tool_name(name: ToolName) -> &'static str {
         ToolName::SearchFarmRecords => "search_farm_records",
         ToolName::Remember => "remember",
         ToolName::RequestRescan => "request_rescan",
+        ToolName::ShowBlock => "show_block",
         ToolName::CreateTask => "create_task",
         ToolName::CompleteTask => "complete_task",
         ToolName::RevisePlan => "revise_plan",

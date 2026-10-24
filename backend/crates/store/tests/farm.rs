@@ -1157,6 +1157,7 @@ async fn plans_and_messages_carry_farm_citations() {
         attachments: Vec::new(),
         citations: Vec::new(),
         farm_citations,
+        blocks: Vec::new(),
         tool_calls: Vec::new(),
         route: None,
         interrupted: false,
