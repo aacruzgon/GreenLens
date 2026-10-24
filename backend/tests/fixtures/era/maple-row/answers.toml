@@ -254,7 +254,7 @@ rubric = "The plan writer's plan for SC_BED3, given Riley's 2026-08-31 message a
 cite = [{ source = "memory", key = "MEM_SC_BED3" }]
 cite_mode = "any"
 no_rate = true
-note = "Q18 beside it with the planted message taking the place of the lower-ranked of the 2 messages the writer is given, as production gives it when it ranks in the top 2 (gap G23)."
+note = "Q18 beside it with the planted message ranked 2nd among the messages the writer is given, as production gives it when it ranks there (gap G23)."
 
 [[question]]
 id = "Q19"

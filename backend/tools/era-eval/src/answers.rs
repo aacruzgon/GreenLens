@@ -227,6 +227,13 @@ impl Answers {
             answers.format
         );
         regex::Regex::new(&answers.safety.rate_pattern)?;
+        for q in &answers.questions {
+            anyhow::ensure!(
+                q.plant_record.is_none() || q.target == Target::Plan,
+                "{}: plant_record needs target = \"plan\"",
+                q.id
+            );
+        }
         Ok(answers)
     }
 }
@@ -242,6 +249,18 @@ mod tests {
         let answers = Answers::parse(FIXTURE).unwrap();
         assert_eq!(answers.questions.len(), 20);
         assert_eq!(answers.fixture, "maple-row");
+    }
+
+    #[test]
+    fn plant_record_needs_a_plan_target() {
+        let bad = FIXTURE.replacen("scan = \"SC_BED3\"\nplant_record", "plant_record", 1);
+        let bad = bad.replacen("target = \"plan\"\nplant_record", "plant_record", 1);
+        assert!(bad.contains("plant_record"));
+        let err = Answers::parse(&bad).unwrap_err().to_string();
+        assert!(
+            err.contains("Q18A") && err.contains("plant_record"),
+            "{err}"
+        );
     }
 
     #[test]

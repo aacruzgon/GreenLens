@@ -781,7 +781,8 @@ async fn ask_plan(
 
 /// The synced Slack message with this vendor id, with its text and citation as the plan
 /// writer's search returns them (G23). The search is exact, so a large `k` returns every
-/// message of the garden whatever the query.
+/// message of the garden whatever the query; past 1000 messages (the port has no read by id)
+/// this would wrongly report the record missing. The fixture has far fewer.
 async fn find_planted(
     run: &Run,
     embedder: &dyn TextEmbedder,
@@ -810,12 +811,12 @@ async fn find_planted(
         .find(|h| &*h.citation.record_id.vendor_id == vendor))
 }
 
-/// The records the writer is given with `planted` among them, in the order production gives
-/// them (closest first), as it would be when the message ranks in the top 2 of the messages.
-/// Left as is when `planted` is already given. Otherwise it takes the place of the second
-/// Slack message, the lower-ranked of the 2 the writer is reserved. With fewer than 2 messages
-/// it takes the place of the last one, and it is appended when there is none. The record keeps
-/// the text and citation the store returned, so the writer's framing is production's.
+/// The records the writer is given with `planted` ranked 2nd among the messages, as production
+/// (`merge_kinds`, closest first) gives them when it ranks there. Left as is when `planted` is
+/// already given. Otherwise it goes in just before the second Slack message, after the only one,
+/// or at the end when there is none; then, past `PLAN_FARM_HITS`, the last Slack message is
+/// dropped, as the one pushed out of the top. The record keeps the text and citation the store
+/// returned, so the writer's framing is production's.
 fn plant_among(given: &[FarmRecordHit], planted: FarmRecordHit) -> Vec<FarmRecordHit> {
     let mut records = given.to_vec();
     if records
@@ -824,15 +825,22 @@ fn plant_among(given: &[FarmRecordHit], planted: FarmRecordHit) -> Vec<FarmRecor
     {
         return records;
     }
+    let is_message = |h: &FarmRecordHit| h.citation.system == ConnectorKind::Slack;
     let messages: Vec<usize> = records
         .iter()
         .enumerate()
-        .filter(|(_, h)| h.citation.system == ConnectorKind::Slack)
+        .filter(|(_, h)| is_message(h))
         .map(|(i, _)| i)
         .collect();
-    match messages.get(1).or_else(|| messages.last()) {
-        Some(&at) => records[at] = planted,
-        None => records.push(planted),
+    match (messages.get(1), messages.first()) {
+        (Some(&at), _) => records.insert(at, planted),
+        (None, Some(&only)) => records.insert(only + 1, planted),
+        (None, None) => records.push(planted),
+    }
+    if records.len() > agent::plan_writer::PLAN_FARM_HITS
+        && let Some(last) = records.iter().rposition(is_message)
+    {
+        records.remove(last);
     }
     records
 }
@@ -1134,24 +1142,35 @@ mod tests {
     }
 
     #[test]
-    fn the_planted_record_takes_the_second_message_or_the_last_or_is_appended() {
-        let (m1, doc, m2, m3) = (
+    fn the_planted_record_is_ranked_second_among_the_messages() {
+        let (m1, doc, m2, m3, m4) = (
             hit("slack", "m1"),
             hit("google_drive", "doc"),
             hit("slack", "m2"),
             hit("slack", "m3"),
+            hit("slack", "m4"),
         );
         let planted = hit("slack", "p");
-        let two = [m1.clone(), doc.clone(), m2, m3];
         assert_eq!(
-            vendors(&plant_among(&two, planted.clone())),
-            ["m1", "doc", "p", "m3"],
-            "the lower-ranked of the 2 reserved messages"
+            vendors(&plant_among(
+                &[m1.clone(), doc.clone(), m2.clone(), m3.clone()],
+                planted.clone()
+            )),
+            ["m1", "doc", "p", "m2"],
+            "3 messages and a document: the last message is pushed out"
+        );
+        assert_eq!(
+            vendors(&plant_among(
+                &[m1.clone(), m2.clone(), m3.clone(), m4],
+                planted.clone()
+            )),
+            ["m1", "p", "m2", "m3"],
+            "4 messages"
         );
         assert_eq!(
             vendors(&plant_among(&[m1.clone(), doc.clone()], planted.clone())),
-            ["p", "doc"],
-            "one message: the last message"
+            ["m1", "p", "doc"],
+            "one message: after it"
         );
         assert_eq!(
             vendors(&plant_among(std::slice::from_ref(&doc), planted.clone())),
@@ -1159,7 +1178,7 @@ mod tests {
             "no message: appended"
         );
         assert_eq!(
-            vendors(&plant_among(&[m1.clone(), planted.clone()], planted)),
+            vendors(&plant_among(&[m1, planted.clone()], planted)),
             ["m1", "p"],
             "already given: unchanged"
         );
@@ -1203,9 +1222,10 @@ mod tests {
         assert!(given.iter().any(|v| v == "D_SPRAY"), "{given:?}");
         assert!(given.iter().any(|v| v == "C_FIELD/1.1"), "{given:?}");
         assert!(
-            !given.iter().any(|v| v == "C_FIELD/2.2"),
-            "the planted message took the second message's place: {given:?}"
+            !given.iter().any(|v| v == "C_FIELD/3.3"),
+            "the last message was pushed out: {given:?}"
         );
+        assert!(given.iter().any(|v| v == "C_FIELD/2.2"), "{given:?}");
         assert_eq!(given.len(), 4, "{given:?}");
 
         let followed = Scripted::answering(&plan_json(
