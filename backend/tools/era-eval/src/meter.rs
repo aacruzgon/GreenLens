@@ -12,8 +12,9 @@ use domain::ports::{ChatChunk, ChatCompletion, ChatModel, ChatPurpose, ChatReque
 /// US dollars per million tokens, input and output, on Anthropic's first-party API. Source:
 /// Anthropic's model pricing (platform.claude.com, "Pricing"), as listed on 2026-10-20. Haiku
 /// 5.5's prices hold for prompts up to 100,000 tokens; longer ones cost 5 times as much.
-/// Every input token is priced as uncached: the domain's `Usage` counts cache reads and writes
-/// with the rest, so the cost is an estimate.
+/// Every input token is priced as uncached: the meter keeps each call's `Usage`, though
+/// `ChatChunk::Usage` now carries the cache split (`CallUsage`), so the cost is an estimate
+/// (cache reads cost less and cache writes more than an uncached token).
 pub const PRICES: [Price; 3] = [
     Price {
         model: "claude-opus-5-5",
@@ -245,7 +246,7 @@ struct Recorder<'a> {
 impl Recorder<'_> {
     fn see(&mut self, chunk: &Result<ChatChunk, ModelError>) {
         match chunk {
-            Ok(ChatChunk::Usage(usage)) => self.latest = Some(*usage),
+            Ok(ChatChunk::Usage(usage)) => self.latest = Some(usage.usage),
             Ok(ChatChunk::Done(_)) | Err(_) => self.flush(),
             Ok(ChatChunk::ToolCall {
                 name, arguments, ..
@@ -380,10 +381,10 @@ mod tests {
     }
 
     fn usage(tokens_in: u32, tokens_out: u32) -> ChatChunk {
-        ChatChunk::Usage(domain::chat::Usage {
+        ChatChunk::Usage(domain::ports::CallUsage::plain(domain::chat::Usage {
             tokens_in,
             tokens_out,
-        })
+        }))
     }
 
     #[test]

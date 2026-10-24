@@ -22,7 +22,9 @@ pub struct AgentConfig {
     pub memory_hits: usize,
     /// Knowledge hits `search_knowledge` returns.
     pub knowledge_hits: usize,
-    /// The daily chat token budget per user, input and output together (architecture 11).
+    /// The daily chat budget per user, in budget tokens (input-token prices): uncached input at
+    /// 1, cache reads at 0.1, cache writes at 1.25 and output at 5 (`CallUsage::budget_tokens`;
+    /// architecture 11, abuse and cost). 1,000,000 is about US$4 a day on Opus 5.5.
     pub daily_chat_tokens: u64,
     /// `max_tokens` of one chat model call.
     pub chat_max_tokens: u32,
@@ -57,7 +59,7 @@ impl Default for AgentConfig {
             recent_messages: 12,
             memory_hits: 5,
             knowledge_hits: 4,
-            daily_chat_tokens: 300_000,
+            daily_chat_tokens: 1_000_000,
             chat_max_tokens: 4_096,
             plan_max_tokens: 8_192,
             cheap_max_tokens: 1_024,
