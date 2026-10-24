@@ -17,6 +17,15 @@ facts_only_sources:
   - clemson_hgic_tomato_diseases
   - clemson_hgic_tomato_insect_pests
   - isu_growing_tomatoes_home_garden   # no chunks: the care profile cites it by hand
+  - isu_moss_lawn_garden               # soil conditions (#46): how-to pages, no republishing note
+  - isu_algae_lawn
+  - isu_fungi_landscape_mulch
+  - isu_watering_tips
+  - csu_soil_texture                  # soil conditions (#46): CSU's web pages, no reuse grant
+  - csu_soil_compaction
+  - csu_soil_drainage
+  - csu_saline_soils
+  - csu_mulching
 
 # Sources tagged with another model than tag.py's default (Sonnet 5.5): each failed its 10% spot
 # check and was re-tagged (training.md §10, running it), so a plain re-run keeps that model.
@@ -41,6 +50,9 @@ withheld_chunks:
   # Alan's review of #143 (2026-10-23):
   ontario_field_crop_diseases.17: recommends neonicotinoid seed treatments, which a home gardener can't apply (S5)
   edis_pp362_bacterial_spot_pepper.5: a table's caption without its table
+  # Alan's review of #170 (2026-10-23): fragments without the label or lead-in they need:
+  ontario_field_crops_soil_management.28: a list cut from its lead-in, on planting into a cover crop
+  ontario_field_crops_soil_management.70: granular structure's list without its "Granular" label
 
 species:
   - id: tomato
