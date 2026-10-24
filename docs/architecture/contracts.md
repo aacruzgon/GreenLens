@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.35, 2026-10-23. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.11.0, 2026-10-23. Companion to the [architecture document](README.md).
+> **v0.11.0**: answer blocks (design open decision 7): `AnswerBlock` in five kinds, each anchored on one tool result of the turn and filled in from the store, the `show_block` tool, the `answer_block` event and `Message.blocks` (section 8, answer blocks).
 > **v0.10.35**: `SpeciesSeed.frost?: "tender" | "hardy"` (section 10), a top-level field outside `care`: tender is damaged by a light frost, hardy stands one, absent when the sources don't say; `get_species_profile` returns it with the profile (section 8); backend roadmap S5 work 9's domain and schema half, the seed values are the knowledge track's.
 > **v0.10.34**: the dose check reads a clock time after an opening parenthesis as it would without one, so "on 31 August (22:40 UTC)" passes while "Mix copper (18:40 utc)" still fails (EON gap G20's re-run).
 > **v0.10.33**: section 7 says a necrotic group under `min_spot_share` (2e-5) of its leaf is a speck the `SpotSegmenter` folds into the leaf, not a spot, for the spot measurements and the `healthy` rule, and open question 10's spot colour thresholds are set (vision evaluation 6, M15); no wire shape changed.
@@ -1646,6 +1647,7 @@ interface Message {
   citations: Citation[];
   farm_citations?: FarmCitation[];   // farm records the turn's tool calls returned ("records checked"), once per record id; omitted when empty; no SSE event, the app reads them from the stored message (section 9, farm connectors)
   pending_actions: PendingAction[];
+  blocks?: AnswerBlock[];            // the answer blocks the turn sent, in order, at most 3; omitted when empty (answer blocks, below)
   interrupted: boolean;              // the stream dropped before message_completed
   created_at: Timestamp;
 }
@@ -1665,7 +1667,7 @@ interface ConversationDetail extends Conversation {
 | `POST /conversations/{id}/messages` | `SendMessageRequest` | An SSE stream (below) |
 | `POST /messages/{id}/feedback` | `{ rating: "up" \| "down", notes?: string }` | `204`, owner only, assistant messages only |
 
-Tool calls and tool results are stored but never sent to the app.
+Tool calls and tool results are stored but never sent to the app. An answer block is built from one tool result, but holds only records and ids (answer blocks, below).
 
 ### Sending a message
 
@@ -1693,6 +1695,7 @@ interface SendMessageRequest {
 | `pending_action` | `{ v: 1, pending_action: PendingAction }` |
 | `memory_saved` | `{ v: 1, memory: Memory }`. Shown as "Remembered: …" with **Undo** and **Share with garden** |
 | `rescan_requested` | `{ v: 1, plant_id: Id, photo_kind: ImageKind, instructions: string }`. The app offers to open the capture flow for a new scan of that plant |
+| `answer_block` | `{ v: 1, block: AnswerBlock }`. Sent when `show_block` succeeds, so after its anchor's `tool_finished`; `show_block` itself sends no `tool_started` or `tool_finished` (answer blocks, below) |
 | `message_completed` | `{ v: 1, message_id: Id, usage: { tokens_in: number; tokens_out: number } }` |
 | `error` | `{ v: 1, code: ErrorCode, message: string, retryable: boolean }` |
 
@@ -1833,11 +1836,61 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 | `search_farm_records` | `query`, `kind?` (`message` or `document`), `since?` (a date), `until?` (a date), `author?` (part of a name) | The garden's synced farm records; every role. Offered when the garden has a farm record or an `active` or `reauth_needed` connector. `since` and `until` are `YYYY-MM-DD` in the garden's time zone, both days included: from `since`'s midnight to the midnight after `until`. `until` before `since` is refused (`Rejected`). The window applies to Slack messages only: a Drive document's time is when it was last edited, not the period it records, so documents are returned whatever the window, also with `kind: "document"`. `author` matches part of the author's display name, ignoring case, and applies to Slack messages only (Drive documents have no author): with `author`, only messages are searched, and `author` with `kind: "document"` is refused. A Slack thread is one record with its first message's author and time, so `author`, `since` and `until` don't find a reply by its own author or day. Without `kind`, messages and documents are searched apart and each kind keeps its 3 closest hits when it has them; the other slots go to the closest of the rest | `{ text: string; citation: FarmCitation }[]`, at most 8 (`FarmRecordHit`), closest first, framed as `kind="farm_records"`. Built in [EON E5.2](../EON/README.md#e5-the-agent); `until`, `author` and the kinds' reserve in gaps G12 and G16 |
 | `remember` | `fact`, `plant_id?` | The garden | `Memory` with `source: "chat"`, and a `memory_saved` event |
 | `request_rescan` | `plant_id`, `photo_kind`, `instructions` | Live plants of the garden | `{ plant_id: Id; photo_kind: ImageKind; instructions: string }`, and a `rescan_requested` event |
+| `show_block` | `kind`, `call_id`, `focus_plant_ids?` (`garden_map` only) | One tool result of this turn, its anchor; every role | `{ ok: true; kind }` and an `answer_block` event. A refusal is a tool error and sends nothing (answer blocks, below) |
 | `create_task` | `title`, `detail?`, `plant_id?`, `due?`, `repeat_every_days?` | The garden; editors and owners only | `PendingAction` (preview `task`) |
 | `complete_task` | `task_id` | An open task of the garden; editors and owners only | `PendingAction` (preview `task` with `done_at`) |
 | `revise_plan` | `scan_id`, `summary`, `changed_steps`, `removed_step_ids`, `constraints` | The current plan of that scan of the garden; editors and owners only. A plant or garden conversation has no single current plan, so the scan is named | `PendingAction` (preview `plan`), after full plan validation |
 
 **Tool arguments are strict.** A call with a field the tool doesn't know, or a malformed id, is refused before the tool runs, and the model gets the reason as an error result, so it can correct the call; a misspelt optional argument is never silently ignored. An id that names nothing the tool may see is answered like a `404` ("No such image").
+
+### Answer blocks
+
+An answer can carry **answer blocks**: native components the app draws with the text, from a fixed set ([design 5](../design/design.md#chat-answers-you-can-interact-with)). The model asks for one with `show_block`; the API builds it from records, never from text the model wrote.
+
+```ts
+type AnswerBlock = { call_id: string } & (    // call_id: the anchor, one tool call of the same turn
+  | { kind: "garden_map"; map: GardenMap; neighbours: Record<Id, Id[]>;
+      plants: BlockPlant[]; focus_plant_ids: Id[] }
+  | { kind: "weather_hours"; days: WeatherSummary["forecast"]; scan_id?: Id }
+  | { kind: "frost_planner"; nights: WeatherSummary["forecast"]; plants: FrostPlant[] }
+  | { kind: "measurement_trend"; plant_id: Id; plant_name: string;
+      quantity: MeasurementPoint["quantity"]; points: MeasurementPoint[] }
+  | { kind: "candidates"; disease: { problem_id: Slug; name: string };
+      lookalikes: { problem_id: Slug; name: string; how_to_tell: string }[] }
+);
+
+interface BlockPlant {
+  plant_id: Id;
+  name: string;
+  status: Plant["status"];
+  height_cm?: number;                // the latest plant_height_cm point; omitted when there is none
+}
+
+interface FrostPlant extends BlockPlant {
+  frost_tender?: boolean;            // true for species frost "tender", false for "hardy"; omitted when unknown
+}
+```
+
+| `kind` | Anchor tool | From the result | Filled in from the store | Refused when |
+|---|---|---|---|---|
+| `garden_map` | `get_garden_map` | `map`, `neighbours` | `plants`: every plant pinned on the map. `focus_plant_ids` comes from the call and may be empty | The result has no map. A focus id isn't pinned on the map |
+| `weather_hours` | `get_forecast`, or `get_scan` | `days`: the forecast, or with `get_scan` the scan's `weather.forecast` snapshot, with `scan_id` set | none | No days: an empty forecast, or a scan with no weather |
+| `frost_planner` | `get_forecast` | `nights`: the days with `frost_risk: true`, first first | `plants`: the garden's live plants (not the map's pins, so it works without a map), with `frost_tender` from each plant's species `frost` | No day has `frost_risk` |
+| `measurement_trend` | `get_plant_measurements` | `points`, as returned, oldest first | `plant_id` from the call's arguments, `plant_name` from the store; `quantity` from the call, or from the points | No points. The call gave no `quantity` and the points mix both quantities |
+| `candidates` | `compare_lookalikes` | `lookalikes` | `disease.problem_id` from the call's arguments, its `name` from the knowledge base | No look-alikes |
+
+- **One anchor per block.** `show_block` names one tool call of **the same turn** by its `call_id`, after that call returned. The API refuses a `call_id` the turn doesn't hold (one from an earlier turn included), a call that errored, and a result whose tool doesn't fit the kind.
+- **Filled in from the store, never from the model.** Plant names, statuses, latest heights, species frost and problem names come from the store and the knowledge base, so a block holds records and ids only. The model chooses only `focus_plant_ids`, and only for `garden_map`.
+- **`frost_tender` is never a guess.** It is omitted, not `false`, when the plant has no known species or its species has no `frost` ([section 10](#10-knowledge-seed-format)): the app shows "unknown", not "hardy".
+- **`weather_hours` rows are daily.** A forecast day keeps its shape (section 7, `WeatherSummary`); "tap a day for its hours over 90%" reads `hours_rh_over_90`. With `scan_id`, the days are the scan's snapshot of the forecast at scan time, not the hours before the scan.
+- **A refusal sends nothing.** A refused `show_block` sends no event, and the model gets a tool error with the reason, so its text answer stands alone. `show_block` never sends `tool_started` or `tool_finished`, so the app shows no chip for it.
+- **The event.** `answer_block` `{ v: 1, block }` is sent when `show_block` succeeds, so always after the anchor's `tool_finished`.
+- **Stored.** `Message.blocks` holds exactly the blocks sent, in order. It is omitted when empty, like `farm_citations`, and read as empty from a message stored before blocks. The replay of a finished message (`200 { message }`) returns it.
+- **Limits.** At most 3 blocks per assistant message: a 4th `show_block` is a tool error. The same `(kind, call_id)` a second time is a tool error, and the first block stands.
+- **Every role** is offered `show_block`. It is a read and UI tool, not a write tool. A viewer sees a frost planner, but the app hides its write action.
+- **No summary field.** The app builds the VoiceOver summary from the block's records, and the text answer makes sense without the block (the chat prompt says so).
+
+**Frost planner to tasks.** The planner writes nothing itself. When the user picks plants and confirms, the app calls `POST /tasks` (editors and owners, section 9) once per chosen plant, with `plant_id`, `due` the first frost night, and a title the app writes from the records, such as "Cover the tomato before Thursday's frost". There is no `create_task` card: a write the user starts in the app's own UI is already confirmed. The **Cover** action is hidden for viewers and reviewers.
 
 ---
 
@@ -2516,6 +2569,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.33: a necrotic group under `min_spot_share` of its leaf is a speck folded into the leaf, not a spot, for the spot measurements and the `healthy` rule; open question 10's spot colour thresholds are set | 6.7 (spots), 15 (decision 17) |
 | v0.10.34: a clock time after an opening parenthesis is a clock time to the dose check ("on 31 August (22:40 UTC)") | none: 11 names clock times only as a category, which this doesn't change |
 | v0.10.35: `SpeciesSeed.frost` (`tender` or `hardy`), top-level, absent when unknown | 5 (Species profiles) |
+| v0.11.0: answer blocks: `AnswerBlock` (`garden_map`, `weather_hours`, `frost_planner`, `measurement_trend`, `candidates`), each anchored on one tool result of the turn and filled in from the store; the `show_block` tool for every role; the `answer_block` event; `Message.blocks`, at most 3 | 7 (tools; answer blocks) |
 
 ---
 

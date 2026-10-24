@@ -1,6 +1,6 @@
 # PDM Backend: `domain` contract types
 
-> **Status:** Draft v0.3.6, 2026-10-23. v0.3.6: `SpeciesSeed.frost`, a species' frost tenderness (`tender` or `hardy`), top level and absent when the sources don't say (backend S5 work 9). v0.3.5: `PlanStepDraft.farm_citations`, the farm records a plan-writer step cites, optional and omitted when empty, strings that validation parses so a bad id refuses the step and not the answer (EON E5.4). v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
+> **Status:** Draft v0.3.7, 2026-10-23. v0.3.7: answer blocks ([contracts 8](../architecture/contracts.md#answer-blocks)): `AnswerBlock` (`call_id` and a `BlockBody` tagged by `kind`), `AnswerBlockKind`, `BlockPlant`, `FrostPlant`, the `answer_block` event (`AnswerBlockEvent`), `Message.blocks` (omitted when empty) and `ToolName::ShowBlock`; `Lookalike` derives `ToSchema`, since a `candidates` block carries it. v0.3.6: `SpeciesSeed.frost`, a species' frost tenderness (`tender` or `hardy`), top level and absent when the sources don't say (backend S5 work 9). v0.3.5: `PlanStepDraft.farm_citations`, the farm records a plan-writer step cites, optional and omitted when empty, strings that validation parses so a bad id refuses the step and not the answer (EON E5.4). v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
 
 Companion to the [backend architecture](README.md) and to the [`domain` crate](domain.md). Sections 1–10 follow [contracts.md](../architecture/contracts.md) 1–10, so "contracts 7" and "domain-types 7" describe the same shapes. Every listing is copied from the compiled source of `crates/domain` (`cargo check`, `cargo test` and `cargo clippy --all-targets` pass on Rust 1.99.1 with serde 1.0.229, utoipa 6.0.0, schemars 1.2.3, chrono 0.4.45 and ulid 3.0.0); the module paths are in [the map](#11-typescript-to-rust-map).
 
@@ -348,7 +348,7 @@ The schema says `additionalProperties: false` (`#[schemars(extend(…))]`) so th
 
 ### Chat SSE events
 
-@@items chat.rs ChatRoute Usage MessageStarted TextDelta ToolStarted ToolFinished CitationEvent PendingActionEvent MemorySaved RescanRequested MessageCompleted ChatErrorEvent ChatEvent@@
+@@items chat.rs ChatRoute Usage MessageStarted TextDelta ToolStarted ToolFinished CitationEvent PendingActionEvent MemorySaved RescanRequested AnswerBlockEvent MessageCompleted ChatErrorEvent ChatEvent@@
 
 The `data:` line has no `type` field; the event name is the SSE `event:` line. `ChatEvent` is therefore untagged and serialise-only: the API writes these and the app reads them, so the untagged decoding hazard doesn't arise.
 
@@ -368,11 +368,21 @@ Shared memories as Agent Memory holds them ([agent-memory](../database/agent-mem
 
 @@items chat.rs Belief PlantBeliefs BeliefHit MemorySearch@@
 
+### Answer blocks
+
+Native components the app draws with an answer, each built by `agent` from one tool result of the turn and the store ([contracts 8, answer blocks](../architecture/contracts.md#answer-blocks)).
+
+@@items chat.rs AnswerBlockKind BlockPlant FrostPlant AnswerBlock BlockBody@@
+
+- `AnswerBlock` is `{ call_id }` with `BlockBody` flattened into it, so the generated schema is `allOf` of the two and the app's type is `{ call_id } & (…)`. The body is internally tagged by `kind`; an unknown kind doesn't decode.
+- `FrostPlant` flattens `BlockPlant` and adds `frost_tender`, which is omitted, never `false`, when the species is unknown or has no `frost`.
+- `Message.blocks` has `#[serde(default)]`, so a message stored before blocks reads as having none, and `skip_serializing_if = "Vec::is_empty"`, so the app sees the field only when a block was sent.
+
 ### Tool return shapes
 
 @@items chat.rs ToolName SimilarCase ProblemRef KnowledgeHit Lookalike SoilProfileView GardenMapView RescanRequest@@
 
-These go to the model, never to the app, so they derive serde only. `get_scan` returns `ScanDetail<Stored>`: "without image URLs", which is exactly the stored URL state.
+These go to the model, never to the app, so they derive serde only; `Lookalike` also derives `ToSchema`, because a `candidates` block carries it to the app. `get_scan` returns `ScanDetail<Stored>`: "without image URLs", which is exactly the stored URL state.
 
 ---
 
@@ -534,6 +544,7 @@ The contract's example profile, as the JSON its YAML parses to, round-trips:
 | `Memory` | `Memory`, `MemoryKind`, `MemoryTopic`, `MemorySource`, `MemoryQuery`, `CreateMemoryRequest` | `chat` |
 | `Belief`, `PlantBeliefs`, `search_memory`'s result | `Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch` | `chat` |
 | tool return shapes | `SimilarCase`, `ProblemRef`, `KnowledgeHit`, `Lookalike`, `SoilProfileView`, `GardenMapView`, `RescanRequest`, `ToolName` | `chat` |
+| `AnswerBlock`, `answer_block` | `AnswerBlock`, `BlockBody`, `AnswerBlockKind`, `BlockPlant`, `FrostPlant`, `AnswerBlockEvent` | `chat` |
 | `GardenLocationInput`, `Garden` | same names, `ConsentPrecision`, `LocationQuery`, `SoilProfileStatus`, `TimeZone`, `CreateGardenRequest`, `UpdateGardenRequest`, `GardenWeather` | `garden::gardens` |
 | members, `Invite` | `Member`, `Invite`, `CreateInviteRequest`, `UpdateMemberRequest` | `garden::members` |
 | `TimelineEntry`, `MeasurementPoint` | `TimelineEntry<U>`, `MeasurementPoint`, `GrowthQuantity`, `TimelineMeasurements`, `CreatePlantRequest`, `UpdatePlantRequest` | `garden::plants` |
