@@ -6720,6 +6720,11 @@ pub struct SpeciesSeed {
     /// Required when `full`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub care: Option<Care>,
+    /// Frost tenderness: `tender` is damaged by a light frost, `hardy` stands one. Absent when
+    /// the sources don't say. Separate from `care.hardiness_zones`, whose `annual` means "grown
+    /// as an annual": lettuce is grown as an annual but stands a light frost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frost: Option<Frost>,
     /// Checked against `classifier_labels.yaml` at ingestion.
     pub classifier_supported: bool,
     /// The text prompt `BioCLIP` scores against.
