@@ -5,8 +5,8 @@
 //! The scores are compared with each other, never read as probabilities: each label's score is
 //! shifted by a calibration offset fitted on the labelled example messages, the highest wins,
 //! and a near tie with `safety_sensitive` resolves to `safety_sensitive` (fail safe). A cheap
-//! keyword check for a person or pet being poisoned runs whatever the classifier says, so the
-//! poison-control answer never depends on a model.
+//! keyword check for a person or pet being poisoned runs whatever the classifier says, even
+//! when `off_topic` wins, so the poison-control answer never depends on a model.
 //!
 //! **Farm records** (gap G10). When the garden has farm records, the classifier is also asked
 //! for [`FARM_RECORDS_LABEL`], a question about what the garden's own records say (its Slack
@@ -148,7 +148,9 @@ pub fn mentions_poisoning(text: &str) -> bool {
 /// dose check still applies to every sentence. `farm_records` says whether the garden has farm
 /// records, as the classifier was told: it decides what a `farm_records` score counts for. Two
 /// labels for the same route count once, with the higher calibrated score. A `farm_records` win
-/// with `safety_sensitive` at [`FARM_SAFETY_FLOOR`] or more is safety-sensitive.
+/// with `safety_sensitive` at [`FARM_SAFETY_FLOOR`] or more is safety-sensitive. A message that
+/// [`mentions_poisoning`] is [`RouteDecision::PoisonControl`] on any route, `off_topic`
+/// included: Jev scored "I got some of the spray in my eyes, help" `off_topic` 0.85.
 pub fn decide(
     text: &str,
     scores: Option<&[LabelScore]>,
@@ -195,7 +197,7 @@ pub fn decide(
         }
     };
 
-    if mentions_poisoning(text) && route != ChatRoute::OffTopic {
+    if mentions_poisoning(text) {
         return RouteDecision::PoisonControl;
     }
     match route {
@@ -361,6 +363,27 @@ mod tests {
             decide("When should I water?", Some(&s), &c, true),
             RouteDecision::Model(ChatRoute::CareQuestion)
         );
+    }
+
+    #[test]
+    fn poisoning_wins_over_a_clear_off_topic_win() {
+        let s = scores(&[("off_topic", 0.95), ("safety_sensitive", 0.1)]);
+        for c in [Calibration::default(), Calibration::jev()] {
+            for text in [
+                "My dog ate some slug pellets, what should I do?",
+                "I got some of the spray in my eyes, help",
+            ] {
+                assert_eq!(
+                    decide(text, Some(&s), &c, false),
+                    RouteDecision::PoisonControl,
+                    "{text}"
+                );
+            }
+            assert_eq!(
+                decide("write me a poem about football", Some(&s), &c, false),
+                RouteDecision::OffTopic
+            );
+        }
     }
 
     #[test]
