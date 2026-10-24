@@ -186,6 +186,34 @@ datasets:
     ship: false
     use: plant-check negatives (evaluation only, never training data)
 
+  - name: openimages_v7_faces
+    description: >-
+      Open Images V7 validation and test tables (boxes, human-verified image labels, image
+      information with each photo's Flickr original, licence and author; about 285 MB). The
+      face-blur check's photos are picked from them by ml.training.data.faces: a `Human face` box
+      and a verified plant, houseplant, flower, tree or flowerpot label, no group or depiction
+      face box, a Flickr original of 2,000 px or more. The photos are kept under
+      training/eval/faces/ (git-ignored), never trained on; each one's licence and credit are in
+      splits/faces_openimages.tsv
+    kind: files
+    files:
+      - {name: validation-annotations-bbox.csv, url: https://storage.googleapis.com/openimages/v5/validation-annotations-bbox.csv, sha256: d8bbd59410af14835d7733165a7bb8a3f0213981b22dd5077b0b9f7878991ff2}
+      - {name: test-annotations-bbox.csv, url: https://storage.googleapis.com/openimages/v5/test-annotations-bbox.csv, sha256: fe22e579b9453875601576859d14ef3304058165de139c66b725e599202bd7b1}
+      - {name: oidv7-val-annotations-human-imagelabels.csv, url: https://storage.googleapis.com/openimages/v7/oidv7-val-annotations-human-imagelabels.csv, sha256: 92ddbdfceb3626e044df5e89100b24f6c22a79c1888a4bddd00a6f231d86d56a}
+      - {name: oidv7-test-annotations-human-imagelabels.csv, url: https://storage.googleapis.com/openimages/v7/oidv7-test-annotations-human-imagelabels.csv, sha256: 917d3ca8c0a2e09d652fb3148e9264df6117bfcaccf425a60a29b23269487953}
+      - {name: validation-images-with-rotation.csv, url: https://storage.googleapis.com/openimages/2018_04/validation/validation-images-with-rotation.csv, sha256: ed93a0e121fe345effdfc7359b848dbc64a1ff6778c8c73563157cb500b33a17}
+      - {name: test-images-with-rotation.csv, url: https://storage.googleapis.com/openimages/2018_04/test/test-images-with-rotation.csv, sha256: de55c6b8cbda32a79f4a20f28572d54e9c49d527a4006725675764074a51a36d}
+      - {name: oidv7-class-descriptions.csv, url: https://storage.googleapis.com/openimages/v7/oidv7-class-descriptions.csv, sha256: 84a4373a0efb7fd6d93fe19b0e7ceb6c1b855c233d13b9b78a9a33655c9fdce3}
+    url: https://storage.googleapis.com/openimages/web/index.html
+    fetched_by: ml.training.data.faces (the photos)
+    index: splits/faces_openimages.tsv
+    licence: "Open Images: annotations CC BY 4.0 (Google); each image's own licence from its image-information row, CC BY 2.0 for every photo kept (checked per photo in the index)"
+    citation: >-
+      Kuznetsova A. et al. (2020) The Open Images Dataset V4, IJCV 128; each photo's Flickr
+      author, as credited in the index
+    ship: false
+    use: face-blur recall of the upload's face detector (evaluation only, never training data)
+
 models:
   - name: bioclip2
     description: BioCLIP 2, CLIP ViT-L/14, 768-dimensional embedding
