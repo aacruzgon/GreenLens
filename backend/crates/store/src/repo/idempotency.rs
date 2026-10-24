@@ -48,8 +48,7 @@ pub mod sql {
     pub const USAGE: &str = "SELECT * FROM ONLY $usage;";
     /// Chat tokens after a turn ([database 4], limits ✓: `+=` on a missing record starts from
     /// the default).
-    pub const ADD_CHAT_USAGE: &str =
-        "UPSERT ONLY $usage SET tokens_in += $tokens_in, tokens_out += $tokens_out RETURN AFTER;";
+    pub const ADD_CHAT_USAGE: &str = "UPSERT ONLY $usage SET tokens_in += $tokens_in, tokens_out += $tokens_out, chat_budget += $budget RETURN AFTER;";
 }
 
 /// An `idempotency_key` row.
@@ -82,6 +81,9 @@ pub struct UsageRow {
     /// Chat tokens out.
     #[surreal(default)]
     pub tokens_out: i64,
+    /// Chat tokens as the budget counts them.
+    #[surreal(default)]
+    pub chat_budget: i64,
 }
 
 impl TryFrom<UsageRow> for UsageTotals {
@@ -99,6 +101,7 @@ impl TryFrom<UsageRow> for UsageTotals {
             requests: u32_of("requests", row.requests)?,
             tokens_in: u64_of("tokens_in", row.tokens_in)?,
             tokens_out: u64_of("tokens_out", row.tokens_out)?,
+            chat_budget: u64_of("chat_budget", row.chat_budget)?,
         })
     }
 }
@@ -269,12 +272,15 @@ impl UsageRepo for SurrealStore {
         user: UserId,
         day: NaiveDate,
         usage: Usage,
+        budget_tokens: u64,
     ) -> Result<UsageTotals, StoreError> {
         const WHAT: &str = "add chat usage";
+        let budget = i64::try_from(budget_tokens).unwrap_or(i64::MAX);
         let mut results = run_tx(&self.db, sql::ADD_CHAT_USAGE, |q| {
             q.bind(("usage", usage_rid(user, day)))
                 .bind(("tokens_in", i64::from(usage.tokens_in)))
                 .bind(("tokens_out", i64::from(usage.tokens_out)))
+                .bind(("budget", budget))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;

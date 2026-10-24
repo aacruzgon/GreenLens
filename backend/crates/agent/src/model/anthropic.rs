@@ -76,7 +76,9 @@ impl AnthropicChat {
             MessagesRequest::new(model, request.max_tokens, messages(&request.messages));
         api_request.system = Some(System::Blocks(vec![TextBlock {
             text: Cow::Borrowed(&request.system),
-            // Tools render before the system prompt, so this one breakpoint caches both.
+            // Tools render before the system prompt, so this one breakpoint caches both. The
+            // 5-minute TTL is the one `CallUsage::CACHE_WRITE_WEIGHT` (1.25) prices; a 1-hour
+            // cache writes at 2× and would need that weight changed.
             cache_control: Some(CacheControl::EPHEMERAL),
         }]));
         let mut tools: Vec<&domain::ports::ToolSpec> = request.tools.iter().collect();
@@ -206,7 +208,7 @@ fn chunk(output: Output) -> Option<ChatChunk> {
             ChatChunk::Reasoning(ReasoningBlock::Redacted { data })
         }
         Output::Reasoning(_) => return None,
-        Output::Usage(u) => ChatChunk::Usage(u.to_domain()),
+        Output::Usage(u) => ChatChunk::Usage(u.to_call()),
         Output::Stop(s) => ChatChunk::Done(stop(Some(s))),
     })
 }
@@ -244,7 +246,7 @@ impl ChatModel for AnthropicChat {
                     // count, which the accumulator merges without emitting: send it before
                     // `Done`, or the call's usage stays at an earlier, smaller count.
                     stopped = true;
-                    yield ChatChunk::Usage(acc.usage().to_domain());
+                    yield ChatChunk::Usage(acc.usage().to_call());
                 }
                 if let Some(c) = output.and_then(chunk) {
                     yield c;
@@ -460,6 +462,7 @@ mod tests {
 
     /// The final output count comes in the `message_delta` that carries the stop reason; the
     /// last `Usage` before `Done` must hold it (found by the era-eval harness, docs/EON E8.1).
+    /// It also carries the cache split, for the daily chat budget.
     #[tokio::test]
     async fn the_last_usage_before_done_has_the_final_output_count() {
         use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
@@ -467,7 +470,7 @@ mod tests {
         let server = MockServer::start().await;
         let body = concat!(
             "event: message_start\n",
-            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\n\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":5,\"cache_read_input_tokens\":100,\"cache_creation_input_tokens\":20,\"output_tokens\":1}}}\n\n",
             "event: content_block_start\n",
             "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
             "event: content_block_delta\n",
@@ -514,8 +517,9 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        assert_eq!(last_usage.tokens_in, 5);
-        assert_eq!(last_usage.tokens_out, 42);
+        assert_eq!(last_usage.usage.tokens_in, 125, "every input token");
+        assert_eq!(last_usage.usage.tokens_out, 42);
+        assert_eq!((last_usage.cache_read, last_usage.cache_write), (100, 20));
         assert!(matches!(
             items.last(),
             Some(ChatChunk::Done(StopReason::EndTurn))

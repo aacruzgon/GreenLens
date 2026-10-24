@@ -41,8 +41,8 @@ use domain::{
     error::{Budget, DomainError, ErrorCode},
     id::{ChatImageId, MessageId},
     ports::{
-        ChatChunk, ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask, ContentPart,
-        IdGenExt as _, ModelError, NewMessage, ObjectKey, PriorExchange, StopReason,
+        CallUsage, ChatChunk, ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask,
+        ContentPart, IdGenExt as _, ModelError, NewMessage, ObjectKey, PriorExchange, StopReason,
     },
     records::diagnosis::Citation,
     rules::limits::{MESSAGE_MAX_CHARS, MESSAGE_MAX_IMAGES},
@@ -204,7 +204,7 @@ impl ChatAgent {
             .usage
             .usage(member.user(), now.utc_day())
             .await?;
-        let spent = used.tokens_in.saturating_add(used.tokens_out);
+        let spent = used.chat_budget;
         let budget = deps.config.daily_chat_tokens;
         if spent >= budget {
             return Err(DomainError::BudgetExceeded {
@@ -450,18 +450,22 @@ struct Reply {
     /// The answer blocks sent, in order (`Message.blocks`).
     blocks: Vec<AnswerBlock>,
     usage: Usage,
+    /// The calls' weight in the daily budget (`CallUsage::budget_tokens`, summed).
+    budget: u64,
     purpose: Option<ChatPurpose>,
     prompt_version: &'static str,
 }
 
 impl Reply {
-    fn add_usage(&mut self, u: Usage) {
-        self.usage.tokens_in = self.usage.tokens_in.saturating_add(u.tokens_in);
-        self.usage.tokens_out = self.usage.tokens_out.saturating_add(u.tokens_out);
+    fn add_usage(&mut self, u: CallUsage) {
+        self.usage.tokens_in = self.usage.tokens_in.saturating_add(u.usage.tokens_in);
+        self.usage.tokens_out = self.usage.tokens_out.saturating_add(u.usage.tokens_out);
+        self.budget = self.budget.saturating_add(u.budget_tokens());
     }
 
-    fn spent(&self) -> u64 {
-        u64::from(self.usage.tokens_in) + u64::from(self.usage.tokens_out)
+    /// What the turn has spent of the daily budget.
+    const fn spent(&self) -> u64 {
+        self.budget
     }
 }
 
@@ -523,7 +527,7 @@ async fn run(
     if let Err(e) = deps
         .stores
         .usage
-        .add_chat_usage(member.user(), turn.now.utc_day(), reply.usage)
+        .add_chat_usage(member.user(), turn.now.utc_day(), reply.usage, reply.budget)
         .await
     {
         tracing::warn!(error = %e, "chat usage not recorded");
@@ -710,13 +714,20 @@ async fn stream_call(
 ) -> Result<CallResult, Ended> {
     let mut result = CallResult::default();
     let mut raw = String::new();
-    let mut usage = Usage::default();
+    let mut usage = CallUsage::default();
     let mut stream = deps.chat.stream(request);
     loop {
+        // A call cut short still counts: what it reported so far goes into the budget.
         let next = tokio::select! {
             biased;
-            () = turn.shutdown.cancelled() => return Err(Ended::Interrupted),
-            () = out.tx.closed() => return Err(Ended::Interrupted),
+            () = turn.shutdown.cancelled() => {
+                reply.add_usage(usage);
+                return Err(Ended::Interrupted);
+            }
+            () = out.tx.closed() => {
+                reply.add_usage(usage);
+                return Err(Ended::Interrupted);
+            }
             next = stream.next() => next,
         };
         let chunk = match next {
@@ -980,7 +991,7 @@ async fn run_tool(
         content.clone()
     } else {
         let kind = tool.map_or(DataKind::ToolResult, crate::tools::DynTool::data_kind);
-        tool_result(kind, &content)
+        tool_result(kind, &call_id, &content)
     };
     reply.tool_calls.push(ContentPart::ToolResult {
         call_id: call_id.clone(),
@@ -1006,9 +1017,10 @@ async fn run_tool(
 /// `show_block` ([`blocks`]): built from the turn's own results and the blocks already sent,
 /// which `reply` holds. It sends no `tool_started` or `tool_finished`, so the app shows no chip
 /// for it; a built block goes out as `answer_block` and into `Message.blocks`, and a refused one
-/// sends nothing and gives the model the reason. Its one string, `call_id`, must equal a call id
-/// the provider wrote, so no text of the model's reaches the app and there is nothing to
-/// dose-check. `None` when the client went away.
+/// sends nothing and gives the model the reason. Its one string, `call_id`, is a call id the
+/// provider wrote or the name of a tool the answer called once, which `blocks::resolve` maps to
+/// that call's provider id; the block carries only that id, so no text of the model's reaches
+/// the app and there is nothing to dose-check. `None` when the client went away.
 async fn show_block(
     ctx: &ToolCtx<'_>,
     out: &mut Emitter,
