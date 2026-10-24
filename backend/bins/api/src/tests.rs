@@ -8,6 +8,7 @@ mod connect;
 mod connector_deletion;
 mod connectors;
 mod fake_store;
+mod pending_actions;
 mod pipeline;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
