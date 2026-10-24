@@ -860,7 +860,9 @@ async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
 }
 
 /// An `era` record's citation carries its text, rate included, in the stored message; the
-/// model's own sentence still never repeats the rate (connectors 7).
+/// model's own sentence still never repeats the rate (connectors 7), and the framed tool result
+/// holds the text once. The test sets `citation.text` itself; the store test
+/// `only_an_era_records_citation_carries_its_text` guards the `era` check.
 #[tokio::test]
 async fn an_era_records_text_is_stored_with_its_citation_while_the_answer_drops_the_rate() {
     use domain::connectors::ConnectorStatus;
@@ -883,7 +885,7 @@ async fn an_era_records_text_is_stored_with_its_citation_while_the_answer_drops_
                 similarity: 0.91,
             }])
         });
-    let (agent, _model, seen) = harness(Setup {
+    let (agent, model, seen) = harness(Setup {
         farm,
         ..Setup::new(vec![
             vec![
@@ -924,6 +926,20 @@ async fn an_era_records_text_is_stored_with_its_citation_while_the_answer_drops_
     assert_eq!(
         message.farm_citations[0].text.as_deref(),
         Some(hit.text.as_str())
+    );
+    // The model reads the record's text once, in `text`, not again in `citation.text`.
+    let sent = model.sent();
+    let ContentPart::ToolResult {
+        content: serde_json::Value::String(framed),
+        ..
+    } = &sent[1].messages.last().unwrap().content[0]
+    else {
+        panic!("a successful result is sent as framed text")
+    };
+    assert_eq!(
+        framed.matches(rate).count(),
+        hit.text.matches(rate).count(),
+        "{framed}"
     );
     let stored = seen.stored.lock().unwrap();
     assert_eq!(stored[1].farm_citations, [hit.citation]);

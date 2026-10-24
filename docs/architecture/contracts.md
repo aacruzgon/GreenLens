@@ -2514,7 +2514,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.32: plan validation's farm-citation rules; the plan writer's steps take `farm_citations` | none (7, farm connectors, already says the plan writer passes its top 4 hits and a plan lists the records it cites) |
 | v0.10.33: a necrotic group under `min_spot_share` of its leaf is a speck folded into the leaf, not a spot, for the spot measurements and the `healthy` rule; open question 10's spot colour thresholds are set | 6.7 (spots), 15 (decision 17) |
 | v0.10.34: a clock time after an opening parenthesis is a clock time to the dose check ("on 31 August (22:40 UTC)") | none: 11 names clock times only as a category, which this doesn't change |
-| v0.10.36: `FarmCitation.text?`, set only for a record of an `era` connector, so the app shows an Era record in a sheet (EON decision 10) | none (7 and 11 name no citation field; the dose check still covers the model's sentences only) |
+| v0.10.36: `FarmCitation.text?`, set only for a record of an `era` connector, so the app shows an Era record in a sheet (EON decision 10) | 7 (farm connectors: an `era` citation carries the record's text; the dose check still covers the model's sentences only) |
 
 ---
 
