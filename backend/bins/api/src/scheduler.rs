@@ -40,7 +40,7 @@ pub struct Task {
 
 /// Every task of the table in api.md section 16. The 10-minute question continuation is part
 /// of `sweep` (`Pipeline::sweep` owns it), not a task of its own.
-pub const TASKS: [Task; 10] = [
+pub const TASKS: [Task; 11] = [
     Task {
         name: "requeue",
         every: Duration::from_secs(5),
@@ -65,6 +65,11 @@ pub const TASKS: [Task; 10] = [
         name: "cleanup",
         every: Duration::from_mins(10),
         first_after: Duration::from_mins(1),
+    },
+    Task {
+        name: "deletions",
+        every: Duration::from_mins(15),
+        first_after: Duration::from_mins(15),
     },
     Task {
         name: "weather",
@@ -103,6 +108,7 @@ pub fn start(state: &Arc<AppState>) {
             "idle" => every(state, task, idle),
             "beliefs" => every(state, task, beliefs),
             "cleanup" => every(state, task, cleanup),
+            "deletions" => every(state, task, deletions),
             "weather" => every(state, task, weather_and_triggers),
             "soil" => every(state, task, soil),
             "connectors" => {
@@ -225,6 +231,17 @@ async fn cleanup(state: Arc<AppState>) -> Result<(), ApiError> {
         .await?;
     delete_expired_connects(&state, now).await?;
     crate::farm_sync::delete_old_messages(store.as_ref(), now).await?;
+    Ok(())
+}
+
+/// Resumes the deletion cascades whose in-process retries ran out (a `RustFS` or database
+/// outage longer than [`crate::deletion::RETRY_WAITS`]), as a start does, skipping the runs in
+/// progress. Start-up resumes in `main`, so the first run waits a full interval.
+async fn deletions(state: Arc<AppState>) -> Result<(), ApiError> {
+    let resumed = state.deletions.resume().await?;
+    if resumed > 0 {
+        tracing::info!(resumed, "deletions resumed");
+    }
     Ok(())
 }
 

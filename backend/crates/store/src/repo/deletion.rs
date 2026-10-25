@@ -13,8 +13,8 @@ use domain::{
     garden::account::GardenTransfer,
     id::{AuthId, ConversationId, GardenId, PlantId, ScanId, UserId},
     ports::{
-        AccountDeletionMarker, AccountDeletionPlan, CascadeStep, DeletionRepo, DeletionStarted,
-        DeletionTarget, ObjectKey, ObjectPrefix, StoreError,
+        AccountDeletionMarker, AccountDeletionPlan, AccountLeftover, CascadeStep, DeletionRepo,
+        DeletionStarted, DeletionTarget, ObjectKey, ObjectPrefix, StoreError,
     },
     wire::Timestamp,
 };
@@ -215,7 +215,7 @@ WHERE id IN $scans AND (plan != NONE OR diagnosis != NONE OR open_question != NO
     pub const GARDEN: &str = "DELETE $garden RETURN VALUE $before.id;";
 
     /// Deletions started but not finished, to resume after a restart. A member's removal leaves
-    /// no marker; its conversations are found again by `member_conversations`.
+    /// no marker (store open question 1); an account's leaves are found by [`ACCOUNT_LEFTOVERS`].
     pub const UNFINISHED: &str = "SELECT VALUE id FROM garden WHERE deleting_at != NONE;
 SELECT VALUE id FROM plant WHERE deleting_at != NONE AND garden.deleting_at = NONE;
 SELECT VALUE id FROM scan WHERE deleting_at != NONE AND plant.deleting_at = NONE AND garden.deleting_at = NONE;";
@@ -245,6 +245,23 @@ UPDATE $heir SET role = 'owner';
 UPDATE $leaver SET role = 'editor' WHERE role = 'owner';
 UPDATE connector SET status = 'deleting' WHERE garden = $garden AND created_by = $user AND status != 'deleting';
 COMMIT;";
+    /// Account deletion, before step 4: the gardens still holding the user's conversations
+    /// (index `conversation_user`) or unshared chat memories (index `memory_author`), found from
+    /// those records, and the gardens being deleted the user is a member of. Not from the
+    /// memberships the user has left: a leave cut off after `remove_member` committed has none.
+    pub const ACCOUNT_LEFTOVERS: &str = "LET $convs = (SELECT id, garden FROM conversation WHERE user = $user);
+LET $mems = (SELECT VALUE garden FROM memory WHERE author = $user AND source = 'chat' AND shared = false);
+LET $deleting = (SELECT VALUE out FROM member_of WHERE in = $user AND out.deleting_at != NONE);
+RETURN array::distinct(array::concat(array::concat($convs.garden, $mems), $deleting)).map(|$g| {
+  garden: $g,
+  deleting: $g.deleting_at != NONE,
+  conversations: $convs.filter(|$c| $c.garden = $g).id
+});";
+    /// After step 5: the rows keyed by the user, one key-range batch of each. They hold no
+    /// reference, so nothing deletes them with the user.
+    pub const USER_ROWS: &str = "LET $usage = (DELETE (SELECT VALUE id FROM usage_daily:[$user, NONE]..=[$user, ..] LIMIT 500) RETURN VALUE $before.id);
+LET $keys = (DELETE (SELECT VALUE id FROM idempotency_key:[$user, NONE, NONE]..=[$user, .., ..] LIMIT 500) RETURN VALUE $before.id);
+RETURN array::concat($usage, $keys);";
     /// A member's conversations in a garden.
     pub const MEMBER_CONVERSATIONS: &str =
         "SELECT VALUE id FROM conversation WHERE garden = $garden AND user = $user;";
@@ -403,6 +420,17 @@ pub struct OtherMemberRow {
     pub role: RoleRow,
     /// Since when.
     pub since: chrono::DateTime<chrono::Utc>,
+}
+
+/// One garden of [`sql::ACCOUNT_LEFTOVERS`].
+#[derive(Debug, Clone, SurrealValue)]
+pub struct LeftoverRow {
+    /// The garden.
+    pub garden: RecordId,
+    /// It is being deleted.
+    pub deleting: bool,
+    /// The user's conversations in it.
+    pub conversations: Vec<RecordId>,
 }
 
 /// The result of [`sql::START_GARDEN`].
@@ -674,6 +702,37 @@ impl DeletionRepo for SurrealStore {
                     .collect()
             })
             .map_err(|e| e.into_store(WHAT))
+    }
+
+    async fn account_leftovers(&self, user: UserId) -> Result<Vec<AccountLeftover>, StoreError> {
+        const WHAT: &str = "account leftovers";
+        let mut r = run_tx(&self.db, sql::ACCOUNT_LEFTOVERS, |q| {
+            q.bind(("user", rid(&user)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let last = r.num_statements() - 1;
+        let rows: Vec<LeftoverRow> = r.take(last).map_err(|e| take_failed(WHAT, e))?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(AccountLeftover {
+                    garden: from_rid(&row.garden)?,
+                    deleting: row.deleting,
+                    conversations: ids(&row.conversations)?,
+                })
+            })
+            .collect::<Result<_, RowError>>()
+            .map_err(|e| e.into_store(WHAT))
+    }
+
+    async fn delete_user_rows(&self, user: UserId) -> Result<u32, StoreError> {
+        const WHAT: &str = "delete user rows";
+        let mut r = run_tx(&self.db, sql::USER_ROWS, |q| q.bind(("user", rid(&user))))
+            .await
+            .map_err(|f| f.into_store(WHAT))?;
+        let last = r.num_statements() - 1;
+        let rows: Vec<RecordId> = r.take(last).map_err(|e| take_failed(WHAT, e))?;
+        Ok(count(&rows))
     }
 
     async fn delete_user_feedback(&self, user: UserId) -> Result<u32, StoreError> {

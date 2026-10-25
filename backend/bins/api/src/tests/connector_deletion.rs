@@ -247,11 +247,19 @@ fn connector_store(store: &mut FakeStore, log: &Arc<Log>, rows: Vec<ConnectorRow
         .farm_record_store
         .expect_shared_account_connectors()
         .returning(|_, _, _| Ok(0));
-    // The cascades' own steps find nothing left.
+    // The cascades' own steps find nothing left, and an account's nothing of theirs elsewhere.
     store
         .deletion_repo
         .expect_delete_batch()
         .returning(|_, _| Ok(0));
+    store
+        .deletion_repo
+        .expect_account_leftovers()
+        .returning(|_| Ok(Vec::new()));
+    store
+        .deletion_repo
+        .expect_delete_user_rows()
+        .returning(|_| Ok(0));
 }
 
 /// `state` with a runner that revokes through `revoker`, as `wiring.rs` gives it the routes'

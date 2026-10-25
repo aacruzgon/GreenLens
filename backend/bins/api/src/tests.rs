@@ -2,6 +2,7 @@
 //! mockall mocks of the domain ports (a [`fake_store::FakeStore`] of per-area mocks) and small
 //! fakes of the seams.
 
+mod account_deletion;
 mod beliefs;
 mod chat;
 mod connect;

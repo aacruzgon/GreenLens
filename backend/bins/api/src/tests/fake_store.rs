@@ -397,8 +397,17 @@ mod deletion_repo {
         ) -> Result<Vec<(ConversationId, ObjectPrefix)>, StoreError> {
             self.deletion_repo.member_conversations(garden, user).await
         }
+        async fn account_leftovers(
+            &self,
+            user: UserId,
+        ) -> Result<Vec<AccountLeftover>, StoreError> {
+            self.deletion_repo.account_leftovers(user).await
+        }
         async fn delete_user_feedback(&self, user: UserId) -> Result<u32, StoreError> {
             self.deletion_repo.delete_user_feedback(user).await
+        }
+        async fn delete_user_rows(&self, user: UserId) -> Result<u32, StoreError> {
+            self.deletion_repo.delete_user_rows(user).await
         }
         async fn delete_user(&self, user: UserId) -> Result<(), StoreError> {
             self.deletion_repo.delete_user(user).await
