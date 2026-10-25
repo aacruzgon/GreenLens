@@ -209,15 +209,15 @@ The `[t]` keeps the pattern from matching the command lines that contain it, the
 
 ### Against the deployed control plane
 
-The control plane runs on the rig's 3070 host, from the checkout at `/srv/pdm/repo` ([infra 1](../../../docs/infra/README.md#1-scope-and-layout)):
+The control plane runs on the rig's 3070 host ([infra 1](../../../docs/infra/README.md#1-scope-and-layout)). On that host the compose project runs from the checkout's `infra/` at `~/Github/GreenLens/infra`, with its env files in `/srv/pdm/env`, and the scripts run from `~/Github/GreenLens/backend`. There the commands need no `ssh`; from another machine, wrap each in `ssh <rig> '…'`:
 
 ```
-CP="cd /srv/pdm/repo && docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose"
-python3 tools/smoke/s4.py --base-url https://<control-plane-host> \
+CP="docker compose -f $HOME/Github/GreenLens/infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose"
+python3 tools/smoke/s4.py --base-url https://pdm-cp.tailb3ce07.ts.net --env-file /srv/pdm/env/.env.api \
   --photo dscn3175.jpg --leaf-photo dscn3175-leaf.jpg \
   --answers concentric_rings_bullseye=yes,*=unsure --expect-problem tomato_early_blight --real-models \
   --email s4-rig+clerk_test@example.com --phone-suffix 192 --out s4-rig.json \
-  --api-kill-cmd "ssh <rig> '$CP kill api'" --api-start-cmd "ssh <rig> '$CP start api'"
+  --api-kill-cmd "$CP kill api" --api-start-cmd "$CP start api"
 ```
 
 `docker compose kill` sends SIGKILL. Don't use `stop` or `restart`: they send SIGTERM, and `api`'s 190 s grace period lets the step finish. `start` starts the same container with the same environment; if the `unless-stopped` policy has already brought it back, `start` does nothing and exits 0. `api`'s health check allows 60 s for start-up, and the script waits up to `--health-timeout` (300 s) for `/healthz` through the public URL. While `api` is down, the rig's workers can't claim or complete jobs; they retry.
@@ -270,14 +270,86 @@ The first sync runs shortly after start; `--sync-wait` covers it. A disconnect n
 With the `demo` profile up (the simulators and `era-seed`) and `ERA_DEMO_GARDEN_ID` in `.env.api` ([demo](../demo/README.md)). Connect the real Slack workspace and Drive folder in the app as the demo owner first, let each sync, and read their ids from `GET /gardens/{id}/connectors` (the `connectors` check prints them). Then one run per real connector:
 
 ```
-CP="cd /srv/pdm/repo && docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose"
-python3 tools/smoke/s9.py --base-url https://<control-plane-host> --garden-id <demo garden> \
+CP="docker compose -f $HOME/Github/GreenLens/infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose"
+python3 tools/smoke/s9.py --base-url https://pdm-cp.tailb3ce07.ts.net --garden-id <demo garden> \
   --photo <a bed 3 photo with early blight> --leaf-photo <its leaf close-up> \
   --answers concentric_rings_bullseye=yes,*=unsure --out s9-rig.json \
-  --connector-id <the Slack connector> --api-log-cmd "ssh <rig> '$CP logs --no-color --since 1h api'"
-python3 tools/smoke/s9.py --base-url https://<control-plane-host> --garden-id <demo garden> \
+  --connector-id <the Slack connector> --api-log-cmd "$CP logs --no-color --since 1h api"
+python3 tools/smoke/s9.py --base-url https://pdm-cp.tailb3ce07.ts.net --garden-id <demo garden> \
   --only disconnect --connector-id <the Drive connector> \
-  --api-log-cmd "ssh <rig> '$CP logs --no-color --since 1h api'"
+  --api-log-cmd "$CP logs --no-color --since 1h api"
 ```
 
 Leave out `--db-check`. The `disconnect` check then proves the revoke from `api`'s log, and that the connector left the list, but not the records' deletion: it ends SKIP, naming that part. No route shows a deleted connector's records, so prove that half on the rig's SurrealDB by hand, with the query `--db-check` sends: ``SELECT count() AS n FROM farm_record WHERE connector = connector:`<id>` GROUP ALL;`` must return nothing (no rows, so no count), and ``SELECT * FROM connector:`<id>`;`` too. A later run can reuse the bed 3 scan with `--scan-id`, as the same user.
+
+
+## S6: background work and resilience (`s6.py`)
+
+`s6.py` runs backend roadmap S6's exit checks ([roadmap 10](../../../docs/backend/roadmap.md#10-s6-background-work-and-resilience)) against the deployed control plane, in `s4.py`'s and `s5.py`'s style. It signs in the same way, as fresh test users: `--email` (default `s6-<timestamp>+clerk_test@example.com`) and, where a check needs a second user, the same address with a tag before the `+` (`s6-<timestamp>-b+clerk_test@…`). Each user takes the next free Clerk test phone number from `--phone-suffix` if the instance asks for one. It prints PASS, FAIL or SKIP with the evidence for each check, and exits 1 if any check failed. SKIP means the check couldn't prove its claim on this run (an option missing, the case didn't come up, or it is too early), never a pass. Its defaults are this host's: `--base-url https://pdm-cp.tailb3ce07.ts.net` and `--env-file /srv/pdm/env/.env.api`.
+
+| Check | What it proves | How long |
+|---|---|---|
+| `tokens` | `POST /me/push-tokens` with a well-formed `ExponentPushToken[s6…]` as `ios` gives `204`, and `204` again. An unknown field, a bad platform and a malformed `ios` token each give `400`. `DELETE /me/push-tokens/{token}`, the brackets URL-encoded, gives `204`, and so does an unknown token. With `--db-check`, the `push_token` row has the platform and the user after the `POST` and is gone after the `DELETE` | seconds |
+| `prune` | A makes a garden and invites B as an editor. B registers a well-formed `ios` token no device holds and a `web` token. A's `DELETE /gardens/{id}` (`202`) makes the deletion runner push `garden_deleted` to B; Expo answers `DeviceNotRegistered`, and within `--prune-timeout` (60 s) the `ios` row is gone and the `web` row stays. With `--api-log-cmd`, `api`'s log has the push line. This proves push up to Expo's push service; a delivered notification needs a real device. `prune-real`: with `--real-token` (a development build's token, registered for B), that token stays after the push; check the phone. SKIP without `--db-check`, since no route lists a user's tokens | about a minute |
+| `alerts` | Two phases. `--phase seed` makes a garden at `--frost-lat`/`--frost-lon` (default Yellowknife), reads `GET /gardens/{id}/weather` and records the frost days of the 3-day horizon; SKIP, with the forecast, when there is none. `--phase check`, after at least one hourly sweep: `GET /tasks?garden_id=…&source=forecast_alert` has exactly one frost alert per frost spell (consecutive frost days are one spell), with no plant, `due` its first day as seen and the title "Frost expected"; no trigger kind has two alerts on the same or adjacent days; a spell seen in the horizon for over an hour has its alert; `DELETE /tasks/{id}` of an alert gives `409`. The first check dismisses one alert (`PATCH {dismissed: true}`). A later check finds the same task ids, that alert still dismissed, and no second alert in its spell. PASS needs two sweeps since the seed and that later check; until then it is SKIP, saying what is missing | the seed, then a check after each of two hourly sweeps |
+| `plant` | A garden with a pending scan of a real `--photo` upload, a conversation anchored on its plant with a chat image, a memory and a task about the plant. `DELETE /plants/{id}` gives `202`; the plant, its scan and the conversation answer `404` and the garden stays. With `--db-check`, the plant, scan, image, conversation, chat image, memory and task records are gone, and so is every row whose field links to one of them (the linked fields come from `migrations/schema.surql`: `scan_event`, `job`, `observation`, `message` and the rest). With `--rustfs-check`, the scan's and the conversation's prefixes are empty, after their objects were seen before the delete | under 2 minutes |
+| `garden` | The same fixture with a garden conversation, a memory, a task and an invite. `DELETE /gardens/{id}` gives `202`, then `404`. With `--db-check`, no row names the garden (every table with a `garden` link, `member_of` and `belief_forget` included) nor its plant, scan or conversation; with `--rustfs-check`, `gardens/{G}/` is empty | under 2 minutes |
+| `account` | A owns G1 alone (a pending scan with an image, a conversation with a chat image, a memory, a push token) and G2, shared with B as editor (A's conversation there, with a chat image, and a note). A's token is minted for `--token-seconds` (600) with Clerk's `expires_in_seconds`, since a default token lives 60 s and an expired one would get `401` too. `DELETE /me` gives `202` with G1 in `deleted_gardens` and G2 → B in `transferred_gardens`, and the old token gets `401 unauthenticated` at once. The script polls the `deleted_user` tombstone until `clerk_deleted_at` is set (without `--db-check`, Clerk's user until `404`). Then: Clerk's `GET /v1/users/{id}` is `404`; the old token, still unexpired, gets `401`; B owns G2 and A isn't a member; A's conversation in G2 is gone. With `--db-check`: no `user:A`, no row of any table whose field links to a user names A (`push_token`, `member_of`, `conversation`, `memory.author`, `scan_feedback`, `connector`, `usage_daily`, `idempotency_key`, …), nothing of G1; the tombstone is the only row left. With `--rustfs-check`: `gardens/G1/` and A's chat prefix in G2 are empty. With `--api-log-cmd`, the "account deleted" line | up to `--account-timeout` (300 s) |
+| `restart` | The same fixture with `--rustfs-stop-cmd`, `--rustfs-start-cmd` and optionally `--api-restart-cmd`. RustFS is stopped, then `DELETE /me` (`202`). The script waits for the deletion-failure line in `api`'s log (`--failure-timeout`, 300 s; 20 s without `--api-log-cmd`), then checks that the token already gets `401`, the Clerk user still exists, and (DB) the tombstone is unfinished and G1 is marked `deleting`. RustFS is started; the script waits `--retry-wait` (180 s) for the in-process retry, else restarts `api` with `--api-restart-cmd`, then asserts what `account` does. It prints how long the resume took and whether a restart was needed. RustFS is started again if the check fails half-way | 5 to 15 minutes |
+| `orphans` | Phases. `--phase seed` makes a garden with a scan and a conversation from real uploads (the referenced objects), then puts strays straight into RustFS: a new key under the real scan, one under a scan with no record, one under a conversation with no record, and one under a garden id with no record; it records the keys, the time and the ETags under `knowledge/`. `--phase fresh`, 30 to 50 minutes later, puts one more stray under the real scan. `--phase check`, after the next sweep: the four strays are gone, the fresh one survives (it was under an hour old at the sweep), every referenced key is there, the scan's image is served through its signed URL, and `knowledge/` is unchanged (keys added by a seed upload are noted). With `--api-log-cmd`, the sweep's line dates the run. Before the sweep has run it is SKIP. Needs `--rustfs-check` | the seed, the fresh stray, then over an hour |
+| `rig-failure` | An early-blight scan as `s4.py` runs it (`--photo`, `--leaf-photo`, `--answers`). On the first perception `stage_started` (`--kill-at vlm`: the first VLM stage) it runs `--rig-kill-cmd`; `--manual-kill` also prints the time and asks Sam to kill `vlm-worker-nv` on sam-linux, then waits for Enter. A thread polls `GET /status` every 0.5 s. (a) The fallback (`--fallback-worker`, `cp-fallback-1`) leases the job no more than 51 s after the dead worker's (`--dead-worker`) last heartbeat: 30 s to a stale heartbeat, up to 5 s for the requeue tick, 15 s before the fallback may claim, and 1 s for the polls. The lease's time and worker come from `api`'s lease line with `--api-log-cmd`, else from `/status` (a queued job turning leased, ±0.5 s), else from the stage's restart event; the time from the kill is printed beside the 45 s target. (b) The scan reaches `planned` with seq 1.. unbroken, no stage left open, one `diagnosis` and one `plan_ready`. (c) No observation made after the kill comes from a killed model, and some come from the fallback (`llm_fallback`, or naming `--fallback-model`). With `--manual-kill` every one must, and the diagnosis may name no model version the rig used; without it the 5070 Ti's VLM results are allowed and listed. (d) `/status` ends with 0 queued and 0 leased. (e) A second scan, submitted while the rig is still down, isn't refused with `503`. Then `--rig-start-cmd` | the scan plus about a minute |
+
+**Phases and state.** `alerts` and `orphans` keep their gardens and keys in `--state` (default `s6-state.json`), with the main user's address, so `--phase check` and `--phase fresh` sign in as the same user. `--phase seed` writes a new state file. Without `--only`, `--phase seed` runs every check, `--phase check` runs `alerts,orphans`, and `--phase fresh` runs `orphans`. Seed both phased checks in one run: an `--api-restart-cmd` then restarts `api` once, at the end of the seed, so the weather task runs 30 s later (the script prints the alerts it made) and the orphan sweep an hour later. The sweep deletes only objects older than an hour, and the strays are put before the restart, so they are just over an hour old at that run.
+
+**What S6's Rust changes add, and what the script does until they are deployed.** Several checks look for behaviour being built in parallel with this script. Until it is deployed, each fails, saying so:
+- `tokens`: a malformed `ios` token is accepted (`204`, then deleted again), not `400`.
+- `prune`: the `Pusher::send` info line naming the unregistered token isn't in the log, so the check fails with `--api-log-cmd`; the database half passes on its own.
+- `alerts`: one alert per day of a spell instead of one per spell, so two alerts on adjacent days fail it.
+- `restart`: without the in-process retry, the resume needs `--api-restart-cmd`, and the script says a restart was needed.
+- `orphans`: the stray under a garden with no record survives the sweep.
+- `rig-failure`: the second scan gets `503 upstream_unavailable`; the lease and weather lines are missing, so the takeover is timed from `/status`, and the weather sweeps by the clock.
+
+**Log lines.** The patterns are constants at the top of `s6.py`, loose on purpose, to adjust once the new lines merge: `PUSH_PRUNED_LOG`, `WEATHER_RUN_LOG` and `ORPHAN_RUN_LOG` (info lines, one run's lines counting once), `DELETION_FAILED_LOG` (today's "deletion failed; it resumes on restart" and "account deletion stopped; …" match), `ACCOUNT_DELETED_LOG` and `LEASE_LOG`. It reads the JSON lines `api` writes, a compose prefix allowed, and `LOG_FORMAT=pretty` lines.
+
+**Host access.** For what the API can't show, on the control-plane host only. `--db-check` reads SurrealDB's HTTP `/sql` (`--db-url`, default `http://127.0.0.1:8000`, namespace `pdm`, database `main`) as the root user in `--db-env` (`/srv/pdm/env/.env.surrealdb`: `SURREAL_USER` and `SURREAL_PASS`; `SURREAL_ROOT_USER` and `SURREAL_ROOT_PASS` are read too). It only reads. `--rustfs-check` uses the keys in `--rustfs-env` (`/srv/pdm/env/.env.rustfs`: `RUSTFS_ACCESS_KEY`, `RUSTFS_SECRET_KEY`) on `--rustfs-url` (`http://127.0.0.1:9000`), bucket `RUSTFS_BUCKET` from `--rustfs-env` or `--env-file`, else `pdm-images`. Its S3 client is `ml/knowledge/upload.py`'s SigV4 client with list, head and put; it puts only under `gardens/` and only in `orphans`, and never deletes. The script prints no key, token or signed URL.
+
+**What it writes.** Every check makes its own `s6 <check> …` gardens and test users; `plant`, `garden`, `account` and `restart` delete what they made as their test. `--cleanup` deletes the gardens the run made, except those a later phase needs, and sends `DELETE /me` for the helper users (B and the others). In `--phase check` it also deletes the state's gardens, so pass it on the last check only. A full run uses 5 scans of the main user's daily 30 and one of each account user's, and no chat turns.
+
+**Disruptive checks.** `restart` stops RustFS, so every upload and image on the control plane fails until it is started again, and `api`'s `/healthz` fails meanwhile. `rig-failure` kills the 3070's perception worker, and with `--manual-kill` the 5070 Ti's VLM worker too, so every scan runs on the fallback until they are back. Restart `api` with `restart`, which sends SIGTERM and drains, never with `kill`, during a cascade's object deletion.
+
+**`--out FILE`** writes the verdicts and evidence of every check, the restart's timings, and for `rig-failure` every event of the scan's stream, its last `GET /scans/{id}` with the model versions it shows, the `/status` samples where something changed, the takeover numbers and the second scan's submit status. Signed URLs keep their path, without the signature.
+
+### On the control-plane host
+
+From `~/Github/GreenLens/backend`, with `CP` as in S4's section:
+
+```
+CP="docker compose -f $HOME/Github/GreenLens/infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose"
+LOG="$CP logs --no-color --since 3h api"
+PHOTO=../app/assets/mock/tomato-blight.jpg
+
+# push tokens and pruning
+python3 tools/smoke/s6.py --only tokens,prune --db-check --api-log-cmd "$LOG"
+
+# forecast alerts and the orphan sweep: one seed, a fresh stray, then the checks
+python3 tools/smoke/s6.py --only alerts,orphans --phase seed --state s6-state.json \
+  --photo $PHOTO --rustfs-check --api-restart-cmd "$CP restart api"
+python3 tools/smoke/s6.py --phase fresh --state s6-state.json --rustfs-check           # 30 to 50 min later
+python3 tools/smoke/s6.py --phase check --state s6-state.json --rustfs-check --api-log-cmd "$LOG"   # over 1 h later
+python3 tools/smoke/s6.py --only alerts --phase check --state s6-state.json --api-log-cmd "$LOG" --cleanup   # 1 h after that
+
+# deletion cascades
+python3 tools/smoke/s6.py --only plant,garden,account --photo $PHOTO --db-check --rustfs-check \
+  --api-log-cmd "$LOG" --cleanup
+python3 tools/smoke/s6.py --only restart --photo $PHOTO --db-check --rustfs-check --api-log-cmd "$LOG" \
+  --rustfs-stop-cmd "$CP stop rustfs" --rustfs-start-cmd "$CP start rustfs" \
+  --api-restart-cmd "$CP restart api" --cleanup
+
+# the rig failure (Sam on sam-linux for --manual-kill)
+python3 tools/smoke/s6.py --only rig-failure --photo dscn3175.jpg --leaf-photo dscn3175-leaf.jpg \
+  --answers concentric_rings_bullseye=yes,*=unsure --api-log-cmd "$CP logs --no-color --since 30m api" \
+  --rig-kill-cmd "$CP kill perception-worker" --rig-start-cmd "$CP start perception-worker" \
+  --manual-kill --out s6-rig-failure.json --cleanup
+```
+
+`docker compose kill` sends SIGKILL, so the worker gets no drain and no hand-back, as when the rig loses power; `unless-stopped` doesn't bring a killed container back, so `--rig-start-cmd` does. The second `alerts` check needs a second hourly sweep since the first; with the log it counts them. The photos are S4's (its Photos paragraph): PlantDoc's `dscn3175.jpg` and a leaf crop from it.
