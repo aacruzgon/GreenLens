@@ -151,6 +151,10 @@ impl Task {
 /// `<garden_id>:<trigger>:<date>` for forecast alerts and
 /// `plan:<plan_id>:<plan_step_id>:<date>` for plan triggers. A second insert with the same key
 /// fails, which makes the scheduler's dedupe race-free ([database 4], alert dedupe).
+///
+/// The date is the first day of the alert's spell: the consecutive days on which the rule
+/// fires alert once ([architecture 8.3]). The key without its date, [`spell`](Self::spell),
+/// is stored as `task.spell` beside how far the spell has been seen (`task.spell_until`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AlertKey {
     /// A forecast alert.
@@ -171,6 +175,26 @@ pub enum AlertKey {
         /// The local date.
         date: LocalDate,
     },
+}
+
+impl AlertKey {
+    /// `task.spell`: the key without its date, `<garden_id>:<trigger>` or
+    /// `plan:<plan_id>:<plan_step_id>`, shared by every spell of the rule.
+    pub fn spell(&self) -> String {
+        match self {
+            Self::Forecast {
+                garden, trigger, ..
+            } => format!("{garden}:{}", trigger.as_str()),
+            Self::PlanTrigger { plan, step, .. } => format!("plan:{plan}:{step}"),
+        }
+    }
+
+    /// The spell's first day.
+    pub const fn date(&self) -> LocalDate {
+        match self {
+            Self::Forecast { date, .. } | Self::PlanTrigger { date, .. } => *date,
+        }
+    }
 }
 
 impl fmt::Display for AlertKey {
@@ -202,6 +226,8 @@ mod tests {
             key.to_string(),
             "01JAX3K9T6R2B8V0QZ4M7D1E5F:frost:2026-10-20"
         );
+        assert_eq!(key.spell(), "01JAX3K9T6R2B8V0QZ4M7D1E5F:frost");
+        assert_eq!(key.date(), date);
         let key = AlertKey::PlanTrigger {
             plan: "01JAX3K9T6R2B8V0QZ4M7D1E5F".parse().unwrap(),
             step: "s3".parse().unwrap(),
@@ -211,5 +237,7 @@ mod tests {
             key.to_string(),
             "plan:01JAX3K9T6R2B8V0QZ4M7D1E5F:s3:2026-10-20"
         );
+        assert_eq!(key.spell(), "plan:01JAX3K9T6R2B8V0QZ4M7D1E5F:s3");
+        assert_eq!(key.date(), date);
     }
 }

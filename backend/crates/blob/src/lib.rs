@@ -15,4 +15,4 @@ pub use client::{BlobConfig, storage_client};
 pub use delete::{DeleteHandle, DeleteJob, DeleteOutcome, DeleteQueue, QueuedDeletes};
 pub use memory::MemoryBlobStore;
 pub use s3::S3BlobStore;
-pub use sweep::orphan_candidates;
+pub use sweep::{Candidates, ORPHAN_MIN_AGE, garden_prefixes, orphan_candidates};

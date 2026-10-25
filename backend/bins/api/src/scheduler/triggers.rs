@@ -45,6 +45,41 @@ pub fn fired(weather: &CellWeather, t: &WeatherThresholds) -> Vec<(TriggerKind, 
     out
 }
 
+/// A spell: the consecutive days on which one trigger fires, the unit an alert is created for
+/// ([architecture 8.3], one alert per spell).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spell {
+    /// The rule.
+    pub trigger: TriggerKind,
+    /// Its first fired day: the alert's date.
+    pub from: LocalDate,
+    /// Its last fired day in this forecast, the store's `spell_until`.
+    pub until: LocalDate,
+}
+
+/// The spells of a list of fired triggers: each trigger's dates grouped into runs of
+/// consecutive days, by trigger name and then date. A frost on three days is one spell, and so
+/// are the overlapping starts of a long humid stretch.
+pub fn spells(fired: &[(TriggerKind, LocalDate)]) -> Vec<Spell> {
+    let mut sorted = fired.to_vec();
+    sorted.sort_by_key(|&(trigger, date)| (trigger.as_str(), date));
+    sorted.dedup();
+    let mut out: Vec<Spell> = Vec::new();
+    for (trigger, date) in sorted {
+        match out.last_mut() {
+            Some(spell) if spell.trigger == trigger && spell.until.plus_days(1) == Some(date) => {
+                spell.until = date;
+            }
+            _ => out.push(Spell {
+                trigger,
+                from: date,
+                until: date,
+            }),
+        }
+    }
+    out
+}
+
 /// The task text of a forecast alert.
 pub const fn alert_text(trigger: TriggerKind) -> (&'static str, &'static str) {
     match trigger {
@@ -125,5 +160,32 @@ mod tests {
                 (TriggerKind::HumidStretch, "2026-10-18".parse().unwrap()),
             ]
         );
+    }
+
+    #[test]
+    fn consecutive_days_of_one_trigger_are_one_spell() {
+        let d = |s: &str| -> LocalDate { s.parse().unwrap() };
+        let fired = [
+            (TriggerKind::Frost, d("2026-10-19")),
+            (TriggerKind::HumidStretch, d("2026-10-18")),
+            (TriggerKind::Frost, d("2026-10-18")),
+            (TriggerKind::Frost, d("2026-10-20")),
+            (TriggerKind::HumidStretch, d("2026-10-20")),
+            (TriggerKind::HumidStretch, d("2026-10-20")),
+        ];
+        let spell = |trigger, from, until| Spell {
+            trigger,
+            from: d(from),
+            until: d(until),
+        };
+        assert_eq!(
+            spells(&fired),
+            vec![
+                spell(TriggerKind::Frost, "2026-10-18", "2026-10-20"),
+                spell(TriggerKind::HumidStretch, "2026-10-18", "2026-10-18"),
+                spell(TriggerKind::HumidStretch, "2026-10-20", "2026-10-20"),
+            ]
+        );
+        assert_eq!(spells(&[]), Vec::new());
     }
 }

@@ -63,19 +63,30 @@ pub mod sql {
     /// The scan's garden, for the plan row.
     pub const SCAN_GARDEN: &str = "SELECT VALUE garden FROM ONLY $scan;";
 
-    /// The scheduler's alert and plan-trigger tasks ([database 4], alert dedupe ✓): the
-    /// unique `task_alert` index refuses a second task with the same key, and the plant must be
-    /// live in the garden (contracts 7, tasks only on live plants).
+    /// The scheduler's alert and plan-trigger tasks, one per spell ([database 4], alert
+    /// dedupe ✓): the garden must not be being deleted and the plant must be live in it
+    /// (contracts 7, tasks only on live plants). A task with this key, or the spell's latest
+    /// task seen up to `$after` (the day before the first fired day) or later, continues the
+    /// spell: its `spell_until` moves on and nothing is created, so the last statement reads
+    /// `NONE`. Otherwise the task is created; the unique `task_alert` index still refuses a
+    /// racing run's second task with the same key.
     pub const CREATE_ALERT_TASK: &str = concat!(
         "BEGIN;
+IF array::len(SELECT VALUE id FROM $garden WHERE deleting_at = NONE) = 0 { THROW 'not_found' };
 LET $p = $task.row.plant;
 IF $p != NONE AND array::len(SELECT VALUE id FROM $p WHERE garden = $garden AND deleting_at = NONE) = 0 { THROW 'not_found' };
-CREATE $task.id CONTENT $task.row;
+LET $seen = (SELECT VALUE id FROM task WHERE alert_key = $task.row.alert_key)[0]
+  ?? (SELECT id, spell_until FROM task WHERE spell = $task.row.spell AND spell_until >= $after
+      ORDER BY spell_until DESC LIMIT 1)[0].id;
+IF $seen = NONE { CREATE $task.id CONTENT $task.row; } ELSE {
+  UPDATE $seen SET spell = $task.row.spell, spell_until =
+    IF spell_until != NONE AND spell_until > $task.row.spell_until { spell_until } ELSE { $task.row.spell_until };
+};
 SELECT ", task_fields!(), " FROM ONLY $task.id;
 COMMIT;"
     );
-    /// The index of the created task in [`CREATE_ALERT_TASK`].
-    pub const CREATE_ALERT_TASK_RESULT: usize = 4;
+    /// The index of the created task in [`CREATE_ALERT_TASK`]: `NONE` when the spell continued.
+    pub const CREATE_ALERT_TASK_RESULT: usize = 6;
 
     /// The scan's current plan id (the plan itself is read by `load_plan`).
     pub const CURRENT_PLAN: &str = "SELECT VALUE plan FROM ONLY $scan WHERE deleting_at = NONE;";
@@ -302,6 +313,10 @@ pub struct TaskRow {
     pub trigger: Option<TaskTriggerRow>,
     /// The dedupe key, server-side only.
     pub alert_key: Option<String>,
+    /// An alert's spell: its key without the date (`AlertKey::spell`), server-side only.
+    pub spell: Option<String>,
+    /// The last day the alert's spell was seen firing, `YYYY-MM-DD`.
+    pub spell_until: Option<String>,
     /// The user who made it; `NONE` once deleted.
     pub created_by: Option<RecordId>,
     /// When done.
@@ -347,6 +362,8 @@ impl TaskWriteRow {
                     date: t.date.to_string(),
                 }),
                 alert_key: task.alert_key.as_ref().map(ToString::to_string),
+                spell: None,
+                spell_until: None,
                 created_by: opt_rid(task.created_by.as_ref()),
                 done_at: None,
                 dismissed_at: None,
@@ -743,18 +760,33 @@ impl PlanRepo for SurrealStore {
         &self,
         garden: GardenId,
         task: NewTask,
+        until: LocalDate,
     ) -> Result<Option<Task>, StoreError> {
         const WHAT: &str = "create alert task";
-        let row = TaskWriteRow::new(&task, garden);
+        let Some(key) = &task.alert_key else {
+            return Err(StoreError::Query {
+                what: WHAT,
+                source: "an alert task needs its alert key".into(),
+            });
+        };
+        let first = key.date();
+        // A fired day up to the day after the spell's last seen day continues it.
+        let after = first.into_inner().pred_opt().map_or(first, LocalDate::new);
+        let mut row = TaskWriteRow::new(&task, garden);
+        row.row.spell = Some(key.spell());
+        row.row.spell_until = Some(until.max(first).to_string());
         let result = run_tx(&self.db, sql::CREATE_ALERT_TASK, |q| {
-            q.bind(("task", row.clone())).bind(("garden", rid(&garden)))
+            q.bind(("task", row.clone()))
+                .bind(("garden", rid(&garden)))
+                .bind(("after", after.to_string()))
         })
         .await;
         let mut results = match result {
             Ok(results) => results,
             // The dedupe: another run of the scheduler created it first.
             Err(DbFailure::UniqueIndex { index, .. }) if index == "task_alert" => return Ok(None),
-            // The plant is gone: the rule is skipped (contracts 7).
+            // The plant is gone or the garden is being deleted: the alert is skipped
+            // (contracts 7; [database 4], deletion).
             Err(failure) if failure.thrown() == Some(thrown::NOT_FOUND) => return Ok(None),
             Err(failure) => return Err(failure.into_store(WHAT)),
         };

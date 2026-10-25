@@ -264,11 +264,31 @@ impl<A: WorkerApi> Worker<A> {
     /// future, because the task may outlive this call and run on any runtime thread.
     fn start(&self, claimed: ClaimedJob, slot: OwnedSemaphorePermit) {
         let lease = match &claimed {
-            ClaimedJob::Job(job) => JobLease::from(job.as_ref()),
-            ClaimedJob::Unsupported(head) => JobLease {
-                job_id: head.job_id,
-                lease_token: head.lease_token.clone(),
-            },
+            ClaimedJob::Job(job) => {
+                tracing::info!(
+                    job_id = %job.job_id,
+                    scan_id = %job.scan_id,
+                    kind = job.spec.kind().as_str(),
+                    worker_id = %self.identity.worker_id,
+                    caps = ?self.identity.caps,
+                    attempt = job.attempt,
+                    max_runtime_s = job.max_runtime_s,
+                    "job claimed"
+                );
+                JobLease::from(job.as_ref())
+            }
+            ClaimedJob::Unsupported(head) => {
+                tracing::info!(
+                    job_id = %head.job_id,
+                    v = head.v,
+                    worker_id = %self.identity.worker_id,
+                    "unsupported job claimed"
+                );
+                JobLease {
+                    job_id: head.job_id,
+                    lease_token: head.lease_token.clone(),
+                }
+            }
         };
         let cancel = self.abandon.child_token();
         let registered = self.running.register(lease, cancel.clone());

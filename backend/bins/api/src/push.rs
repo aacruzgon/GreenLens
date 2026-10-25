@@ -9,7 +9,7 @@ use domain::{
     events::{ScanEventBody, SupersedeReason},
     garden::push::{PushMessage, PushPayload, PushScanReason},
     id::{GardenId, ScanId, UserId},
-    ports::{Notifier, Store},
+    ports::{Notifier, PushTarget, Store},
     url::Stored,
     wire::V1,
 };
@@ -78,18 +78,26 @@ impl Pusher {
     }
 
     /// The same push to every user in `users` (alerts: every member; `garden_deleted`: every
-    /// other member).
+    /// other member). Only Expo push tokens of `ios` and `android` are sent to: a token stored
+    /// before `POST /me/push-tokens` checked its form is skipped, since Expo would refuse the
+    /// batch it is in. One `push sent` line per call says what happened.
     pub async fn send(&self, users: &[UserId], title: &str, body: &str, payload: PushPayload) {
+        let (kind, reason) = describe(&payload);
         let targets = match self.store.push_targets(users).await {
             Ok(t) => t,
             Err(error) => {
-                tracing::warn!(error = %error, "push targets unreadable");
+                tracing::warn!(kind, reason, error = %error, "push targets unreadable");
                 return;
             }
         };
-        let messages: Vec<PushMessage> = targets
+        let deliverable: Vec<PushTarget> = targets
             .into_iter()
             .filter(|t| t.platform.deliverable())
+            .collect();
+        let devices = deliverable.len();
+        let messages: Vec<PushMessage> = deliverable
+            .into_iter()
+            .filter(|t| t.token.is_expo())
             .map(|t| PushMessage {
                 to: t.token,
                 title: title.to_owned(),
@@ -97,23 +105,71 @@ impl Pusher {
                 data: payload.clone(),
             })
             .collect();
+        let sent = messages.len();
+        let skipped = devices - sent;
         if messages.is_empty() {
+            tracing::info!(
+                kind,
+                reason,
+                recipients = users.len(),
+                devices,
+                skipped,
+                messages = 0,
+                "push sent"
+            );
             return;
         }
-        match self.notifier.push(messages).await {
-            Ok(report) if !report.unregistered.is_empty() => {
-                // DeviceNotRegistered: stop sending to those tokens.
-                if let Err(error) = self.store.forget_push_tokens(&report.unregistered).await {
+        let report = match self.notifier.push(messages).await {
+            Ok(report) => report,
+            Err(error) => {
+                tracing::warn!(kind, reason, recipients = users.len(), messages = sent, error = %error, "push not sent");
+                return;
+            }
+        };
+        let mut forgotten = 0;
+        if !report.unregistered.is_empty() {
+            // DeviceNotRegistered: stop sending to those tokens.
+            match self.store.forget_push_tokens(&report.unregistered).await {
+                Ok(()) => forgotten = report.unregistered.len(),
+                Err(error) => {
                     tracing::warn!(error = %error, "unregistered push tokens not removed");
                 }
             }
-            Ok(_) => {}
-            Err(error) => tracing::warn!(error = %error, "push not sent"),
         }
+        tracing::info!(
+            kind,
+            reason,
+            recipients = users.len(),
+            devices,
+            skipped,
+            messages = sent,
+            accepted = report.accepted,
+            unregistered = report.unregistered.len(),
+            forgotten,
+            failed = report.failed,
+            "push sent"
+        );
     }
 
     /// Every member of a garden.
     pub async fn members(&self, garden: GardenId) -> Vec<UserId> {
         self.store.member_ids(garden).await.unwrap_or_default()
+    }
+}
+
+/// A payload's `kind` and, for a scan push, its `reason`, as the wire names them, for the log.
+const fn describe(payload: &PushPayload) -> (&'static str, Option<&'static str>) {
+    match payload {
+        PushPayload::Scan { reason, .. } => (
+            "scan",
+            Some(match reason {
+                PushScanReason::PlanReady => "plan_ready",
+                PushScanReason::PlanSuperseded => "plan_superseded",
+                PushScanReason::Question => "question",
+                PushScanReason::Failed => "failed",
+            }),
+        ),
+        PushPayload::Alert { .. } => ("alert", None),
+        PushPayload::GardenDeleted { .. } => ("garden_deleted", None),
     }
 }

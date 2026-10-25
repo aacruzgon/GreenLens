@@ -57,7 +57,9 @@ pub async fn delete_me(
     Ok(Wire::accepted(plan))
 }
 
-/// `POST /me/push-tokens`: `204`; registering the same token again is a no-op.
+/// `POST /me/push-tokens`: `204`; registering the same token again is a no-op. An `ios` or
+/// `android` token that isn't an Expo push token (`ExponentPushToken[…]`, `ExpoPushToken[…]`)
+/// is `400 invalid_request` on `token`.
 #[utoipa::path(post, path = "/me/push-tokens", tag = "account", request_body = PushTokenRequest,
     responses((status = 204), (status = 400, body = ErrorBody)))]
 pub async fn register_push_token(
@@ -65,6 +67,7 @@ pub async fn register_push_token(
     AuthUser(user): AuthUser,
     ApiJson(body): ApiJson<PushTokenRequest>,
 ) -> Result<StatusCode, ApiError> {
+    body.check()?;
     state
         .ports
         .store

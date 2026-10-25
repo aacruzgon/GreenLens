@@ -3,6 +3,7 @@
 //! token fires. A failed run is logged and the next tick tries again; every task is idempotent
 //! (alert keys, compare-and-set claims, batched deletes), so an overlap or a repeat is harmless.
 
+pub mod orphans;
 pub mod triggers;
 
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
@@ -12,7 +13,7 @@ use tokio::time::MissedTickBehavior;
 use domain::{
     garden::{gardens::SoilProfileStatus, push::PushPayload},
     id::GardenId,
-    ports::{CellRequest, IdGenExt, NewTask, ObjectPrefix},
+    ports::{CellRequest, IdGenExt, NewTask},
     records::{
         plan::TriggerKind,
         task::{AlertKey, TaskSource, TaskTrigger},
@@ -24,8 +25,6 @@ use domain::{
     },
     wire::{LocalDate, Timestamp, V1},
 };
-
-use blob::DeleteJob;
 
 use crate::{error::ApiError, push::Pusher, state::AppState};
 
@@ -41,7 +40,7 @@ pub struct Task {
 
 /// Every task of the table in api.md section 16. The 10-minute question continuation is part
 /// of `sweep` (`Pipeline::sweep` owns it), not a task of its own.
-pub const TASKS: [Task; 10] = [
+pub const TASKS: [Task; 11] = [
     Task {
         name: "requeue",
         every: Duration::from_secs(5),
@@ -66,6 +65,11 @@ pub const TASKS: [Task; 10] = [
         name: "cleanup",
         every: Duration::from_mins(10),
         first_after: Duration::from_mins(1),
+    },
+    Task {
+        name: "deletions",
+        every: Duration::from_mins(15),
+        first_after: Duration::from_mins(15),
     },
     Task {
         name: "weather",
@@ -104,6 +108,7 @@ pub fn start(state: &Arc<AppState>) {
             "idle" => every(state, task, idle),
             "beliefs" => every(state, task, beliefs),
             "cleanup" => every(state, task, cleanup),
+            "deletions" => every(state, task, deletions),
             "weather" => every(state, task, weather_and_triggers),
             "soil" => every(state, task, soil),
             "connectors" => {
@@ -229,6 +234,17 @@ async fn cleanup(state: Arc<AppState>) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Resumes the deletion cascades whose in-process retries ran out (a `RustFS` or database
+/// outage longer than [`crate::deletion::RETRY_WAITS`]), as a start does, skipping the runs in
+/// progress. Start-up resumes in `main`, so the first run waits a full interval.
+async fn deletions(state: Arc<AppState>) -> Result<(), ApiError> {
+    let resumed = state.deletions.resume().await?;
+    if resumed > 0 {
+        tracing::info!(resumed, "deletions resumed");
+    }
+    Ok(())
+}
+
 /// Deletes the pending connectors whose connect started more than [`PENDING_CONNECT_TTL`]
 /// before `now`, a batch of up to 500 at a time until a batch comes back short, except those
 /// a `complete` claimed less than [`CONNECT_CLAIM_HOLD`] ago, whose exchange may still be
@@ -257,15 +273,17 @@ pub fn hour_of(now: Timestamp) -> Timestamp {
     chrono::DateTime::from_timestamp(secs - secs.rem_euclid(3600), 0).map_or(now, Timestamp::from)
 }
 
-/// Fetches the cells missing from the cache and stores them, adding each to `weather`.
+/// Fetches the cells missing from the cache and stores them, adding each to `weather`. Returns
+/// how many were fetched.
 async fn fetch_missing_weather(
     state: &AppState,
     missing: &[CellRequest],
     hour: Timestamp,
     weather: &mut HashMap<WeatherCell, CellWeather>,
-) -> Result<(), ApiError> {
+) -> Result<usize, ApiError> {
     // Batches of at most 50 cells, a failed batch retried once, then cell by cell; a cell that
     // still fails skips its gardens until the next run (contracts 7, fetching and caching).
+    let mut fetched_cells = 0;
     for result in integrations::open_meteo::fetch_cells(&*state.ports.weather, missing).await {
         match result.weather {
             Ok(fetched) => {
@@ -275,30 +293,62 @@ async fn fetch_missing_weather(
                     .put(result.cell, hour, fetched.clone())
                     .await?;
                 weather.insert(result.cell, fetched);
+                fetched_cells += 1;
             }
             Err(error) => {
                 tracing::warn!(cell = %result.cell, error = %crate::error::chain(&error), "weather cell skipped");
             }
         }
     }
-    Ok(())
+    Ok(fetched_cells)
 }
 
-/// Creates a task for each active plan trigger rule that fired today in its garden.
+/// What one `weather` run did: the fields of its `weather sweep` log line.
+#[derive(Debug, Default)]
+struct SweepCounts {
+    /// Weather cells with gardens.
+    cells: usize,
+    /// Cells read from the cache.
+    cached: usize,
+    /// Cells fetched from Open-Meteo.
+    fetched: usize,
+    /// Forecast spells seen, over every garden.
+    spells: usize,
+    /// Forecast alerts created (and pushed).
+    created: usize,
+    /// Forecast spells already alerted, or refused (a garden being deleted).
+    suppressed: usize,
+    /// Plan-trigger spells seen, over every active rule.
+    plan_spells: usize,
+    /// Plan-trigger tasks created.
+    plan_created: usize,
+}
+
+/// Creates a task for each spell of an active plan trigger rule in its garden, once per spell
+/// like a forecast alert. Returns the spells seen and the tasks created.
 async fn create_plan_trigger_tasks(
     state: &AppState,
     fired_by_garden: &HashMap<GardenId, Vec<(TriggerKind, LocalDate)>>,
     now: Timestamp,
-) -> Result<(), ApiError> {
+) -> Result<(usize, usize), ApiError> {
     let gardens: Vec<GardenId> = fired_by_garden.keys().copied().collect();
+    let (mut seen, mut created) = (0, 0);
     for rule in state.ports.store.active_triggers(&gardens).await? {
         let Some(fired) = fired_by_garden.get(&rule.garden) else {
             continue;
         };
-        for &(trigger, date) in fired.iter().filter(|(t, _)| *t == rule.trigger) {
-            if rule.until.is_some_and(|until| date > until) {
-                continue;
-            }
+        let fired: Vec<_> = fired
+            .iter()
+            .copied()
+            .filter(|&(t, date)| t == rule.trigger && rule.until.is_none_or(|until| date <= until))
+            .collect();
+        for triggers::Spell {
+            trigger,
+            from: date,
+            until,
+        } in triggers::spells(&fired)
+        {
+            seen += 1;
             let task = NewTask {
                 id: state.ports.ids.id(),
                 plant: Some(rule.plant),
@@ -322,26 +372,92 @@ async fn create_plan_trigger_tasks(
                 created_by: None,
                 created_at: now,
             };
-            // A dead plant or a duplicate key creates nothing (contracts 7, tasks only on live
-            // plants); the store answers `None`.
-            state
+            // A continued spell, a dead plant, a garden being deleted or a duplicate key creates
+            // nothing (contracts 7, tasks only on live plants); the store answers `None`.
+            if state
                 .ports
                 .store
-                .create_alert_task(rule.garden, task)
-                .await?;
+                .create_alert_task(rule.garden, task, until)
+                .await?
+                .is_some()
+            {
+                created += 1;
+            }
         }
     }
-    Ok(())
+    Ok((seen, created))
+}
+
+/// A garden's forecast alert for a spell, pushed to every member when the store created it: a
+/// spell already alerted creates and pushes nothing. Whether it was created.
+async fn alert_spell(
+    state: &AppState,
+    pusher: &Pusher,
+    garden: GardenId,
+    &triggers::Spell {
+        trigger,
+        from: date,
+        until,
+    }: &triggers::Spell,
+    now: Timestamp,
+) -> Result<bool, ApiError> {
+    let (title, detail) = triggers::alert_text(trigger);
+    let task = NewTask {
+        id: state.ports.ids.id(),
+        plant: None,
+        plan: None,
+        plan_step: None,
+        scan: None,
+        title: title.to_owned(),
+        detail: Some(detail.to_owned()),
+        due: Some(date),
+        repeat: None,
+        source: TaskSource::ForecastAlert,
+        trigger: Some(TaskTrigger {
+            kind: trigger,
+            date,
+        }),
+        alert_key: Some(AlertKey::Forecast {
+            garden,
+            trigger,
+            date,
+        }),
+        created_by: None,
+        created_at: now,
+    };
+    let Some(created) = state
+        .ports
+        .store
+        .create_alert_task(garden, task, until)
+        .await?
+    else {
+        return Ok(false);
+    };
+    let members = pusher.members(garden).await;
+    let payload = PushPayload::Alert {
+        v: V1,
+        garden_id: garden,
+        task_id: created.id,
+        trigger,
+    };
+    pusher.send(&members, title, detail, payload).await;
+    Ok(true)
 }
 
 /// Weather by cell, forecast alerts and plan triggers ([architecture 8.3]): group the gardens by
 /// cell, fetch each missing cell once in requests of up to 50 (a failed batch is retried once,
-/// then cell by cell), cache it, then fire the rules. Alert tasks are deduplicated by their
-/// unique `alert_key`, so overlapping runs create each alert once.
-async fn weather_and_triggers(state: Arc<AppState>) -> Result<(), ApiError> {
+/// then cell by cell), cache it, then fire the rules. One alert per spell: the consecutive days
+/// a trigger fires on alert once, when first seen, and the store keeps how far each alerted
+/// spell has been seen, so later runs, forecast updates, restarts and overlapping runs never
+/// alert it again. Ends with one `weather sweep` log line of counts.
+pub(crate) async fn weather_and_triggers(state: Arc<AppState>) -> Result<(), ApiError> {
     let now = state.ports.clock.now();
     let hour = hour_of(now);
     let cells = state.ports.store.gardens_by_cell().await?;
+    let mut counts = SweepCounts {
+        cells: cells.len(),
+        ..SweepCounts::default()
+    };
     let mut weather: HashMap<WeatherCell, CellWeather> = HashMap::new();
     let mut missing = Vec::new();
     for cell in &cells {
@@ -355,7 +471,8 @@ async fn weather_and_triggers(state: Arc<AppState>) -> Result<(), ApiError> {
             }),
         }
     }
-    fetch_missing_weather(&state, &missing, hour, &mut weather).await?;
+    counts.cached = weather.len();
+    counts.fetched = fetch_missing_weather(&state, &missing, hour, &mut weather).await?;
     let thresholds = state.config.weather;
     let pusher = Pusher::new(state.ports.store.clone(), state.ports.notifier.clone());
     let mut fired_by_garden: HashMap<GardenId, Vec<_>> = HashMap::new();
@@ -364,47 +481,42 @@ async fn weather_and_triggers(state: Arc<AppState>) -> Result<(), ApiError> {
             continue;
         };
         let fired = triggers::fired(w, &thresholds);
+        let spells = triggers::spells(&fired);
         for &garden in &cell.gardens {
             fired_by_garden.insert(garden, fired.clone());
-            for &(trigger, date) in &fired {
-                let (title, detail) = triggers::alert_text(trigger);
-                let task = NewTask {
-                    id: state.ports.ids.id(),
-                    plant: None,
-                    plan: None,
-                    plan_step: None,
-                    scan: None,
-                    title: title.to_owned(),
-                    detail: Some(detail.to_owned()),
-                    due: Some(date),
-                    repeat: None,
-                    source: TaskSource::ForecastAlert,
-                    trigger: Some(TaskTrigger {
-                        kind: trigger,
-                        date,
-                    }),
-                    alert_key: Some(AlertKey::Forecast {
-                        garden,
-                        trigger,
-                        date,
-                    }),
-                    created_by: None,
-                    created_at: now,
-                };
-                if let Some(created) = state.ports.store.create_alert_task(garden, task).await? {
-                    let members = pusher.members(garden).await;
-                    let payload = PushPayload::Alert {
-                        v: V1,
-                        garden_id: garden,
-                        task_id: created.id,
-                        trigger,
-                    };
-                    pusher.send(&members, title, detail, payload).await;
+            for spell in &spells {
+                counts.spells += 1;
+                if alert_spell(&state, &pusher, garden, spell, now).await? {
+                    counts.created += 1;
+                } else {
+                    counts.suppressed += 1;
                 }
             }
         }
     }
-    create_plan_trigger_tasks(&state, &fired_by_garden, now).await?;
+    (counts.plan_spells, counts.plan_created) =
+        create_plan_trigger_tasks(&state, &fired_by_garden, now).await?;
+    let SweepCounts {
+        cells,
+        cached,
+        fetched,
+        spells,
+        created,
+        suppressed,
+        plan_spells,
+        plan_created,
+    } = counts;
+    tracing::info!(
+        cells,
+        cached,
+        fetched,
+        spells,
+        created,
+        suppressed,
+        plan_spells,
+        plan_created,
+        "weather sweep"
+    );
     Ok(())
 }
 
@@ -461,48 +573,52 @@ async fn connectors(state: Arc<AppState>) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// Expo push receipts, 15 minutes after sending: forget `DeviceNotRegistered` tokens.
+/// Expo push receipts, 15 minutes after sending: forget `DeviceNotRegistered` tokens. One
+/// `push receipts checked` line per run that had tickets to check.
 async fn receipts(state: Arc<AppState>) -> Result<(), ApiError> {
-    let dead = state.ports.notifier.check_receipts().await?;
-    if !dead.is_empty() {
-        state.ports.store.forget_push_tokens(&dead).await?;
+    let report = state.ports.notifier.check_receipts().await?;
+    if !report.unregistered.is_empty() {
+        state
+            .ports
+            .store
+            .forget_push_tokens(&report.unregistered)
+            .await?;
+    }
+    if report.checked > 0 {
+        tracing::info!(
+            checked = report.checked,
+            ok = report.ok,
+            errors = report.errors,
+            forgotten = report.unregistered.len(),
+            "push receipts checked"
+        );
     }
     Ok(())
 }
 
-/// The daily orphan sweep ([storage 4], uploads): objects older than an hour under a garden's
-/// prefix that no record points to. Deletes go through the `DeleteQueue`: detached, never
-/// cancelled, retried, drained at shutdown.
+/// The daily orphan sweep ([storage 4], uploads; [`orphans::sweep`]): objects older than an
+/// hour that no record points to, under each live garden's prefix and each prefix whose garden
+/// record is gone, deleted through the `DeleteQueue`. One line a run says what it did.
 async fn orphans(state: Arc<AppState>) -> Result<(), ApiError> {
-    let cutoff = state.ports.clock.now().minus(Duration::from_hours(1));
-    for cell in state.ports.store.gardens_by_cell().await? {
-        for garden in cell.gardens {
-            let old: Vec<_> = state
-                .ports
-                .blob
-                .list(&ObjectPrefix::garden(garden))
-                .await?
-                .into_iter()
-                .filter(|o| o.last_modified < cutoff)
-                .map(|o| o.key)
-                .collect();
-            if old.is_empty() {
-                continue;
-            }
-            let orphans = state.ports.store.unreferenced_keys(&old).await?;
-            if orphans.is_empty() {
-                continue;
-            }
-            let outcome = state
-                .deletes
-                .submit(DeleteJob::Keys(orphans))
-                .outcome()
-                .await;
-            if !outcome.is_some_and(|o| o.is_done()) {
-                tracing::warn!(%garden, "orphans not deleted; the next sweep retries");
-            }
-        }
-    }
+    let p = &state.ports;
+    let r = orphans::sweep(
+        p.store.as_ref(),
+        p.blob.as_ref(),
+        &state.deletes,
+        p.clock.now(),
+    )
+    .await?;
+    tracing::info!(
+        gardens = r.gardens,
+        gone_gardens = r.gone_gardens,
+        listed = r.listed,
+        candidates = r.candidates,
+        orphans = r.orphans,
+        deleted = r.deleted,
+        not_deleted = r.not_deleted,
+        failed = r.failed,
+        "orphan sweep finished"
+    );
     Ok(())
 }
 

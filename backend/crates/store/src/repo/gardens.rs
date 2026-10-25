@@ -139,6 +139,9 @@ ORDER BY soil_retry_at LIMIT $limit;";
     pub const WITHOUT_SOIL_PROFILE: &str =
         "SELECT id, centroid.coordinates[0] AS lon, centroid.coordinates[1] AS lat FROM garden
 WHERE soil_profile_status IN ['pending', 'unavailable'] AND deleting_at = NONE LIMIT $limit;";
+    /// The orphan sweep: which of `$gardens` (record ids) have a record, being deleted or not.
+    /// Selecting a missing record id returns no row.
+    pub const EXISTING_GARDENS: &str = "SELECT VALUE id FROM $gardens;";
     /// `PATCH /gardens/{id}`.
     pub const UPDATE_GARDEN: &str = "UPDATE $garden SET name = $name ?? name, centroid = IF $lon != NONE { type::point([$lon, $lat]) } ELSE { centroid },
   location_precision = $precision ?? location_precision, location_label = $label ?? location_label, time_zone = $time_zone ?? time_zone
@@ -422,6 +425,24 @@ impl GardenRepo for SurrealStore {
             })
             .collect::<Result<_, RowError>>()
             .map_err(|e| e.into_store(WHAT))
+    }
+
+    async fn existing_gardens(&self, gardens: &[GardenId]) -> Result<Vec<GardenId>, StoreError> {
+        const WHAT: &str = "existing gardens";
+        if gardens.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rids: Vec<RecordId> = gardens.iter().map(rid).collect();
+        let mut r = run_tx(&self.db, sql::EXISTING_GARDENS, |q| {
+            q.bind(("gardens", rids.clone()))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let ids: Vec<RecordId> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
+        ids.iter()
+            .map(from_rid)
+            .collect::<Result<_, _>>()
+            .map_err(|e: RowError| e.into_store(WHAT))
     }
 
     async fn gardens_without_soil_profile(

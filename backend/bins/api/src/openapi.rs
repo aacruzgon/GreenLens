@@ -13,7 +13,12 @@ use utoipa::{
     info(title = "PDM API", description = "Plant, crop and garden health monitoring."),
     modifiers(&BearerAuth),
     security(("clerk" = [])),
-    components(schemas(domain::chat::AnchorType, domain::records::task::TaskState)),
+    // Types no path names: `PushPayload` is the `data` of a push message, which the app reads.
+    components(schemas(
+        domain::chat::AnchorType,
+        domain::records::task::TaskState,
+        domain::garden::push::PushPayload
+    )),
     tags(
         (name = "scans", description = "contracts 3 and 4"),
         (name = "gardens", description = "contracts 9"),

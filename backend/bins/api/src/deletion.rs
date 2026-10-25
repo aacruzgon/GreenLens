@@ -9,7 +9,7 @@
 //!    (on `RustFS` 1.0.1 an interrupted `DeleteObjects` can leave objects that can never be listed
 //!    or deleted again, storage 4), each attempt bounded only by the client's 120-second
 //!    operation timeout, retried 5 times, drained at shutdown. When the objects can't all be
-//!    deleted, the records stay marked and the cascade resumes on the next start ("a failure
+//!    deleted, the records stay marked and the cascade is retried from the start ("a failure
 //!    partway is retried from the start");
 //! 2. delete the records bottom-up in batches of 500, in `CascadeStep` order (database 4);
 //! 3. send `garden_deleted` pushes.
@@ -18,6 +18,15 @@
 //! marked `deleting_at`, and the runner deletes its records again from the first step (each step
 //! is idempotent). A garden's objects are one prefix, deleted again; a plant's or scan's objects
 //! are left to the daily orphan sweep, which deletes objects no record points to.
+//!
+//! **Retried in the process.** A background run that fails (the store, or objects still there
+//! after the delete queue's own attempts) is tried again from the start after each of
+//! [`RETRY_WAITS`] (9 minutes 40 seconds in all); after the last it is logged and left to the
+//! scheduler's `deletions` task, which calls [`DeletionRunner::resume`] every 15 minutes, so an
+//! outage of `RustFS` or the database never leaves a cascade waiting for the next deploy. Each
+//! run holds a claim on its target, account or connector while it runs and retries: a second
+//! run of the same one waits for it, and `resume` skips what is claimed, so the periodic resume
+//! never doubles a run in progress.
 //!
 //! **Farm connectors** ([connectors 8]; EON E3.6). A connector goes with its garden, with the
 //! owner who created it when that owner stops being one: demoted (`change_role`), removed or
@@ -52,12 +61,24 @@
 //! arriving while the first cascade runs, is a no-op. The tombstone also refuses the account's
 //! still-valid session tokens (`401`), and `unfinished_account_deletions` resumes the records and
 //! the Clerk deletion after a restart, until `finish_account_deletion` records Clerk's answer.
+//! The user's records in other gardens are found from the records themselves
+//! (`DeletionRepo::account_leftovers`), never from the memberships alone: a leave cut off after
+//! `remove_member` committed has no membership left, and a garden whose own cascade is running
+//! (this account's, cut off by a restart, or another owner's) is waited for, or run, before the
+//! user record goes. The account's `usage_daily` and `idempotency_key` rows go after it; only the
+//! tombstone stays.
 //!
 //! [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    future::Future,
+    sync::{Arc, Mutex, PoisonError},
+    time::Duration,
+};
 
 use blob::{DeleteJob, DeleteQueue};
+use tokio::sync::OwnedMutexGuard;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use domain::{
@@ -82,7 +103,18 @@ use crate::{
 /// The longest wait between retries of the Clerk account deletion.
 const ADMIN_BACKOFF_MAX: Duration = Duration::from_secs(3600);
 
-/// Why a background cascade stopped; it resumes on the next start.
+/// The waits before each retry of a background run that failed: 9 minutes 40 seconds in all,
+/// so an outage of a few minutes is ridden out in the process. After the last, the scheduler's
+/// `deletions` task resumes the run.
+pub const RETRY_WAITS: [Duration; 5] = [
+    Duration::from_secs(10),
+    Duration::from_secs(30),
+    Duration::from_mins(1),
+    Duration::from_mins(2),
+    Duration::from_mins(6),
+];
+
+/// Why a background cascade stopped; it is retried after each of [`RETRY_WAITS`], then resumed.
 #[derive(Debug, thiserror::Error)]
 pub enum DeletionError {
     /// The database.
@@ -100,6 +132,95 @@ pub enum DeletionError {
     ShutDown,
 }
 
+/// What a background run claims while it runs and retries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum RunKey {
+    /// A garden, plant, pending scan or member cascade.
+    Target(DeletionTarget),
+    /// An account cascade.
+    Account(UserId),
+    /// One connector's revoke and delete.
+    Connector(ConnectorId),
+}
+
+/// The runs in progress, one async lock per key: a second run of a key waits for the first, and
+/// `resume` skips a key someone holds or waits for. An entry lives while a [`Claim`] on it does.
+#[derive(Default)]
+struct Running(Mutex<HashMap<RunKey, Arc<tokio::sync::Mutex<()>>>>);
+
+impl Running {
+    /// Registers a run of `key` at once, before its task starts, so `holds` sees it; the run
+    /// then waits its turn with [`Claim::acquire`].
+    fn enter(self: &Arc<Self>, key: RunKey) -> Claim {
+        let lock = Arc::clone(
+            self.0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .entry(key)
+                .or_default(),
+        );
+        Claim {
+            running: Arc::clone(self),
+            key,
+            lock: Some(lock),
+            guard: None,
+        }
+    }
+
+    /// Waits until no other run holds `key`, then holds it until the claim drops.
+    async fn claim(self: &Arc<Self>, key: RunKey) -> Claim {
+        let mut claim = self.enter(key);
+        claim.acquire().await;
+        claim
+    }
+
+    /// Whether a run holds or waits for `key`.
+    fn holds(&self, key: RunKey) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains_key(&key)
+    }
+}
+
+/// A run of a [`RunKey`], registered and, once [`acquire`](Self::acquire)d, holding it.
+/// Dropping it releases the key, and the last claim on a key removes its entry; the map's lock
+/// is taken first, so no new claim clones the entry in between.
+struct Claim {
+    running: Arc<Running>,
+    key: RunKey,
+    /// The key's lock, `None` only while dropping.
+    lock: Option<Arc<tokio::sync::Mutex<()>>>,
+    guard: Option<OwnedMutexGuard<()>>,
+}
+
+impl Claim {
+    /// Waits until no other run holds the key.
+    async fn acquire(&mut self) {
+        if let Some(lock) = &self.lock {
+            self.guard = Some(Arc::clone(lock).lock_owned().await);
+        }
+    }
+}
+
+impl Drop for Claim {
+    fn drop(&mut self) {
+        let mut map = self
+            .running
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        drop(self.guard.take());
+        drop(self.lock.take());
+        if map
+            .get(&self.key)
+            .is_some_and(|lock| Arc::strong_count(lock) == 1)
+        {
+            map.remove(&self.key);
+        }
+    }
+}
+
 /// Runs cascades on the tracker.
 #[derive(Clone)]
 pub struct DeletionRunner {
@@ -113,6 +234,8 @@ pub struct DeletionRunner {
     /// The key that opens connector tokens and the vendors that revoke them; `None` with
     /// connectors off (no `CONNECTOR_KEY`), when no token can be opened to revoke.
     revoke: Option<Revoke>,
+    /// The runs in progress, shared by every clone.
+    running: Arc<Running>,
 }
 
 /// What revoking a connector's token needs.
@@ -143,6 +266,7 @@ impl DeletionRunner {
             tasks,
             shutdown,
             revoke: None,
+            running: Arc::default(),
         }
     }
 
@@ -153,16 +277,58 @@ impl DeletionRunner {
         self
     }
 
-    /// Runs a started cascade in the background. Not tied to the shutdown token: shutdown waits
-    /// for it up to its drain deadline, and a cascade cut off there resumes on the next start.
+    /// Runs a started cascade in the background, after any run of the same target, retried
+    /// after each of [`RETRY_WAITS`]. Not tied to the shutdown token: shutdown waits for it up
+    /// to its drain deadline (a retry's wait ends at shutdown), and a cascade cut off there
+    /// resumes on the next start.
     pub fn spawn(&self, started: DeletionStarted) {
         let runner = self.clone();
+        let key = RunKey::Target(started.target);
+        let mut claim = self.running.enter(key);
         self.tasks.spawn(async move {
-            let target = started.target;
-            if let Err(error) = runner.run(started).await {
-                tracing::error!(?target, error = %error, "deletion failed; it resumes on restart");
-            }
+            claim.acquire().await;
+            runner.retrying(key, || runner.run(started.clone())).await;
         });
+    }
+
+    /// Runs `attempt` until it succeeds, again after each of [`RETRY_WAITS`]; a failure after
+    /// the last, or a shutdown, leaves the run to `resume` (the scheduler's `deletions` task, or
+    /// the next start).
+    async fn retrying<F, Fut>(&self, key: RunKey, mut attempt: F)
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = Result<(), DeletionError>>,
+    {
+        let mut waits = RETRY_WAITS.iter();
+        loop {
+            let error = match attempt().await {
+                Ok(()) => return,
+                Err(DeletionError::ShutDown) => {
+                    tracing::warn!(run = ?key, "deletion stopped by shutdown; it resumes on restart");
+                    return;
+                }
+                Err(error) => error,
+            };
+            let Some(&wait) = waits.next() else {
+                tracing::error!(run = ?key, error = %error, "deletion failed after its retries; the deletions task resumes it");
+                return;
+            };
+            tracing::warn!(run = ?key, error = %error, ?wait, "deletion failed; retrying");
+            tokio::select! {
+                () = tokio::time::sleep(wait) => {}
+                () = self.shutdown.cancelled() => {
+                    tracing::warn!(run = ?key, "deletion stopped by shutdown; it resumes on restart");
+                    return;
+                }
+            }
+        }
+    }
+
+    /// [`run`](Self::run) once no other run holds the target: the account cascade's way into a
+    /// garden whose own cascade may be running.
+    async fn run_claimed(&self, started: DeletionStarted) -> Result<(), DeletionError> {
+        let _claim = self.running.claim(RunKey::Target(started.target)).await;
+        self.run(started).await
     }
 
     /// A removed member's connectors, then objects, then records, then pushes. Records go only
@@ -247,7 +413,7 @@ impl DeletionRunner {
         self.tasks.spawn(async move {
             let connector = row.connector.id;
             if let Err(error) = runner.finish_connector(row).await {
-                tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+                tracing::error!(%connector, error = %error, "connector deletion stopped; the deletions task resumes it");
             }
         });
     }
@@ -271,7 +437,7 @@ impl DeletionRunner {
         for row in rows.into_iter().filter(|r| r.created_by == owner) {
             let connector = row.connector.id;
             if let Err(error) = self.finish_connector(row).await {
-                tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+                tracing::error!(%connector, error = %error, "connector deletion stopped; the deletions task resumes it");
             }
         }
     }
@@ -294,8 +460,9 @@ impl DeletionRunner {
     /// (unless another live connector holds the account's), then deletes its records and the
     /// row, 500 records a batch. A failed revoke is logged and the deletion goes on.
     pub async fn finish_connector(&self, row: ConnectorRow) -> Result<(), StoreError> {
-        self.revoke_stored(&row).await;
         let connector = row.connector.id;
+        let _claim = self.running.claim(RunKey::Connector(connector)).await;
+        self.revoke_stored(&row).await;
         while self.store.delete_connector_batch(connector).await? > 0 {}
         tracing::info!(%connector, "connector deleted");
         Ok(())
@@ -398,14 +565,21 @@ impl DeletionRunner {
         }
     }
 
-    /// Resumes every cascade a restart cut off: targets still marked `deleting_at`, account
-    /// deletions whose tombstone has no `clerk_deleted_at`, and connectors still marked
-    /// `deleting` outside a garden being deleted (a demotion's or a removal's, cut off between
-    /// the store's commit and the last batch).
+    /// Resumes every cascade a restart or its last retry cut off, and returns how many it
+    /// started: targets still marked `deleting_at`, account deletions whose tombstone has no
+    /// `clerk_deleted_at`, and connectors still marked `deleting` outside a garden being deleted
+    /// (a demotion's or a removal's, cut off between the store's commit and the last batch).
+    /// Skips what a run in this process holds, so the scheduler's `deletions` task can call it
+    /// while runs are in progress. Accounts and targets start together: an account run waits
+    /// for (or runs) a garden of its own cascade.
     pub async fn resume(&self) -> Result<usize, StoreError> {
-        let targets = self.store.unfinished_deletions().await?;
-        let accounts = self.store.unfinished_account_deletions().await?;
+        let free = |key| !self.running.holds(key);
+        let mut targets = self.store.unfinished_deletions().await?;
+        targets.retain(|t| free(RunKey::Target(*t)));
+        let mut accounts = self.store.unfinished_account_deletions().await?;
+        accounts.retain(|m| free(RunKey::Account(m.user)));
         let mut connectors = self.store.deleting_connectors(None).await?;
+        connectors.retain(|r| free(RunKey::Connector(r.connector.id)));
         if self.revoke.is_none() && !connectors.is_empty() {
             // A former owner's connectors wait for the key, so their tokens can be revoked.
             tracing::warn!(
@@ -417,13 +591,19 @@ impl DeletionRunner {
         let count = targets.len() + accounts.len() + connectors.len();
         if !connectors.is_empty() {
             let runner = self.clone();
+            // Registered now, so a resume before the task reaches a connector skips it too.
+            let entered: Vec<Claim> = connectors
+                .iter()
+                .map(|r| self.running.enter(RunKey::Connector(r.connector.id)))
+                .collect();
             self.tasks.spawn(async move {
                 for row in connectors {
                     let connector = row.connector.id;
                     if let Err(error) = runner.finish_connector(row).await {
-                        tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+                        tracing::error!(%connector, error = %error, "connector deletion stopped; the deletions task resumes it");
                     }
                 }
+                drop(entered);
             });
         }
         for marker in accounts {
@@ -476,22 +656,25 @@ impl DeletionRunner {
         Ok(true)
     }
 
+    /// The account cascade in the background, after any run of the same account, retried
+    /// after each of [`RETRY_WAITS`].
     fn spawn_account_run(&self, marker: AccountDeletionMarker) {
         let runner = self.clone();
+        let key = RunKey::Account(marker.user);
+        let mut claim = self.running.enter(key);
         self.tasks.spawn(async move {
-            let user = marker.user;
-            if let Err(error) = runner.run_account(marker).await {
-                tracing::error!(%user, error = %error, "account deletion stopped; it resumes on restart");
-            }
+            claim.acquire().await;
+            runner.retrying(key, || runner.run_account(&marker)).await;
         });
     }
 
-    /// The account cascade, in the background: ownership transfers, the gardens the user alone
-    /// used, the shared gardens they leave (their chats there), their scan feedback, the user
-    /// record, and last the account at Clerk, retried until it succeeds or the process stops
-    /// (the tombstone resumes it). Every step is idempotent, so a resumed run repeats them; a
-    /// garden whose own cascade a restart cut off is resumed by `unfinished_deletions`.
-    async fn run_account(&self, marker: AccountDeletionMarker) -> Result<(), DeletionError> {
+    /// The account cascade: ownership transfers, the gardens the user alone used, the shared
+    /// gardens they leave, then whatever of theirs is left in any garden
+    /// ([`finish_leftovers`](Self::finish_leftovers)), their scan feedback and connectors, the
+    /// user record, the rows keyed by the user, and last the account at Clerk, retried until it
+    /// succeeds or the process stops (the tombstone resumes it). Every step is idempotent, so a
+    /// retried or resumed run repeats them.
+    async fn run_account(&self, marker: &AccountDeletionMarker) -> Result<(), DeletionError> {
         let user = marker.user;
         if !marker.user_deleted {
             let plan = self.store.plan_account_deletion(user).await?;
@@ -502,25 +685,21 @@ impl DeletionRunner {
             for garden in plan.delete {
                 let owner = authz::check_membership_of::<Owner>(&*self.store, user, garden).await?;
                 let started = self.store.start_garden_deletion(owner, now).await?;
-                self.run(started).await?;
+                self.run_claimed(started).await?;
             }
+            // Leaving commits first; the chats there go with the leftovers below, so a leave
+            // cut off here is finished from the records on the next attempt.
             for garden in plan.leave {
                 let member =
                     authz::check_membership_of::<Viewer>(&*self.store, user, garden).await?;
-                let removed = self.store.remove_member(member, user).await?;
-                if self.revoke.is_some() {
-                    self.finish_member_connectors(garden, user).await;
-                }
-                if !self.delete_objects(removed.chat_prefixes, Vec::new()).await {
-                    return Err(DeletionError::Objects);
-                }
-                self.delete_records(DeletionTarget::Member { garden, user })
-                    .await?;
+                self.store.remove_member(member, user).await?;
             }
+            self.finish_leftovers(user).await?;
             self.store.delete_user_feedback(user).await?;
             self.finish_account_connectors(user).await?;
             self.store.delete_user(user).await?;
         }
+        while self.store.delete_user_rows(user).await? > 0 {}
         let mut wait = Duration::from_secs(1);
         while let Err(error) = self.auth_admin.delete_account(&marker.auth_id).await {
             tracing::warn!(%user, error = %error, ?wait, "Clerk account deletion failed; retrying");
@@ -533,6 +712,40 @@ impl DeletionRunner {
         self.store
             .finish_account_deletion(&marker.auth_id, self.clock.now())
             .await?;
+        tracing::info!(%user, "account deleted");
+        Ok(())
+    }
+
+    /// Every garden still holding the user's records (`account_leftovers`, found from the
+    /// records): one being deleted gets its own cascade, run here once no other run holds it,
+    /// so the account never races it to `delete_user`; any other (a garden left by this or an
+    /// earlier attempt) gets the `Member` cascade, the chat objects first.
+    async fn finish_leftovers(&self, user: UserId) -> Result<(), DeletionError> {
+        for left in self.store.account_leftovers(user).await? {
+            let garden = left.garden;
+            if left.deleting {
+                self.run_claimed(DeletionStarted {
+                    target: DeletionTarget::Garden(garden),
+                    prefixes: vec![ObjectPrefix::garden(garden)],
+                    keys: Vec::new(),
+                    notify: Vec::new(),
+                    garden_name: None,
+                })
+                .await?;
+                continue;
+            }
+            let target = DeletionTarget::Member { garden, user };
+            let _claim = self.running.claim(RunKey::Target(target)).await;
+            let prefixes = left
+                .conversations
+                .iter()
+                .map(|c| ObjectPrefix::chat(garden, *c))
+                .collect();
+            if !self.delete_objects(prefixes, Vec::new()).await {
+                return Err(DeletionError::Objects);
+            }
+            self.delete_records(target).await?;
+        }
         Ok(())
     }
 }
