@@ -89,6 +89,22 @@ pub struct PushReport {
     pub accepted: u32,
     /// Tokens Expo reported as `DeviceNotRegistered`: the API removes them.
     pub unregistered: Vec<PushToken>,
+    /// Messages not delivered for another reason: a ticket error, or a request that failed
+    /// even after the batch was split.
+    pub failed: u32,
+}
+
+/// What a receipts check found.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ReceiptReport {
+    /// Receipts asked for: tickets at least 15 minutes old.
+    pub checked: u32,
+    /// Receipts that said `ok`.
+    pub ok: u32,
+    /// Receipts that said `error`, `DeviceNotRegistered` included.
+    pub errors: u32,
+    /// Tokens whose receipt said `DeviceNotRegistered`: the API removes them.
+    pub unregistered: Vec<PushToken>,
 }
 
 /// Push delivery through the Expo Push API ([contracts 9], push notifications). A push is a
@@ -99,10 +115,11 @@ pub trait Notifier: Send + Sync {
     /// Sends the messages (iOS and Android tokens only), in Expo's batches of 100.
     async fn push(&self, messages: Vec<PushMessage>) -> Result<PushReport, ProviderError>;
 
-    /// Checks the receipts of tickets sent at least 15 minutes ago (Expo's advice) and returns
-    /// the tokens Expo reported as `DeviceNotRegistered`, to forget. The default does nothing,
-    /// for adapters without receipts. Called by `api`'s scheduler.
-    async fn check_receipts(&self) -> Result<Vec<PushToken>, ProviderError> {
-        Ok(Vec::new())
+    /// Checks the receipts of tickets sent at least 15 minutes ago (Expo's advice): how many
+    /// were checked and what they said, with the tokens Expo reported as
+    /// `DeviceNotRegistered`, to forget. The default does nothing, for adapters without
+    /// receipts. Called by `api`'s scheduler.
+    async fn check_receipts(&self) -> Result<ReceiptReport, ProviderError> {
+        Ok(ReceiptReport::default())
     }
 }

@@ -573,11 +573,25 @@ async fn connectors(state: Arc<AppState>) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// Expo push receipts, 15 minutes after sending: forget `DeviceNotRegistered` tokens.
+/// Expo push receipts, 15 minutes after sending: forget `DeviceNotRegistered` tokens. One
+/// `push receipts checked` line per run that had tickets to check.
 async fn receipts(state: Arc<AppState>) -> Result<(), ApiError> {
-    let dead = state.ports.notifier.check_receipts().await?;
-    if !dead.is_empty() {
-        state.ports.store.forget_push_tokens(&dead).await?;
+    let report = state.ports.notifier.check_receipts().await?;
+    if !report.unregistered.is_empty() {
+        state
+            .ports
+            .store
+            .forget_push_tokens(&report.unregistered)
+            .await?;
+    }
+    if report.checked > 0 {
+        tracing::info!(
+            checked = report.checked,
+            ok = report.ok,
+            errors = report.errors,
+            forgotten = report.unregistered.len(),
+            "push receipts checked"
+        );
     }
     Ok(())
 }

@@ -6107,7 +6107,8 @@ pub enum Platform {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PushTokenRequest {
-    /// The Expo push token.
+    /// The Expo push token (`ExponentPushToken[…]` or `ExpoPushToken[…]`) for `ios` and
+    /// `android`; for `web`, any printable string of at most 255 bytes, stored and never sent.
     pub token: PushToken,
     /// Its platform.
     pub platform: Platform,

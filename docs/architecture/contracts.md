@@ -1,7 +1,7 @@
 # PDM Data Contracts
 
 > **Status:** Draft v0.11.8, 2026-10-24. Companion to the [architecture document](README.md).
-> **v0.11.8**: forecast alerts and plan-trigger tasks come once per spell, the consecutive days a rule fires on, with `alert_key` dated by the spell's first day and the spell's progress kept server-side, so a three-night frost is one task and a dismissed alert stays dismissed; none is created in a garden being deleted (section 7, Task and the `on_trigger` row). An account deletion leaves nothing of the account but its tombstone: it finds the user's chats in every garden from the records, so a leave a failure or a restart cut off still finishes, waits for a garden of the user's whose own cascade runs, and deletes the user's rate counters and idempotency keys; every cascade is retried in the API and resumed every 15 minutes; a plant's Agent Memory scope is queued for erasure when its cascade starts, not between its objects and records (section 9, deletion cascades and account; open question 30). No shape changed.
+> **v0.11.8**: forecast alerts and plan-trigger tasks come once per spell, the consecutive days a rule fires on, with `alert_key` dated by the spell's first day and the spell's progress kept server-side, so a three-night frost is one task and a dismissed alert stays dismissed; none is created in a garden being deleted (section 7, Task and the `on_trigger` row). An account deletion leaves nothing of the account but its tombstone: it finds the user's chats in every garden from the records, so a leave a failure or a restart cut off still finishes, waits for a garden of the user's whose own cascade runs, and deletes the user's rate counters and idempotency keys; every cascade is retried in the API and resumed every 15 minutes; a plant's Agent Memory scope is queued for erasure when its cascade starts, not between its objects and records (section 9, deletion cascades and account; open question 30). No shape changed. `POST /me/push-tokens` takes only Expo push tokens (`ExponentPushToken[…]`, `ExpoPushToken[…]`) for `ios` and `android`, a raw APNs or FCM token is `400 invalid_request`, and `web` tokens are stored as given (section 9, account and push notifications); the fallback worker reports its label versions in the heartbeat, `max_runtime` doubles once from the kind's base however often the fallback claims a job, and `/status` shows no model versions (section 5).
 > **v0.11.7**: the API keeps only the disease classes with a `classifier_label` row for the classified species, so a species whose problems aren't in the knowledge base yet gets no classifier result (section 5, classifier candidates; [#144](https://github.com/aacruzgon/GreenLens/issues/144)).
 > **v0.11.6**: an indicator answer's `reason` has a `maxLength` of 100, above the 60 characters the prompt asks for, so the grammar no longer cuts the reason the answer follows from (section 6, indicators call; vision vlm.md 7, [#183](https://github.com/aacruzgon/GreenLens/issues/183)); the prompts are unchanged, and `IndicatorEvidence.reason` has no cap of its own.
 > **v0.11.5**: each damage finding of the VLM's findings call names, first, the animal seen or the trace it left (`VlmFindingsRaw.damage[].trace`), and the worker drops one that names none, so a disease lesion reported as damage never reaches the API (section 6, task P11 of the vision dev-roadmap); `vlm_prompts` names `findings@6` (section 5). `VlmFindings` and the OpenAPI document are unchanged.
@@ -781,7 +781,7 @@ Example of a typical run, where the classifier suggests early blight and the ind
   | `perception` | 2 minutes |
   | `vlm` | 5 minutes |
   | `verify`, `guided` | 3 minutes |
-  | any kind on the fallback worker | twice the above, doubled when the fallback claims the job, so `max_runtime_s` in the claim is already doubled |
+  | any kind on the fallback worker | twice the above, set when the fallback claims the job, so `max_runtime_s` in the claim is already doubled. It doubles once from the kind's base: a job requeued and claimed again by the fallback gets twice the base again, and a GPU worker that claims it afterwards gets the base |
 
   A worker whose heartbeat thread keeps running while its model hangs still loses the job at `max_runtime`. These limits hold at the configured `slots`: the day-2 benchmark checks that a `vlm` job's p95 time with `VLM_SLOTS` jobs running together stays under half its `max_runtime`.
 - The broker requeues a job when its worker's heartbeat is older than 30 seconds, or when its lease expires. Requeueing invalidates the lease token.
@@ -807,7 +807,7 @@ interface Heartbeat {
   slots: number;                  // the most jobs this worker holds at once
   gpu?: { name: string; vram_used_mb: number; vram_total_mb: number };
   current_jobs: { job_id: Id; lease_token: string }[];  // extends these leases, within max_runtime
-  versions: Record<string, string>; // the model_versions keys (below), shown on /status; label versions comma-separated
+  versions: Record<string, string>; // the model_versions keys (below); label versions comma-separated
 }
 
 // 200 →
@@ -968,14 +968,14 @@ type JobErrorCode =
 
 - **The codes and their `retryable`** are fixed as above ([backend worker 16](../backend/worker.md#16-decisions-on-the-contracts-open-questions)). The API keeps an unknown code string as written. `unsupported_version` is never retryable: the same worker can't succeed on a retry, and a newer worker gets the job only after a requeue.
 - **The result is read by the job's kind**, which the API recorded when it queued the job, never guessed from the shape: a `VlmResult` would also parse as a `VerifyResult`. A `done` result that doesn't decode as that kind is stored as a failure with `model_error`, `retryable: true`, the same code a worker sends for output that failed validation twice ([backend pipeline 17](../backend/pipeline.md#17-open-questions-and-decisions)).
-- **Versions a worker hasn't loaded.** Each perception and fallback worker reports the `label_set_version` and `classifier_labels_version` it has loaded in its heartbeat's `versions` (the keys below; with several loaded, the value lists them comma-separated, and the API splits it). The API never queues a `perception` job naming a version that no live perception or fallback worker reports:
+- **Versions a worker hasn't loaded.** Each perception and fallback worker reports the `label_set_version` and `classifier_labels_version` it has loaded in its heartbeat's `versions` (the fallback the same label files of the model manifest, below, so while the rig is down it alone keeps runs starting) (the keys below; with several loaded, the value lists them comma-separated, and the API splits it). The API never queues a `perception` job naming a version that no live perception or fallback worker reports:
   - with no such worker live at all, the job is queued as usual and waits (or goes to a worker that starts later);
   - with live workers of which none has both versions, the call that would queue it (submit, resubmit, a species change) fails with `503 upstream_unavailable`, `upstream: "perception"`, `retryable: true` ([backend pipeline 11](../backend/pipeline.md#11-runs)).
 
   So `unknown_label_version` only happens across a deployment; as a run job's non-retryable failure it fails the scan with `processing_error`.
 - **The fallback's perception labels.** The payload carries only the label versions, so the fallback worker loads the matching label files from the model manifest, as the perception worker does, and restricts its disease output to the working species' `classifier_labels` ([backend worker 17](../backend/worker.md#17-open-questions)).
 
-**`model_versions` keys.** The same keys are used in `complete` and in the heartbeat's `versions`, so `/status` and every stored record name what produced them:
+**`model_versions` keys.** The same keys are used in `complete` and in the heartbeat's `versions`, so every stored record names what produced it (`/status` doesn't show them; the API keeps a heartbeat's `versions` for the label rule above):
 
 | Key | Example | Set by |
 |---|---|---|
@@ -2190,12 +2190,12 @@ A deletion interrupted by a restart is resumed from its first step for every tar
 | `GET /me` | | `200 { id, display_name, location_consent, created_at }` |
 | `PATCH /me` | `{ display_name?, location_consent? }` | `200` the same shape. Withdrawing consent rounds the location of every garden the user owns to about 10 km (`about_10_km`); no reverse geocoding is needed |
 | `DELETE /me` | | `202 { deleted_gardens: Id[], transferred_gardens: { garden_id: Id; new_owner_user_id: Id }[] }`. The cascade (architecture section 5) runs in the background, then the account is deleted at the auth provider too, retried until it succeeds (also across an API restart), so signing in again doesn't recreate the user. Every record keyed by or naming the user goes, their daily usage counters and idempotency keys included, or loses its link to them (their scans, tasks, maps and shared memories in gardens that stay). The one row left is the account's tombstone: from the request until 24 hours after the provider confirms the deletion, the account's still-valid session tokens get `401 unauthenticated` and never create a new user |
-| `POST /me/push-tokens` | `{ token: string, platform: "ios" \| "android" \| "web" }` | `204`; registering the same token again is a no-op |
+| `POST /me/push-tokens` | `{ token: string, platform: "ios" \| "android" \| "web" }` | `204`; registering the same token again is a no-op. For `ios` and `android` the token must be an Expo push token, `ExponentPushToken[…]` or `ExpoPushToken[…]` with a non-empty inside of printable ASCII without spaces or brackets, as `getExpoPushTokenAsync` returns it; anything else, a raw APNs or FCM device token included, is `400 invalid_request` with `field: "token"`. Expo refuses a whole request over one malformed token, so one bad token would otherwise silence the pushes sent with it. A `web` token is never sent, so it is stored as given (any printable string of at most 255 bytes) |
 | `DELETE /me/push-tokens/{token}` | | `204`. The token is URL-encoded in the path (Expo tokens contain `[` and `]`) |
 
 ### Push notifications
 
-Sent through the Expo Push API to every token the recipient registered with `platform` `ios` or `android`. Expo Push doesn't deliver to the web, so `web` tokens are stored and not yet used. The message has a short English title and body, and this payload as its `data`:
+Sent through the Expo Push API to every Expo push token the recipient registered with `platform` `ios` or `android` (a token stored before `POST /me/push-tokens` checked its form is skipped). Expo Push doesn't deliver to the web, so `web` tokens are stored and not yet used. Messages go out in requests of up to 100; a request Expo refuses as a whole is sent again in parts (one per Expo project when tokens of several projects were mixed, otherwise one message at a time), so only the messages Expo can't take are lost. The message has a short English title and body, and this payload as its `data`:
 
 ```ts
 type PushPayload =
@@ -2593,7 +2593,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.11.5: a VLM damage finding names its `trace`, and one with none is dropped; `vlm_prompts` names `findings@6` | 6.5 (the damage patterns row) |
 | v0.11.6: an indicator answer's `reason` has `maxLength` 100, above the prompt's 60 | none (6.1 says only "a short reason") |
 | v0.11.7: the API keeps only the disease classes with a `classifier_label` row for the classified species | 6.1 (the disease classification row) |
-| v0.11.8: forecast alerts and plan-trigger tasks come once per spell of consecutive fired days, keyed by the spell's first day; none in a garden being deleted; an account deletion finds the user's chats from the records, waits for the user's gardens being deleted, deletes the usage counters and idempotency keys, and leaves only the tombstone; cascades are retried and resumed in the API | 8.3; 5 (the `task` row of the data overview); 5 (deletion, steps 3 and 5) |
+| v0.11.8: forecast alerts and plan-trigger tasks come once per spell of consecutive fired days, keyed by the spell's first day; none in a garden being deleted; an account deletion finds the user's chats from the records, waits for the user's gardens being deleted, deletes the usage counters and idempotency keys, and leaves only the tombstone; cascades are retried and resumed in the API; Expo push tokens only for `ios` and `android` in `POST /me/push-tokens`; a refused push request sent again in parts; the fallback reports its label versions; `max_runtime` doubles once on the fallback; `/status` shows no model versions | 8.3; 5 (the `task` row of the data overview); 5 (deletion, steps 3 and 5); 8.4 (the fallback's runtime, label versions and takeover time); none for push (the architecture document doesn't describe the token format) |
 
 ---
 

@@ -542,8 +542,8 @@ export interface paths {
         put?: never;
         /**
          * `POST /internal/workers/heartbeat`: every 10 s. Extends the listed leases (only the worker's
-         *     own, never past `claimed_at + max_runtime`), records `versions` for `/status`, and answers
-         *     the jobs to stop.
+         *     own, never past `claimed_at + max_runtime`), records `versions` for the label-version rule
+         *     (`pipeline::runs::labels_loaded`), and answers the jobs to stop.
          */
         post: operations["heartbeat"];
         delete?: never;
@@ -608,7 +608,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** `POST /me/push-tokens`: `204`; registering the same token again is a no-op. */
+        /**
+         * `POST /me/push-tokens`: `204`; registering the same token again is a no-op. An `ios` or
+         *     `android` token that isn't an Expo push token (`ExponentPushToken[…]`, `ExpoPushToken[…]`)
+         *     is `400 invalid_request` on `token`.
+         */
         post: operations["register_push_token"];
         delete?: never;
         options?: never;
@@ -1105,8 +1109,9 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /status`: worker health, their model versions (contracts v0.9 keys) and the queue. No
-         *     user data.
+         * `GET /status`: each known worker's capabilities, health, last heartbeat and GPU name, and the
+         *     queue's counts. No user data, and no model versions: a heartbeat's `versions` are kept for
+         *     the label-version rule (contracts 5), and results carry their own `model_versions`.
          */
         get: operations["status"];
         put?: never;
@@ -3655,13 +3660,54 @@ export interface components {
             /** @description A problem, or `"healthy"`. */
             problem_id: components["schemas"]["ProblemOrHealthy"];
         };
+        /** @description `PushPayload` ([contracts 9]): the `data` of an Expo push message, tagged by `kind`. */
+        PushPayload: {
+            /** @description The garden. */
+            garden_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            kind: "scan";
+            /** @description The plant. */
+            plant_id: components["schemas"]["Id"];
+            /** @description Why. */
+            reason: components["schemas"]["PushScanReason"];
+            /** @description The scan. */
+            scan_id: components["schemas"]["Id"];
+            /** @description `1`. */
+            v: components["schemas"]["V1"];
+        } | {
+            /** @description The garden. */
+            garden_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            kind: "alert";
+            /** @description The alert task. */
+            task_id: components["schemas"]["Id"];
+            /** @description The rule. */
+            trigger: components["schemas"]["TriggerKind"];
+            /** @description `1`. */
+            v: components["schemas"]["V1"];
+        } | {
+            /** @description Its name. */
+            garden_name: string;
+            /** @enum {string} */
+            kind: "garden_deleted";
+            /** @description `1`. */
+            v: components["schemas"]["V1"];
+        };
+        /**
+         * @description `PushPayload.reason` for `kind: "scan"`.
+         * @enum {string}
+         */
+        PushScanReason: "plan_ready" | "plan_superseded" | "question" | "failed";
         /** @description push token */
         PushToken: string;
         /** @description `POST /me/push-tokens`: registering the same token again is a no-op. */
         PushTokenRequest: {
             /** @description Its platform. */
             platform: components["schemas"]["Platform"];
-            /** @description The Expo push token. */
+            /**
+             * @description The Expo push token (`ExponentPushToken[…]` or `ExpoPushToken[…]`) for `ios` and
+             *     `android`; for `web`, any printable string of at most 255 bytes, stored and never sent.
+             */
             token: components["schemas"]["PushToken"];
         };
         /**

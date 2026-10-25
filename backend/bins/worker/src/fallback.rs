@@ -15,9 +15,9 @@ use domain::{
     id::{ProblemOrHealthy, RegionId, SpeciesId},
     jobs::{
         DiseaseResult, DiseaseSkipReason, DiseaseSkipped, GuidedPayload, GuidedResult,
-        PerceptionPayload, PerceptionRegion, PerceptionResult, PerceptionStage, ProblemScore,
-        RegionClass, SpeciesLabel, SpeciesResult, VerifyPayload, VerifyResult, VlmPayload,
-        VlmResult,
+        ModelVersionKey, PerceptionPayload, PerceptionRegion, PerceptionResult, PerceptionStage,
+        ProblemScore, RegionClass, SpeciesLabel, SpeciesResult, VerifyPayload, VerifyResult,
+        VlmPayload, VlmResult,
     },
     ports::{JobContext, LoadedImage, ModelError, ProgressSink, VisionModel},
     rules::routing::{RoutableImage, findings_images},
@@ -48,20 +48,59 @@ pub struct FallbackLabels {
 }
 
 impl FallbackLabels {
-    /// Reads every `bioclip_labels*` and `disease_head*` entry of the manifest (hashes checked).
+    /// Reads every `bioclip_labels*` and `disease_head*` entry of the manifest (hashes checked):
+    /// the files the perception worker loads, keyed by the version each file states. As there, a
+    /// file whose version isn't its entry's `label_set_version` or `classifier_labels_version`
+    /// is refused.
     pub fn load(manifest: &Manifest) -> Result<Self, VisionError> {
         let mut out = Self::default();
         for e in manifest.entries_with_prefix("bioclip_labels") {
             manifest.verify(&[e.name.as_str()])?;
             let m = LabelMatrix::load(&manifest.path(e))?;
+            same_version("label matrix", e.label_set_version.as_deref(), &m.version)?;
             out.species.insert(m.version.clone(), Arc::new(m));
         }
         for e in manifest.entries_with_prefix("disease_head") {
             manifest.verify(&[e.name.as_str()])?;
             let h = DiseaseHead::load(&manifest.path(e))?;
+            same_version(
+                "disease head",
+                e.classifier_labels_version.as_deref(),
+                &h.version,
+            )?;
             out.disease.insert(h.version.clone(), Arc::new(h));
         }
         Ok(out)
+    }
+
+    /// The label keys of the heartbeat's `versions` ([contracts 5], versions a worker hasn't
+    /// loaded): every loaded `label_set_version` and `classifier_labels_version`,
+    /// comma-separated as the perception worker writes them, so the API's label rule counts
+    /// this worker while the rig is down. These are the lists `perception` jobs are answered
+    /// from, so a version is reported only when the fallback really has its labels.
+    pub fn versions(&self) -> BTreeMap<String, String> {
+        let join = |keys: Vec<&String>| keys.into_iter().cloned().collect::<Vec<_>>().join(",");
+        BTreeMap::from([
+            (
+                ModelVersionKey::LABEL_SET_VERSION.to_owned(),
+                join(self.species.keys().collect()),
+            ),
+            (
+                ModelVersionKey::CLASSIFIER_LABELS_VERSION.to_owned(),
+                join(self.disease.keys().collect()),
+            ),
+        ])
+    }
+}
+
+/// A manifest entry's stated label version must be its file's (as `vision`'s perception load).
+fn same_version(what: &'static str, entry: Option<&str>, file: &str) -> Result<(), VisionError> {
+    match entry {
+        Some(e) if e != file => Err(VisionError::Shape {
+            model: what,
+            detail: format!("the manifest says version {e:?}, the file {file:?}"),
+        }),
+        _ => Ok(()),
     }
 }
 
@@ -412,8 +451,11 @@ struct RankedProblem {
 
 #[async_trait]
 impl VisionModel for FallbackModel {
+    /// The hosted adapter's keys and the label lists' ([contracts 5], `model_versions` keys).
     fn model_versions(&self) -> BTreeMap<String, String> {
-        self.vlm.profile().model_versions()
+        let mut v = self.vlm.profile().model_versions();
+        v.extend(self.labels.versions());
+        v
     }
 
     async fn perceive(
@@ -453,5 +495,111 @@ impl VisionModel for FallbackModel {
         image: &LoadedImage,
     ) -> Result<GuidedResult, ModelError> {
         self.vlm.read_guided_check(job, payload, image).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use integrations::anthropic::{AnthropicClient, AnthropicConfig};
+    use tokio::sync::Semaphore;
+    use vision::perception::heads::EMBEDDING_DIM;
+
+    use super::*;
+    use crate::{
+        job::JobRunner,
+        vlm::profile::{AdapterProfile, CallBudget, CertaintyMap, VlmIdentity},
+    };
+
+    /// A disease head with one class, written as `ml/pdm_vision/headfile.py` writes one: zero
+    /// weights, whose base64 is all `A`s (4 bytes a float, 4 characters per 3 bytes).
+    fn disease_head(version: &str) -> DiseaseHead {
+        let doc = json!({
+            "format": "pdm-linear-head/1",
+            "kind": "disease_head",
+            "version": version,
+            "features": "bioclip-2@2957b322+b9016a6865e188c0",
+            "dim": EMBEDDING_DIM,
+            "classes": 1,
+            "temperature": 1.0,
+            "labels": [{ "index": 0, "label": "tomato/healthy", "species_id": "tomato", "problem_id": "healthy" }],
+            "weight": "A".repeat(EMBEDDING_DIM * 4 / 3 * 4),
+            "bias": "AAAAAA==",
+        });
+        let dir = std::env::temp_dir().join(format!("pdm-worker-fallback-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("the temporary directory");
+        let path = dir.join(format!("{version}.json"));
+        std::fs::write(&path, doc.to_string()).expect("the head is written");
+        DiseaseHead::load(&path).expect("the head loads")
+    }
+
+    /// The fallback as `main` builds it, with these labels. Nothing here calls the API.
+    fn fallback(labels: FallbackLabels) -> FallbackModel {
+        let client = AnthropicClient::new(
+            reqwest::Client::new(),
+            AnthropicConfig::new("test-key".to_owned().into()),
+        );
+        let profile = AdapterProfile {
+            box_format: domain::vlm::BoxFormat::AbsPxPrepared,
+            cell_px: 1,
+            max_pixels: 1_150_000,
+            max_long_side: Some(1568),
+            jpeg_quality: 90,
+            budget: CallBudget::HOSTED,
+            certainty: CertaintyMap::default(),
+            identity: VlmIdentity {
+                model: "claude-opus-5-5".to_owned(),
+                quant: None,
+                server: "anthropic".to_owned(),
+            },
+        };
+        let backend = AnthropicBackend::new(client, "claude-opus-5-5".to_owned());
+        FallbackModel::new(
+            VlmAdapter::new(backend, profile, Arc::new(Semaphore::new(1))),
+            labels,
+        )
+    }
+
+    /// The heartbeat's `versions` (`JobRunner::versions`, what `Worker::heartbeat_loop` sends)
+    /// name every label list the fallback loaded, so the API's label rule
+    /// (`pipeline::runs::labels_loaded`) counts it once the perception worker is silent, and new
+    /// runs aren't refused with `503 upstream_unavailable`.
+    #[test]
+    fn the_heartbeat_reports_the_loaded_label_versions() {
+        let mut labels = FallbackLabels::default();
+        for v in ["129f0395e8d89bd5", "2a8e5c1d7f3b9e04"] {
+            labels.species.insert(
+                v.to_owned(),
+                Arc::new(LabelMatrix::from_parts(
+                    v.to_owned(),
+                    Vec::new(),
+                    Vec::new(),
+                )),
+            );
+        }
+        let head = disease_head("disease-head-v1d-2026-10-16");
+        labels.disease.insert(head.version.clone(), Arc::new(head));
+        let runner = JobRunner::new(Arc::new(fallback(labels)), "cp-fallback-1".parse().unwrap());
+        let v = runner.versions();
+        assert_eq!(
+            v[ModelVersionKey::LABEL_SET_VERSION],
+            "129f0395e8d89bd5,2a8e5c1d7f3b9e04"
+        );
+        assert_eq!(
+            v[ModelVersionKey::CLASSIFIER_LABELS_VERSION],
+            "disease-head-v1d-2026-10-16"
+        );
+        assert_eq!(v[ModelVersionKey::WORKER_ID], "cp-fallback-1");
+        assert_eq!(v[ModelVersionKey::VLM_SERVER], "anthropic");
+    }
+
+    #[test]
+    fn a_label_file_must_match_its_manifest_entry() {
+        assert!(same_version("label matrix", None, "a").is_ok());
+        assert!(same_version("label matrix", Some("a"), "a").is_ok());
+        let err = same_version("disease head", Some("a"), "b").unwrap_err();
+        assert!(
+            err.to_string().contains("the manifest says version"),
+            "{err}"
+        );
     }
 }

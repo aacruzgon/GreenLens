@@ -918,13 +918,35 @@ opaque_string!(
 );
 
 opaque_string!(
-    /// An Expo push token (`ExponentPushToken[…]`), URL-encoded in the path of
-    /// `DELETE /me/push-tokens/{token}` ([contracts 9], account).
+    /// A registered push token, URL-encoded in the path of `DELETE /me/push-tokens/{token}`
+    /// ([contracts 9], account). Any printable string of at most 255 bytes parses, so a stored
+    /// token, a `web` one or one registered before the check always reads back and can be
+    /// removed; `POST /me/push-tokens` takes only Expo push tokens for `ios` and `android`
+    /// ([`PushToken::is_expo`], `PushTokenRequest::check`).
     PushToken,
     "push token",
     None,
     |s| printable(s, 255)
 );
+
+impl PushToken {
+    /// Whether it is an Expo push token, the only kind Expo Push delivers to: `ExponentPushToken[…]`
+    /// or `ExpoPushToken[…]`, as `expo-notifications`' `getExpoPushTokenAsync` returns them and
+    /// Expo's server SDK checks them (`isExpoPushToken`), with a non-empty inside of printable
+    /// ASCII without spaces or brackets. A raw APNs or FCM device token isn't one. The SDK's
+    /// other form, a bare UUID from Expo's early days, is not accepted.
+    pub fn is_expo(&self) -> bool {
+        let inner = ["ExponentPushToken[", "ExpoPushToken["]
+            .iter()
+            .find_map(|prefix| self.as_str().strip_prefix(*prefix))
+            .and_then(|rest| rest.strip_suffix(']'));
+        inner.is_some_and(|i| {
+            !i.is_empty()
+                && i.bytes()
+                    .all(|b| b.is_ascii_graphic() && b != b'[' && b != b']')
+        })
+    }
+}
 
 opaque_string!(
     /// A list cursor (`?cursor=`, `next_cursor`), opaque to the app ([contracts 1], lists).
@@ -1098,5 +1120,26 @@ mod tests {
         assert!("01JAX3K9T6R2B8V0QZ4M7D1E5F".parse::<LeaseToken>().is_ok());
         let key: IdempotencyKey = "6f1c2c1e-5b8a-4c39-9f43-2d3b1f6e7a10".parse().unwrap();
         assert_eq!(key.to_string(), "6f1c2c1e-5b8a-4c39-9f43-2d3b1f6e7a10");
+    }
+
+    #[test]
+    fn expo_push_tokens_are_recognised() {
+        let expo = |s: &str| s.parse::<PushToken>().unwrap().is_expo();
+        assert!(expo("ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"));
+        assert!(expo("ExpoPushToken[AbC-dEf_123]"));
+        for not_expo in [
+            "ExponentPushToken[]",
+            "ExponentPushToken[abc",
+            "ExponentPushToken[a b]",
+            "ExponentPushToken[a]]",
+            "exponentpushtoken[abc]",
+            " ExponentPushToken[abc]",
+            // A raw APNs device token, and a raw FCM registration token.
+            "740f4707bebcf74f9b7c25d48e3358945f6aa01da5ddb387462c7eaf61bb78ad",
+            "dVhd7k3HQJ6h7Wq1:APA91bH2k_example",
+            "6f1c2c1e-5b8a-4c39-9f43-2d3b1f6e7a10",
+        ] {
+            assert!(!expo(not_expo), "{not_expo}");
+        }
     }
 }

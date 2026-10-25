@@ -224,6 +224,7 @@ async fn a_frost_forecast_gives_one_alert_not_one_per_sweep() {
             Ok(PushReport {
                 accepted: 1,
                 unregistered: Vec::new(),
+                failed: 0,
             })
         });
 
