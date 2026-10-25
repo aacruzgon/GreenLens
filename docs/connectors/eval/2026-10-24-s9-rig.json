@@ -1,0 +1,3391 @@
+{
+ "script": "backend/tools/smoke/s9.py",
+ "base_url": "https://pdm-cp.tailb3ce07.ts.net",
+ "written_at": "2026-10-25T01:35:47+00:00",
+ "garden_id": "01M5E3VY7KMTM9BXQKY3M4ZEXA",
+ "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+ "results": {
+  "connectors": "PASS",
+  "plan": "PASS",
+  "chat": "PASS",
+  "era-guard": "PASS",
+  "disconnect": "SKIP"
+ },
+ "evidence": {
+  "connectors": [
+   "slack 01K7ERA5EED000000000000001: active, endpoint era, Maple Row Farm, sources ['field-reports', 'crew'], synced_at 2026-10-25T01:29:27Z, record_count 89",
+   "google_drive 01K7ERA5EED000000000000002: active, endpoint era, a Google account, sources ['Farm records'], synced_at 2026-10-25T01:22:27Z, record_count 5",
+   "both era connectors active and synced, with the fixture's sources"
+  ],
+  "plan": [
+   "scan 01M5RB40VME38RF1SAWN0V9CBY: 60 events in 53 s, 0 question(s)",
+   "diagnosis confirmed, primary tomato_septoria_leaf_spot",
+   "plan 01M5RB5NQ9H8SX0GJE3PV1GTQN v1: 8 steps, 2 farm records: [('google_drive', 'Bed map', 'D_BEDMAP'), ('google_drive', 'Spray log 2026', 'D_SPRAY')]",
+   "cites the spray log: step 1 [chemical] 'Remove spotted lower leaves now' (farm_citations ['01K7ERA5EED000000000000002.0.D_BEDMAP', '01K7ERA5EED000000000000002.0.D_SPRAY'], sources ['isu_septoria_leaf_spot', 'clemson_hgic_tomato_diseases'])",
+   "2 era record(s), each with text (740, 1868 chars)",
+   "no rate in the summary, 5 watch_for item(s) or 8 steps",
+   "warning: s5's broader amount pattern matched (read them): [\"Next season: space plants so they don't touch. When you plant tomatoes next season in their new bed, set them far enough\"]"
+  ],
+  "chat": [
+   "conversation 01M5RB5NYY35QZ6V7ETJEN3F73 on scan 01M5RB40VME38RF1SAWN0V9CBY",
+   "turn: route care_question, tools ['search_farm_records', 'search_farm_records'], events message_started tool_started tool_finished tool_started tool_finished message_completed, 2133 chars, first text 14.5 s, total 16.1 s, usage {'tokens_in': 57838, 'tokens_out': 1035}",
+   "answer: 'The crew has been posting about bed 3 in #field-reports all season. One report clashes with this scan, so here it is first.\\n\\nOn 1 October, Dev wrote: \"Tomato plants out of bed 3. Bagged the diseased ones for the landfill, not the compost.\" But this scan of a tomato in bed 3 is from 24 October. So either some plants were left in, there are volunteers, or the scan was linked to the wrong bed. Can yo'",
+   "stored message 01M5RB5P7EPZXNKJETBTTQXFCH: 14 farm citation(s): [('slack', '#field-reports'), ('slack', '#field-reports'), ('slack', '#field-reports'), ('slack', '#crew'), ('slack', '#field-reports'), ('slack', '#field-reports'), ('slack', '#field-reports'), ('slack', '#field-reports'), ('slack', '#field-reports'), ('slack', '#field-reports'), ('google_drive', 'Bed map'), ('slack', '#field-reports'), ('google_drive', 'Spray log 2026'), ('google_drive', 'Planting plan 2026')]",
+   "#field-reports: 10 record(s); first 01K7ERA5EED000000000000001.0.C_FIELD/1782498300.004500 by Dev at 2026-06-26T18:25:00Z, link http://era-slack:8080/archives/C_FIELD/p1782498300004500, text 'Tomatoes in bed 3 tied to the second wire. Lower leaves pruned to 30 cm for airflow.'",
+   "14 era citation(s), each with text",
+   "31 streamed sentences, none with a rate"
+  ],
+  "era-guard": [
+   "DELETE /connectors/01K7ERA5EED000000000000001 (slack): 409 invalid_state",
+   "DELETE /connectors/01K7ERA5EED000000000000002 (google_drive): 409 invalid_state",
+   "both stay listed, active, active"
+  ],
+  "disconnect": [
+   "needs --connector-id (a real Slack or Drive connector, active and synced)"
+  ]
+ },
+ "connectors": {
+  "available": true,
+  "connectors": [
+   {
+    "id": "01K7ERA5EED000000000000001",
+    "garden_id": "01M5E3VY7KMTM9BXQKY3M4ZEXA",
+    "kind": "slack",
+    "status": "active",
+    "endpoint": "era",
+    "account": {
+     "kind": "slack",
+     "team_id": "T_MAPLE",
+     "team_name": "Maple Row Farm",
+     "url": "http://era-slack:8080/"
+    },
+    "sources": [
+     {
+      "id": "C_FIELD",
+      "name": "field-reports"
+     },
+     {
+      "id": "C_CREW",
+      "name": "crew"
+     }
+    ],
+    "synced_at": "2026-10-25T01:29:27Z",
+    "record_count": 89,
+    "created_at": "2026-10-21T02:15:52Z"
+   },
+   {
+    "id": "01K7ERA5EED000000000000002",
+    "garden_id": "01M5E3VY7KMTM9BXQKY3M4ZEXA",
+    "kind": "google_drive",
+    "status": "active",
+    "endpoint": "era",
+    "account": {
+     "kind": "google_drive",
+     "email": "demo@maplerowfarm.example"
+    },
+    "sources": [
+     {
+      "id": "F_FARM",
+      "name": "Farm records"
+     }
+    ],
+    "synced_at": "2026-10-25T01:22:27Z",
+    "record_count": 5,
+    "created_at": "2026-10-21T02:15:52Z"
+   }
+  ]
+ },
+ "scan": {
+  "id": "01M5RB40VME38RF1SAWN0V9CBY",
+  "garden_id": "01M5E3VY7KMTM9BXQKY3M4ZEXA",
+  "plant_id": "01M5E3W12V4R8D411CCZWR2VV7",
+  "status": "planned",
+  "run": 1,
+  "images": [
+   {
+    "id": "01M5RB41D69HHF5E394YZ89A2T",
+    "kind": "whole_plant",
+    "width": 1600,
+    "height": 1200,
+    "url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/images/01M5RB41D69HHF5E394YZ89A2T?<signature removed>",
+    "uploaded_at": "2026-10-25T01:34:37Z"
+   },
+   {
+    "id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+    "kind": "leaf_closeup",
+    "width": 638,
+    "height": 1342,
+    "url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/images/01M5RB41Y43RYRY6Q21GZSCS7P?<signature removed>",
+    "uploaded_at": "2026-10-25T01:34:38Z"
+   }
+  ],
+  "guided_checks": [],
+  "created_at": "2026-10-25T01:34:36Z",
+  "created_by": {
+   "user_id": "01M5E3VX2PZSS13901BEVKB99Y",
+   "display_name": "Gardener"
+  },
+  "submitted_at": "2026-10-25T01:34:38Z",
+  "diagnosis_id": "01M5RB4HXGNMYY2KZ06EFBVBC4",
+  "plan_id": "01M5RB5NQ9H8SX0GJE3PV1GTQN",
+  "last_event_seq": 60,
+  "plant": {
+   "id": "01M5E3W12V4R8D411CCZWR2VV7",
+   "garden_id": "01M5E3VY7KMTM9BXQKY3M4ZEXA",
+   "name": "Bed 3",
+   "species": {
+    "id": "tomato",
+    "scientific_name": "Solanum lycopersicum",
+    "common_name": "Tomato"
+   },
+   "species_status": "confirmed",
+   "species_candidates": [],
+   "status": "sick",
+   "latest_scan": {
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "created_at": "2026-10-25T01:34:36Z",
+    "status": "planned",
+    "thumbnail_image_id": "01M5RB41D69HHF5E394YZ89A2T",
+    "thumbnail_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/images/01M5RB41D69HHF5E394YZ89A2T?<signature removed>"
+   },
+   "created_at": "2026-10-21T02:15:30Z"
+  },
+  "observations": [
+   {
+    "id": "01M5RB43CPNZ95S295VTD19GSD",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "disease",
+    "pipeline_stage": "disease",
+    "label": "Septoria leaf spot",
+    "ref": {
+     "table": "disease",
+     "id": "tomato_septoria_leaf_spot"
+    },
+    "confidence": 0.17377740144729614,
+    "confidence_band": "low",
+    "region": {
+     "region_id": "01M5RB41Y43RYRY6Q21GZSCS7P.1",
+     "image_id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+     "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+     ]
+    },
+    "source": "classifier",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43CPPPWGWPCY4ZAS74ZW",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "disease",
+    "pipeline_stage": "disease",
+    "label": "Late blight",
+    "ref": {
+     "table": "disease",
+     "id": "tomato_late_blight"
+    },
+    "confidence": 0.10559534281492232,
+    "confidence_band": "low",
+    "region": {
+     "region_id": "01M5RB41Y43RYRY6Q21GZSCS7P.1",
+     "image_id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+     "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+     ]
+    },
+    "source": "classifier",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43CPZ924CBT2G5553VJ2",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "disease",
+    "pipeline_stage": "disease",
+    "label": "Early blight",
+    "ref": {
+     "table": "disease",
+     "id": "tomato_early_blight"
+    },
+    "confidence": 0.6553888916969299,
+    "confidence_band": "medium",
+    "region": {
+     "region_id": "01M5RB41Y43RYRY6Q21GZSCS7P.1",
+     "image_id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+     "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+     ]
+    },
+    "source": "classifier",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43BG8Y7YPHEWPPJXZAME",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "plant_check",
+    "pipeline_stage": "plant_check",
+    "label": "Plant found",
+    "confidence": 0.8,
+    "confidence_band": "high",
+    "source": "segmentation",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43DH9RTZBDBVSQFN2S47",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "segmentation",
+    "pipeline_stage": "segmentation",
+    "label": "Leaf",
+    "detail": {
+     "region_class": "leaf"
+    },
+    "confidence": 0.42155182361602783,
+    "confidence_band": "low",
+    "region": {
+     "region_id": "01M5RB41D69HHF5E394YZ89A2T.4",
+     "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+     "bbox": [
+      0.02081298828125,
+      0.051025390625,
+      0.2159423828125,
+      0.61181640625
+     ],
+     "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43FWD9Q3DBXCWZK7Q1NM?<signature removed>"
+    },
+    "source": "segmentation",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43DHAFZ1SX878R9T39BM",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "segmentation",
+    "pipeline_stage": "segmentation",
+    "label": "Leaf",
+    "detail": {
+     "region_class": "leaf"
+    },
+    "confidence": 0.3620664775371551,
+    "confidence_band": "low",
+    "region": {
+     "region_id": "01M5RB41D69HHF5E394YZ89A2T.6",
+     "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+     "bbox": [
+      0.6470947265625,
+      0.00390625,
+      0.292724609375,
+      0.2181396484375
+     ],
+     "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43G3GVGSVP1B1PZNC554?<signature removed>"
+    },
+    "source": "segmentation",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43DHGYYCC5YKTHP9C613",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "segmentation",
+    "pipeline_stage": "segmentation",
+    "label": "Leaf",
+    "detail": {
+     "region_class": "leaf"
+    },
+    "confidence": 0.5360700488090515,
+    "confidence_band": "medium",
+    "region": {
+     "region_id": "01M5RB41D69HHF5E394YZ89A2T.3",
+     "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+     "bbox": [
+      0.0533447265625,
+      0.5494384765625,
+      0.185791015625,
+      0.447998046875
+     ],
+     "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43FRXEDGEG5AK4XKS84D?<signature removed>"
+    },
+    "source": "segmentation",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43DHQ1EC8PBFREWWR26A",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "segmentation",
+    "pipeline_stage": "segmentation",
+    "label": "Leaf",
+    "detail": {
+     "region_class": "leaf"
+    },
+    "confidence": 0.622459352016449,
+    "confidence_band": "medium",
+    "region": {
+     "region_id": "01M5RB41D69HHF5E394YZ89A2T.2",
+     "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+     "bbox": [
+      0.240234375,
+      0.00537109375,
+      0.119140625,
+      0.434814453125
+     ],
+     "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43FKHH5F284G14W0X2V0?<signature removed>"
+    },
+    "source": "segmentation",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43DHSDJ1V327JYDBPP0K",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "segmentation",
+    "pipeline_stage": "segmentation",
+    "label": "Plant",
+    "detail": {
+     "region_class": "plant"
+    },
+    "confidence": 0.8638516664505005,
+    "confidence_band": "high",
+    "region": {
+     "region_id": "01M5RB41D69HHF5E394YZ89A2T.7",
+     "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+     "bbox": [
+      0.0,
+      0.0,
+      0.9857696533203124,
+      1.0
+     ],
+     "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43G835DP3NNVMCDGAXM1?<signature removed>"
+    },
+    "source": "segmentation",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43DHY051ZGF9E6TMMN7E",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "segmentation",
+    "pipeline_stage": "segmentation",
+    "label": "Leaf",
+    "detail": {
+     "region_class": "leaf"
+    },
+    "confidence": 0.8638516664505005,
+    "confidence_band": "high",
+    "region": {
+     "region_id": "01M5RB41D69HHF5E394YZ89A2T.1",
+     "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+     "bbox": [
+      0.40869140625,
+      0.234130859375,
+      0.2255859375,
+      0.59033203125
+     ],
+     "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43FEW549Q3498MPKNHQ6?<signature removed>"
+    },
+    "source": "segmentation",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43DHYEN63F76N39WT4QP",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "segmentation",
+    "pipeline_stage": "segmentation",
+    "label": "Leaf",
+    "detail": {
+     "region_class": "leaf"
+    },
+    "confidence": 0.3629691898822784,
+    "confidence_band": "low",
+    "region": {
+     "region_id": "01M5RB41D69HHF5E394YZ89A2T.5",
+     "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+     "bbox": [
+      0.69366455078125,
+      0.253662109375,
+      0.1302490234375,
+      0.72607421875
+     ],
+     "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43G0Z9AR8RCKBE22XS3P?<signature removed>"
+    },
+    "source": "segmentation",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB43DHN8D67YQ8B6FW80RD",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "segmentation",
+    "pipeline_stage": "segmentation",
+    "label": "Leaf",
+    "detail": {
+     "region_class": "leaf"
+    },
+    "confidence": 0.9263036847114564,
+    "confidence_band": "high",
+    "region": {
+     "region_id": "01M5RB41Y43RYRY6Q21GZSCS7P.1",
+     "image_id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+     "bbox": [
+      0.09228515625,
+      0.192138671875,
+      0.826171875,
+      0.74853515625
+     ],
+     "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43GC8ZB2WZWBJRB5R42N?<signature removed>"
+    },
+    "source": "segmentation",
+    "model_version": "107151b7e97f9fff",
+    "created_at": "2026-10-25T01:34:39Z"
+   },
+   {
+    "id": "01M5RB48YCBFP8YRV1ZTY9GM73",
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "run": 1,
+    "stage": "species",
+    "pipeline_stage": "vlm_findings",
+    "label": "Tomato",
+    "ref": {
+     "table": "species",
+     "id": "tomato"
+    },
+    "confidence": 0.85,
+    "confidence_band": "high",
+    "source": "vlm",
+    "model_version": "cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4bbeb8d1910ee7be9196bafaf1bc052156",
+    "created_at": "2026-10-25T01:34:54Z"
+   }
+  ],
+  "weather": {
+   "provider": "open_meteo",
+   "fetched_at": "2026-10-25T01:09:57Z",
+   "location_precision": "city",
+   "current": {
+    "temp_c": 7.4,
+    "rh_pct": 85.0,
+    "wind_kmh": 6.0,
+    "precip_mm_last_24h": 0.0
+   },
+   "past_7_days": {
+    "precip_mm": 0.0,
+    "mean_rh_pct": 69.5297619047619,
+    "hours_rh_over_90": 9,
+    "longest_humid_run_days": 0
+   },
+   "forecast": [
+    {
+     "date": "2026-10-24",
+     "t_min_c": 1.4,
+     "t_max_c": 16.2,
+     "precip_mm": 0.0,
+     "mean_rh_pct": 76.125,
+     "hours_rh_over_90": 1,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-10-25",
+     "t_min_c": 2.9,
+     "t_max_c": 18.1,
+     "precip_mm": 0.0,
+     "mean_rh_pct": 72.875,
+     "hours_rh_over_90": 2,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-10-26",
+     "t_min_c": 7.3,
+     "t_max_c": 13.1,
+     "precip_mm": 0.0,
+     "mean_rh_pct": 68.25,
+     "hours_rh_over_90": 2,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-10-27",
+     "t_min_c": 1.1,
+     "t_max_c": 9.7,
+     "precip_mm": 0.0,
+     "mean_rh_pct": 56.833333333333336,
+     "hours_rh_over_90": 0,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-10-28",
+     "t_min_c": 3.3,
+     "t_max_c": 13.9,
+     "precip_mm": 0.0,
+     "mean_rh_pct": 53.666666666666664,
+     "hours_rh_over_90": 0,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-10-29",
+     "t_min_c": 7.4,
+     "t_max_c": 19.5,
+     "precip_mm": 0.3,
+     "mean_rh_pct": 73.91666666666667,
+     "hours_rh_over_90": 7,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-10-30",
+     "t_min_c": 8.3,
+     "t_max_c": 16.3,
+     "precip_mm": 0.0,
+     "mean_rh_pct": 68.5,
+     "hours_rh_over_90": 4,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-10-31",
+     "t_min_c": 8.6,
+     "t_max_c": 17.6,
+     "precip_mm": 0.0,
+     "mean_rh_pct": 68.08333333333333,
+     "hours_rh_over_90": 0,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-11-01",
+     "t_min_c": 13.2,
+     "t_max_c": 16.0,
+     "precip_mm": 9.9,
+     "mean_rh_pct": 79.25,
+     "hours_rh_over_90": 0,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-11-02",
+     "t_min_c": 10.4,
+     "t_max_c": 16.1,
+     "precip_mm": 0.9,
+     "mean_rh_pct": 82.58333333333333,
+     "hours_rh_over_90": 0,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-11-03",
+     "t_min_c": 4.4,
+     "t_max_c": 13.4,
+     "precip_mm": 0.0,
+     "mean_rh_pct": 62.0,
+     "hours_rh_over_90": 4,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-11-04",
+     "t_min_c": 3.1,
+     "t_max_c": 12.7,
+     "precip_mm": 11.7,
+     "mean_rh_pct": 71.29166666666667,
+     "hours_rh_over_90": 7,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-11-05",
+     "t_min_c": 6.1,
+     "t_max_c": 11.2,
+     "precip_mm": 3.9,
+     "mean_rh_pct": 83.5,
+     "hours_rh_over_90": 5,
+     "frost_risk": false
+    },
+    {
+     "date": "2026-11-06",
+     "t_min_c": 4.2,
+     "t_max_c": 9.0,
+     "precip_mm": 0.0,
+     "mean_rh_pct": 67.29166666666667,
+     "hours_rh_over_90": 0,
+     "frost_risk": false
+    }
+   ],
+   "soil": {
+    "moisture_0_9cm_m3m3": 0.17633333333333334,
+    "moisture_9_27cm_m3m3": 0.201,
+    "temp_6cm_c": 9.8,
+    "et0_mm_last_24h": 1.8800000000000001
+   }
+  },
+  "diagnosis": {
+   "id": "01M5RB4HXGNMYY2KZ06EFBVBC4",
+   "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+   "run": 1,
+   "status": "confirmed",
+   "low_evidence": false,
+   "primary": {
+    "problem_id": "tomato_septoria_leaf_spot",
+    "name": "Septoria leaf spot",
+    "kind": "fungal",
+    "score": 8,
+    "classifier_weight": 0,
+    "matched": [
+     {
+      "indicator_id": "tomato_septoria_leaf_spot.many_round_spots",
+      "text": "Many small, round spots on each affected leaf.",
+      "weight": 2,
+      "answer": "yes",
+      "reason": "Leaf has several distinct round spots.",
+      "source": "vlm"
+     },
+     {
+      "indicator_id": "tomato_septoria_leaf_spot.tan_centre_dark_border",
+      "text": "The spots have a light tan, beige or whitish centre with a dark brown border.",
+      "weight": 3,
+      "answer": "yes",
+      "reason": "Spots have pale centers and dark borders.",
+      "source": "vlm"
+     },
+     {
+      "indicator_id": "tomato_septoria_leaf_spot.black_specks_in_centre",
+      "text": "Tiny black specks (spore bodies) sit in the pale centre of older spots. A hand lens shows them clearly.",
+      "weight": 3,
+      "answer": "yes",
+      "reason": "Tiny dark dots are visible in spot centers.",
+      "source": "vlm"
+     }
+    ],
+    "contradicted": [],
+    "unsure": [],
+    "weather_fit": "unfavourable"
+   },
+   "candidates": [
+    {
+     "problem_id": "tomato_septoria_leaf_spot",
+     "name": "Septoria leaf spot",
+     "kind": "fungal",
+     "score": 8,
+     "classifier_weight": 0,
+     "matched": [
+      {
+       "indicator_id": "tomato_septoria_leaf_spot.many_round_spots",
+       "text": "Many small, round spots on each affected leaf.",
+       "weight": 2,
+       "answer": "yes",
+       "reason": "Leaf has several distinct round spots.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_septoria_leaf_spot.tan_centre_dark_border",
+       "text": "The spots have a light tan, beige or whitish centre with a dark brown border.",
+       "weight": 3,
+       "answer": "yes",
+       "reason": "Spots have pale centers and dark borders.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_septoria_leaf_spot.black_specks_in_centre",
+       "text": "Tiny black specks (spore bodies) sit in the pale centre of older spots. A hand lens shows them clearly.",
+       "weight": 3,
+       "answer": "yes",
+       "reason": "Tiny dark dots are visible in spot centers.",
+       "source": "vlm"
+      }
+     ],
+     "contradicted": [],
+     "unsure": [],
+     "weather_fit": "unfavourable"
+    },
+    {
+     "problem_id": "tomato_early_blight",
+     "name": "Early blight",
+     "kind": "fungal",
+     "score": 3,
+     "classifier_weight": 2,
+     "matched": [
+      {
+       "indicator_id": "tomato_early_blight.concentric_rings_bullseye",
+       "text": "As spots grow, dark rings form inside them in a bull's-eye or target pattern.",
+       "weight": 3,
+       "answer": "yes",
+       "reason": "Spots show dark centers with lighter rings.",
+       "source": "vlm"
+      }
+     ],
+     "contradicted": [
+      {
+       "indicator_id": "tomato_early_blight.spots_become_angular",
+       "text": "Spots get bigger and become angular over time.",
+       "weight": 2,
+       "answer": "no",
+       "reason": "Spots are round to oval, not angular.",
+       "source": "vlm"
+      }
+     ],
+     "unsure": [
+      {
+       "indicator_id": "tomato_early_blight.large_fruit_lesion_rings",
+       "text": "Fruit spots grow large, often covering nearly the whole fruit, and show rings like the leaf spots.",
+       "weight": 2,
+       "answer": "unsure",
+       "reason": "No fruit is visible in the photos.",
+       "source": "vlm"
+      }
+     ],
+     "weather_fit": "neutral"
+    },
+    {
+     "problem_id": "tomato_bacterial_spot",
+     "name": "Bacterial spot",
+     "kind": "bacterial",
+     "score": 0,
+     "classifier_weight": 0,
+     "matched": [
+      {
+       "indicator_id": "tomato_bacterial_spot.leaf_spot_size",
+       "text": "The largest leaf spots grow to about 3 to 5 mm across, bigger than the tiny specks of bacterial speck.",
+       "weight": 2,
+       "answer": "yes",
+       "reason": "Spots are larger than a pinhead but small.",
+       "source": "vlm"
+      }
+     ],
+     "contradicted": [
+      {
+       "indicator_id": "tomato_bacterial_spot.spot_centres_tear_holes",
+       "text": "Spot centres turn brown, dry out and tear, leaving holes. The leaves look tattered.",
+       "weight": 2,
+       "answer": "no",
+       "reason": "Spots are intact without holes or tears.",
+       "source": "vlm"
+      }
+     ],
+     "unsure": [
+      {
+       "indicator_id": "tomato_bacterial_spot.raised_scabby_fruit_spots",
+       "text": "Raised, rough, scabby spots on the fruit, bigger than pinpoint specks. They start as small dark brown to black raised spots on green fruit and can grow and turn brown and greasy-looking.",
+       "weight": 3,
+       "answer": "unsure",
+       "reason": "No fruit is visible in the photos.",
+       "source": "vlm"
+      }
+     ],
+     "weather_fit": "neutral"
+    },
+    {
+     "problem_id": "tomato_blossom_end_rot",
+     "name": "Blossom-end rot",
+     "kind": "abiotic",
+     "score": 0,
+     "classifier_weight": 0,
+     "matched": [],
+     "contradicted": [],
+     "unsure": [
+      {
+       "indicator_id": "tomato_blossom_end_rot.water_soaked_blossom_end_spot",
+       "text": "Spots that look wet or soaked with water, at the flower end of the fruit, opposite the stem.",
+       "weight": 2,
+       "answer": "unsure",
+       "reason": "No fruit is visible in the photos.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_blossom_end_rot.blossom_end_spot_black",
+       "text": "The spots on the blossom end grow larger and turn black.",
+       "weight": 2,
+       "answer": "unsure",
+       "reason": "No fruit is visible in the photos.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_blossom_end_rot.secondary_rot",
+       "text": "Rot from other decay organisms usually sets in on the damaged blossom end.",
+       "weight": 2,
+       "answer": "unsure",
+       "reason": "No fruit is visible in the photos.",
+       "source": "vlm"
+      }
+     ],
+     "weather_fit": "neutral"
+    },
+    {
+     "problem_id": "tomato_bacterial_speck",
+     "name": "Bacterial speck",
+     "kind": "bacterial",
+     "score": -3,
+     "classifier_weight": 0,
+     "matched": [],
+     "contradicted": [
+      {
+       "indicator_id": "tomato_bacterial_speck.tiny_leaf_specks_size",
+       "text": "Leaf specks are tiny, usually no more than 2 mm across, smaller than bacterial spot's leaf spots.",
+       "weight": 2,
+       "answer": "no",
+       "reason": "Spots are clearly larger than a pinhead.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_bacterial_speck.leaf_distortion",
+       "text": "Leaves with specks are sometimes distorted, because the infection stops the leaf from growing evenly.",
+       "weight": 1,
+       "answer": "no",
+       "reason": "Leaves appear flat and undistorted.",
+       "source": "vlm"
+      }
+     ],
+     "unsure": [
+      {
+       "indicator_id": "tomato_bacterial_speck.black_fruit_specks",
+       "text": "Tiny pinpoint black specks on the fruit, only slightly raised and not scabby, often with a narrow green to yellow ring. They sit on the surface and can be scraped off with a fingernail. Only young green fruit gets infected, but the black specks stay after the fruit ripens.",
+       "weight": 3,
+       "answer": "unsure",
+       "reason": "No fruit is visible in the photos.",
+       "source": "vlm"
+      }
+     ],
+     "weather_fit": "neutral"
+    },
+    {
+     "problem_id": "tomato_late_blight",
+     "name": "Late blight",
+     "kind": "fungal",
+     "score": -4,
+     "classifier_weight": 0,
+     "matched": [],
+     "contradicted": [
+      {
+       "indicator_id": "tomato_late_blight.dark_water_soaked_leaf_spots",
+       "text": "Young leaf spots are small, dark and look water-soaked.",
+       "weight": 2,
+       "answer": "no",
+       "reason": "No small, wet-looking spots are visible.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_late_blight.spots_enlarge_quickly",
+       "text": "The leaf spots quickly grow into large dark patches.",
+       "weight": 2,
+       "answer": "no",
+       "reason": "Spots are well-defined and not merging.",
+       "source": "vlm"
+      }
+     ],
+     "unsure": [
+      {
+       "indicator_id": "tomato_late_blight.white_mould_underside_margins",
+       "text": "White mould grows at the edges of the damaged areas on the underside of the leaves.",
+       "weight": 2,
+       "answer": "unsure",
+       "reason": "Leaf underside is not visible.",
+       "source": "vlm"
+      }
+     ],
+     "weather_fit": "neutral"
+    },
+    {
+     "problem_id": "tomato_leaf_mold",
+     "name": "Leaf mold",
+     "kind": "fungal",
+     "score": -5,
+     "classifier_weight": 0,
+     "matched": [],
+     "contradicted": [
+      {
+       "indicator_id": "tomato_leaf_mold.pale_spots_upper_surface",
+       "text": "Light green to yellowish spots on the top of the leaf.",
+       "weight": 2,
+       "answer": "no",
+       "reason": "Spots are brownish-gray, not pale green.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_leaf_mold.spots_turn_yellow",
+       "text": "The spots grow larger and turn a distinctive yellow.",
+       "weight": 3,
+       "answer": "no",
+       "reason": "Spots are brown, not bright yellow.",
+       "source": "vlm"
+      }
+     ],
+     "unsure": [
+      {
+       "indicator_id": "tomato_leaf_mold.gray_velvety_underside",
+       "text": "In humid weather, the spots on the leaf underside are covered with a gray, velvety growth of fungus spores.",
+       "weight": 2,
+       "answer": "unsure",
+       "reason": "Leaf underside is not visible.",
+       "source": "vlm"
+      }
+     ],
+     "weather_fit": "neutral"
+    },
+    {
+     "problem_id": "tomato_spider_mites",
+     "name": "Spider mites",
+     "kind": "pest",
+     "score": -6,
+     "classifier_weight": 0,
+     "matched": [],
+     "contradicted": [
+      {
+       "indicator_id": "tomato_spider_mites.fine_stippling",
+       "text": "Fine flecking or stippling: very tiny pale or yellowish-green speckles where the mites have fed.",
+       "weight": 3,
+       "answer": "no",
+       "reason": "Leaf surface is not covered in fine dots.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_spider_mites.fine_webbing",
+       "text": "Very fine strands of silk webbing on the leaves, mostly underneath, or on the stems.",
+       "weight": 3,
+       "answer": "no",
+       "reason": "No fine webbing is visible on leaves or stems.",
+       "source": "vlm"
+      }
+     ],
+     "unsure": [
+      {
+       "indicator_id": "tomato_spider_mites.mites_on_underside",
+       "text": "Tiny oval mites, about the size of a full stop, on the leaf underside. Most are green, greenish-yellow or almost see-through, often with two dark spots; some are brown or orange-red.",
+       "weight": 3,
+       "answer": "unsure",
+       "reason": "Leaf underside is not visible.",
+       "source": "vlm"
+      }
+     ],
+     "weather_fit": "neutral"
+    },
+    {
+     "problem_id": "tomato_hornworms",
+     "name": "Hornworms",
+     "kind": "pest",
+     "score": -7,
+     "classifier_weight": 0,
+     "matched": [],
+     "contradicted": [
+      {
+       "indicator_id": "tomato_hornworms.leaves_stripped",
+       "text": "Leaves are eaten away, and parts of the plant are quickly stripped bare.",
+       "weight": 2,
+       "answer": "no",
+       "reason": "Plant has many leaves, not stripped bare.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_hornworms.large_green_caterpillar",
+       "text": "A very large, fat, bright green caterpillar, about as thick as a thumb, is on the plant. It is the same colour as the leaves, so it is hard to see.",
+       "weight": 2,
+       "answer": "no",
+       "reason": "No caterpillars are visible on the plant.",
+       "source": "vlm"
+      },
+      {
+       "indicator_id": "tomato_hornworms.horn_on_rear_end",
+       "text": "The caterpillar has a horn sticking out from its back end. The horn may be red and curved, or black and straight, or green.",
+       "weight": 3,
+       "answer": "no",
+       "reason": "No caterpillar is present to check for a horn.",
+       "source": "vlm"
+      }
+     ],
+     "unsure": [],
+     "weather_fit": "neutral"
+    }
+   ],
+   "organisms": [],
+   "soil": [],
+   "risks": [],
+   "evidence_basis": {
+    "user_input": [],
+    "photo": [],
+    "modelled": [
+     "7 \u00b0C, 85% humidity now; 9 hours over 90% in the past week",
+     "Soil moisture 0.18 m\u00b3/m\u00b3 in the top 9 cm",
+     "SoilGrids pH 6.8 near the surface"
+    ]
+   },
+   "citations": [
+    {
+     "source_id": "clemson_hgic_tomato_diseases",
+     "title": "Tomato Diseases & Disorders (HGIC 2217)",
+     "publisher": "Clemson Cooperative Extension, Home & Garden Information Center",
+     "url": "https://hgic.clemson.edu/factsheet/tomato-diseases-disorders/"
+    },
+    {
+     "source_id": "isu_septoria_leaf_spot",
+     "title": "Septoria Leaf Spot",
+     "publisher": "Iowa State University Extension and Outreach, Yard and Garden",
+     "url": "https://yardandgarden.extension.iastate.edu/encyclopedia/septoria-leaf-spot"
+    },
+    {
+     "source_id": "ontario_tomato_bacterial_diseases",
+     "title": "Bacterial diseases of tomato: bacterial spot, bacterial speck and bacterial canker",
+     "publisher": "Ontario Ministry of Agriculture, Food and Agribusiness",
+     "url": "https://www.ontario.ca/page/bacterial-diseases-tomato-bacterial-spot-bacterial-speck-and-bacterial-canker"
+    }
+   ],
+   "model_versions": {
+    "classifier": "107151b7e97f9fff",
+    "segmentation": "107151b7e97f9fff",
+    "vlm_model": "cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4bbeb8d1910ee7be9196bafaf1bc052156"
+   },
+   "created_at": "2026-10-25T01:34:54Z"
+  },
+  "plan": {
+   "id": "01M5RB5NQ9H8SX0GJE3PV1GTQN",
+   "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+   "plant_id": "01M5E3W12V4R8D411CCZWR2VV7",
+   "version": 1,
+   "provisional": false,
+   "diagnosis_id": "01M5RB4HXGNMYY2KZ06EFBVBC4",
+   "constraints": [],
+   "summary": "Bed 3 has Septoria leaf spot, a fungal disease that spreads by splashing water and survives the winter on debris and tomato-related weeds. With the season nearly over and bed 3 already at its season limit for copper sprays, this plan relies on clean-up: remove spotted leaves now, water only by drip, pull weeds, check for new spots through the coming rain, then clear the bed completely and keep tomato-family crops out of it for three years.",
+   "steps": [
+    {
+     "id": "remove_spotted_leaves",
+     "order": 1,
+     "title": "Remove spotted lower leaves now",
+     "detail": "On a dry day, cut off every lower leaf and branch with the small dark-edged spots, starting at the west end of the bed, which sits low and dries slowly after rain. Bag the leaves and throw them away rather than composting them. Repeat as new spotted leaves appear. Fungicide is not part of this plan: the spray log shows bed 3 reached its season limit of copper applications in early September, and with the season ending, clean-up does more good.",
+     "treatment_id": "remove_infected_leaves",
+     "category": "chemical",
+     "when": {
+      "kind": "now"
+     },
+     "targets": [
+      {
+       "table": "disease",
+       "id": "tomato_septoria_leaf_spot"
+      }
+     ],
+     "citations": [
+      "isu_septoria_leaf_spot",
+      "clemson_hgic_tomato_diseases"
+     ],
+     "farm_citations": [
+      "01K7ERA5EED000000000000002.0.D_BEDMAP",
+      "01K7ERA5EED000000000000002.0.D_SPRAY"
+     ],
+     "safety_note": "Use only a product registered for this use where you live, and follow its label exactly."
+    },
+    {
+     "id": "keep_leaves_dry",
+     "order": 2,
+     "title": "Keep the leaves dry: water only by drip",
+     "detail": "Water bed 3 only through its drip line (zone 2, along the north edge), at the soil, in the morning. Avoid any overhead watering or hosing the leaves, since splashing water carries spores from leaf to leaf. Rain is forecast around 1 November and 4 November, so get the spotted leaves off before then.",
+     "treatment_id": "keep_foliage_dry",
+     "category": "cultural",
+     "when": {
+      "kind": "now"
+     },
+     "targets": [
+      {
+       "table": "disease",
+       "id": "tomato_septoria_leaf_spot"
+      }
+     ],
+     "citations": [
+      "isu_septoria_leaf_spot",
+      "clemson_hgic_tomato_diseases"
+     ],
+     "farm_citations": [
+      "01K7ERA5EED000000000000002.0.D_BEDMAP"
+     ]
+    },
+    {
+     "id": "pull_weeds",
+     "order": 3,
+     "title": "Pull weeds and volunteer tomatoes around the bed",
+     "detail": "Pull weeds in and around bed 3, especially tomato-family weeds such as nightshades and ground cherry, and pull up any volunteer tomato seedlings. Septoria survives the winter on some weeds related to tomato.",
+     "treatment_id": "control_weeds_and_volunteers",
+     "category": "cultural",
+     "when": {
+      "kind": "by_date",
+      "due": "2026-10-31"
+     },
+     "targets": [
+      {
+       "table": "disease",
+       "id": "tomato_septoria_leaf_spot"
+      }
+     ],
+     "citations": [
+      "clemson_hgic_tomato_diseases",
+      "ontario_tomato_bacterial_diseases"
+     ]
+    },
+    {
+     "id": "check_for_spots",
+     "order": 4,
+     "title": "Check for new spots every 3 days",
+     "detail": "Walk the bed and look for new spots on leaves higher up the plants, on stems and near the fruit, paying most attention to the west end after the forecast rain. Note what you find in #field-reports. If the spots look different from before (rings, greasy patches or spots on the fruit), send a closer, sharper photo of a leaf front and back, or ask your local extension office.",
+     "category": "monitoring",
+     "when": {
+      "kind": "recurring",
+      "every_days": 3,
+      "until": "2026-11-07"
+     },
+     "targets": [
+      {
+       "table": "disease",
+       "id": "tomato_septoria_leaf_spot"
+      }
+     ],
+     "citations": [
+      "isu_septoria_leaf_spot"
+     ]
+    },
+    {
+     "id": "clear_bed",
+     "order": 5,
+     "title": "Clear out all plants and debris at the end of the season",
+     "detail": "When you finish picking, pull out all the tomato plants in bed 3, gather as much fallen leaf and plant debris as you can, bag it and throw it away. Take the stakes' ties off and clean them. Work in or till any debris you cannot remove so it breaks down over winter.",
+     "treatment_id": "remove_crop_debris",
+     "category": "cultural",
+     "when": {
+      "kind": "by_date",
+      "due": "2026-11-14"
+     },
+     "targets": [
+      {
+       "table": "disease",
+       "id": "tomato_septoria_leaf_spot"
+      }
+     ],
+     "citations": [
+      "isu_septoria_leaf_spot",
+      "clemson_hgic_tomato_diseases"
+     ]
+    },
+    {
+     "id": "plan_rotation",
+     "order": 6,
+     "title": "Plan a 3-year rotation away from bed 3",
+     "detail": "Plan next year's beds so tomatoes, potatoes, peppers and eggplant don't go back into bed 3 for at least three years. A crop that doesn't get these diseases, such as corn, is a good choice for bed 3. Remember that the peppers in bed 1 are in the same family, so don't simply swap tomatoes into bed 1.",
+     "treatment_id": "rotate_crops_3_years",
+     "category": "cultural",
+     "when": {
+      "kind": "by_date",
+      "due": "2027-03-01"
+     },
+     "targets": [
+      {
+       "table": "disease",
+       "id": "tomato_septoria_leaf_spot"
+      }
+     ],
+     "citations": [
+      "isu_septoria_leaf_spot",
+      "clemson_hgic_tomato_diseases"
+     ],
+     "farm_citations": [
+      "01K7ERA5EED000000000000002.0.D_BEDMAP"
+     ]
+    },
+    {
+     "id": "space_next_season",
+     "order": 7,
+     "title": "Next season: space plants so they don't touch",
+     "detail": "When you plant tomatoes next season in their new bed, set them far enough apart that grown plants don't touch, so air moves between them and the leaves dry faster after dew or rain. Keep staking on wires and pruning suckers as this year.",
+     "treatment_id": "space_plants_apart",
+     "category": "cultural",
+     "when": {
+      "kind": "by_date",
+      "due": "2027-05-15"
+     },
+     "targets": [
+      {
+       "table": "disease",
+       "id": "tomato_septoria_leaf_spot"
+      }
+     ],
+     "citations": [
+      "isu_septoria_leaf_spot",
+      "clemson_hgic_tomato_diseases"
+     ]
+    },
+    {
+     "id": "mulch_next_season",
+     "order": 8,
+     "title": "Next season: mulch around the plants after transplanting",
+     "detail": "Right after transplanting next season, cover the soil around the tomatoes with an organic mulch such as straw or chopped leaves. It stops spores splashing up from the soil onto the lower leaves.",
+     "treatment_id": "mulch_around_plants",
+     "category": "cultural",
+     "when": {
+      "kind": "by_date",
+      "due": "2027-05-31"
+     },
+     "targets": [
+      {
+       "table": "disease",
+       "id": "tomato_septoria_leaf_spot"
+      }
+     ],
+     "citations": [
+      "isu_septoria_leaf_spot",
+      "clemson_hgic_tomato_diseases"
+     ]
+    }
+   ],
+   "watch_for": [
+    "New spots appearing on upper leaves within a week of removing the spotted ones.",
+    "Spots spreading quickly along the bed in the five days after the rain forecast around 1 November and 4 November.",
+    "Spots appearing on stems or fruit at any point before the bed is cleared.",
+    "Spots that look different (rings, greasy patches or fruit lesions) in the next two weeks, which would mean asking for a better photo or the local extension office.",
+    "Septoria spots showing up again on next season's tomatoes within the first month after transplanting."
+   ],
+   "citations": [
+    {
+     "source_id": "isu_septoria_leaf_spot",
+     "title": "Septoria Leaf Spot",
+     "publisher": "Iowa State University Extension and Outreach, Yard and Garden",
+     "url": "https://yardandgarden.extension.iastate.edu/encyclopedia/septoria-leaf-spot"
+    },
+    {
+     "source_id": "clemson_hgic_tomato_diseases",
+     "title": "Tomato Diseases & Disorders (HGIC 2217)",
+     "publisher": "Clemson Cooperative Extension, Home & Garden Information Center",
+     "url": "https://hgic.clemson.edu/factsheet/tomato-diseases-disorders/"
+    },
+    {
+     "source_id": "ontario_tomato_bacterial_diseases",
+     "title": "Bacterial diseases of tomato: bacterial spot, bacterial speck and bacterial canker",
+     "publisher": "Ontario Ministry of Agriculture, Food and Agribusiness",
+     "url": "https://www.ontario.ca/page/bacterial-diseases-tomato-bacterial-spot-bacterial-speck-and-bacterial-canker"
+    }
+   ],
+   "farm_records": [
+    {
+     "record_id": "01K7ERA5EED000000000000002.0.D_BEDMAP",
+     "system": "google_drive",
+     "title": "Bed map",
+     "at": "2026-10-15T12:00:00Z",
+     "link": "https://docs.google.com/document/d/D_BEDMAP/edit",
+     "text": "Bed map, Maple Row Farm\n\nSix beds run east to west, each 1.2 m wide and 15 m long, with 60 cm paths. Bed 1 is nearest the barn and bed 6 is nearest the fence and the river.\n\nBed 1: sweet peppers, King of the North. Drip zone 1.\nBed 2: kale, Winterbor. Drip zone 1.\nBed 3: tomatoes, Celebrity, staked on two wires. Drip zone 2. The drip line runs along the north edge. The west end sits low and is slow to dry after rain.\nBed 4: zucchini, Dunja. Drip zone 2. Garlic goes in here in October 2026 for 2027.\nBed 5: bush beans, Provider. Drip zone 3.\nBed 6: garlic, Music, planted October 2025. Buckwheat cover after the harvest. Drip zone 3.\n\nDrip zone valves are at the east header by the well. Zone 2 shares a header with the greenhouse line."
+    },
+    {
+     "record_id": "01K7ERA5EED000000000000002.0.D_SPRAY",
+     "system": "google_drive",
+     "title": "Spray log 2026",
+     "at": "2026-10-15T12:00:00Z",
+     "link": "https://docs.google.com/document/d/D_SPRAY/edit",
+     "text": "Spray log 2026, Maple Row Farm\n\nEvery application goes here the same day: date, bed and crop, product, rate, volume, target, applicator. Re-entry and harvest intervals are in SOP: copper sprays and on each product's label. Rates come from the label and the SOP only.\n\n2026-05-14. Bed 2 (kale). DiPel DF (Bacillus thuringiensis subsp. kurstaki). Rate 1 g/L. 20 L. Target: imported cabbageworm. Applicator: Dev Patel.\n\n2026-06-05. Bed 2 (kale). DiPel DF (Bacillus thuringiensis subsp. kurstaki). Rate 1 g/L. 20 L. Target: imported cabbageworm, second pass. Applicator: Dev Patel.\n\n2026-07-02. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight, preventive before a wet week; no symptoms yet. Applicator: Maria Lopez.\n\n2026-07-10. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight, rings on the lower leaves at the west end. Applicator: Dev Patel.\n\n2026-07-17. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight. Applicator: Dev Patel.\n\n2026-07-24. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight. Applicator: Sam Okafor.\n\n2026-08-06. Bed 4 (zucchini). Microthiol Disperss (sulfur). Rate 3 g/L. 30 L. Target: powdery mildew. Sprayed before 9am, 21 C. Applicator: Sam Okafor.\n\n2026-08-20. Bed 4 (zucchini). Microthiol Disperss (sulfur). Rate 3 g/L. 30 L. Target: powdery mildew. Applicator: Sam Okafor.\n\n2026-08-28. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight, rings back on the upper leaves at the east end. Applicator: Maria Lopez.\n\n2026-09-04. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight. Sixth copper application on bed 3 this season, the SOP limit. Applicator: Dev Patel.\n\nNo applications on beds 1, 5 or 6 in 2026."
+    }
+   ],
+   "task_ids": [
+    "01M5RB5NQ90EDB7G286QBXZS8C",
+    "01M5RB5NQ94VTGJ8990WGZ27XW",
+    "01M5RB5NQ95YSMP809EVT870RF",
+    "01M5RB5NQ98GTFYNJEYXF85S7P",
+    "01M5RB5NQ9D0487D8W795YSC06",
+    "01M5RB5NQ9JM521JND8VYJPWPG",
+    "01M5RB5NQ9QPA1QTBEKW7H6C0W",
+    "01M5RB5NQ9Y7CSS3VFMJQVPA5G"
+   ],
+   "llm_model": "claude-opus-5-5",
+   "prompt_version": "plan/2026-10-23.1",
+   "created_at": "2026-10-25T01:35:31Z"
+  }
+ },
+ "events": [
+  {
+   "type": "run_started",
+   "seq": 1,
+   "data": {
+    "v": 1,
+    "seq": 1,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "run_started",
+    "reason": "submit",
+    "rerun_stages": [
+     "plant_check",
+     "segmentation",
+     "species",
+     "disease",
+     "image_embedding",
+     "context",
+     "retrieve",
+     "vlm_findings",
+     "vlm_indicators",
+     "scoring",
+     "fusion",
+     "plan"
+    ]
+   }
+  },
+  {
+   "type": "status_changed",
+   "seq": 2,
+   "data": {
+    "v": 1,
+    "seq": 2,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "status_changed",
+    "from": "pending",
+    "to": "queued"
+   }
+  },
+  {
+   "type": "status_changed",
+   "seq": 3,
+   "data": {
+    "v": 1,
+    "seq": 3,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "status_changed",
+    "from": "queued",
+    "to": "analysing"
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 4,
+   "data": {
+    "v": 1,
+    "seq": 4,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "stage_started",
+    "stage": "segmentation"
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 5,
+   "data": {
+    "v": 1,
+    "seq": 5,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB42SFF95DTAVZ107VQNG8",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.8638516664505005,
+     "confidence_band": "high",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.1",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.40869140625,
+       0.234130859375,
+       0.2255859375,
+       0.59033203125
+      ]
+     },
+     "source": "segmentation",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:38Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 6,
+   "data": {
+    "v": 1,
+    "seq": 6,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB42SFETQ2CX25P9SRDH2R",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.622459352016449,
+     "confidence_band": "medium",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.2",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.240234375,
+       0.00537109375,
+       0.119140625,
+       0.434814453125
+      ]
+     },
+     "source": "segmentation",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:38Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 7,
+   "data": {
+    "v": 1,
+    "seq": 7,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB42SF50X2JZNRQKP6J75C",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.5360700488090515,
+     "confidence_band": "medium",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.3",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.0533447265625,
+       0.5494384765625,
+       0.185791015625,
+       0.447998046875
+      ]
+     },
+     "source": "segmentation",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:38Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 8,
+   "data": {
+    "v": 1,
+    "seq": 8,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB42SFY8N2E5K6D80HREKX",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.42155182361602783,
+     "confidence_band": "low",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.4",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.02081298828125,
+       0.051025390625,
+       0.2159423828125,
+       0.61181640625
+      ]
+     },
+     "source": "segmentation",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:38Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 9,
+   "data": {
+    "v": 1,
+    "seq": 9,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB42SFBR8GK9NMZEXE5MST",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.3629691898822784,
+     "confidence_band": "low",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.5",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.69366455078125,
+       0.253662109375,
+       0.1302490234375,
+       0.72607421875
+      ]
+     },
+     "source": "segmentation",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:38Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 10,
+   "data": {
+    "v": 1,
+    "seq": 10,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB42SFPHBG7A2D3KBE5P22",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.3620664775371551,
+     "confidence_band": "low",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.6",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.6470947265625,
+       0.00390625,
+       0.292724609375,
+       0.2181396484375
+      ]
+     },
+     "source": "segmentation",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:38Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 11,
+   "data": {
+    "v": 1,
+    "seq": 11,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB42SF82NZ76CNSYN84BJZ",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Plant",
+     "detail": {
+      "region_class": "plant"
+     },
+     "confidence": 0.8638516664505005,
+     "confidence_band": "high",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.7",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.0,
+       0.0,
+       0.9857696533203124,
+       1.0
+      ]
+     },
+     "source": "segmentation",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:38Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 12,
+   "data": {
+    "v": 1,
+    "seq": 12,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB42SFX5DWRFZ4WYYG6780",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.9263036847114564,
+     "confidence_band": "high",
+     "region": {
+      "region_id": "01M5RB41Y43RYRY6Q21GZSCS7P.1",
+      "image_id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+      "bbox": [
+       0.09228515625,
+       0.192138671875,
+       0.826171875,
+       0.74853515625
+      ]
+     },
+     "source": "segmentation",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:38Z"
+    }
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 13,
+   "data": {
+    "v": 1,
+    "seq": 13,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:38Z",
+    "type": "stage_completed",
+    "stage": "segmentation",
+    "duration_ms": 630
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 14,
+   "data": {
+    "v": 1,
+    "seq": 14,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_started",
+    "stage": "plant_check"
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 15,
+   "data": {
+    "v": 1,
+    "seq": 15,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43BG8Y7YPHEWPPJXZAME",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "plant_check",
+     "pipeline_stage": "plant_check",
+     "label": "Plant found",
+     "confidence": 0.8,
+     "confidence_band": "high",
+     "source": "segmentation",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 16,
+   "data": {
+    "v": 1,
+    "seq": 16,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_completed",
+    "stage": "plant_check",
+    "duration_ms": 0
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 17,
+   "data": {
+    "v": 1,
+    "seq": 17,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_started",
+    "stage": "disease"
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 18,
+   "data": {
+    "v": 1,
+    "seq": 18,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43CPZ924CBT2G5553VJ2",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "disease",
+     "pipeline_stage": "disease",
+     "label": "Early blight",
+     "ref": {
+      "table": "disease",
+      "id": "tomato_early_blight"
+     },
+     "confidence": 0.6553888916969299,
+     "confidence_band": "medium",
+     "region": {
+      "region_id": "01M5RB41Y43RYRY6Q21GZSCS7P.1",
+      "image_id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+      "bbox": [
+       0.0,
+       0.0,
+       1.0,
+       1.0
+      ]
+     },
+     "source": "classifier",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 19,
+   "data": {
+    "v": 1,
+    "seq": 19,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43CPNZ95S295VTD19GSD",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "disease",
+     "pipeline_stage": "disease",
+     "label": "Septoria leaf spot",
+     "ref": {
+      "table": "disease",
+      "id": "tomato_septoria_leaf_spot"
+     },
+     "confidence": 0.17377740144729614,
+     "confidence_band": "low",
+     "region": {
+      "region_id": "01M5RB41Y43RYRY6Q21GZSCS7P.1",
+      "image_id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+      "bbox": [
+       0.0,
+       0.0,
+       1.0,
+       1.0
+      ]
+     },
+     "source": "classifier",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 20,
+   "data": {
+    "v": 1,
+    "seq": 20,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43CPPPWGWPCY4ZAS74ZW",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "disease",
+     "pipeline_stage": "disease",
+     "label": "Late blight",
+     "ref": {
+      "table": "disease",
+      "id": "tomato_late_blight"
+     },
+     "confidence": 0.10559534281492232,
+     "confidence_band": "low",
+     "region": {
+      "region_id": "01M5RB41Y43RYRY6Q21GZSCS7P.1",
+      "image_id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+      "bbox": [
+       0.0,
+       0.0,
+       1.0,
+       1.0
+      ]
+     },
+     "source": "classifier",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 21,
+   "data": {
+    "v": 1,
+    "seq": 21,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_completed",
+    "stage": "disease",
+    "duration_ms": 17
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 22,
+   "data": {
+    "v": 1,
+    "seq": 22,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_started",
+    "stage": "image_embedding"
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 23,
+   "data": {
+    "v": 1,
+    "seq": 23,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_completed",
+    "stage": "image_embedding",
+    "duration_ms": 0
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 24,
+   "data": {
+    "v": 1,
+    "seq": 24,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43DHY051ZGF9E6TMMN7E",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.8638516664505005,
+     "confidence_band": "high",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.1",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.40869140625,
+       0.234130859375,
+       0.2255859375,
+       0.59033203125
+      ],
+      "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43FEW549Q3498MPKNHQ6?<signature removed>"
+     },
+     "source": "segmentation",
+     "model_version": "107151b7e97f9fff",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 25,
+   "data": {
+    "v": 1,
+    "seq": 25,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43DHQ1EC8PBFREWWR26A",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.622459352016449,
+     "confidence_band": "medium",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.2",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.240234375,
+       0.00537109375,
+       0.119140625,
+       0.434814453125
+      ],
+      "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43FKHH5F284G14W0X2V0?<signature removed>"
+     },
+     "source": "segmentation",
+     "model_version": "107151b7e97f9fff",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 26,
+   "data": {
+    "v": 1,
+    "seq": 26,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43DHGYYCC5YKTHP9C613",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.5360700488090515,
+     "confidence_band": "medium",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.3",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.0533447265625,
+       0.5494384765625,
+       0.185791015625,
+       0.447998046875
+      ],
+      "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43FRXEDGEG5AK4XKS84D?<signature removed>"
+     },
+     "source": "segmentation",
+     "model_version": "107151b7e97f9fff",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 27,
+   "data": {
+    "v": 1,
+    "seq": 27,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43DH9RTZBDBVSQFN2S47",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.42155182361602783,
+     "confidence_band": "low",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.4",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.02081298828125,
+       0.051025390625,
+       0.2159423828125,
+       0.61181640625
+      ],
+      "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43FWD9Q3DBXCWZK7Q1NM?<signature removed>"
+     },
+     "source": "segmentation",
+     "model_version": "107151b7e97f9fff",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 28,
+   "data": {
+    "v": 1,
+    "seq": 28,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43DHYEN63F76N39WT4QP",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.3629691898822784,
+     "confidence_band": "low",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.5",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.69366455078125,
+       0.253662109375,
+       0.1302490234375,
+       0.72607421875
+      ],
+      "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43G0Z9AR8RCKBE22XS3P?<signature removed>"
+     },
+     "source": "segmentation",
+     "model_version": "107151b7e97f9fff",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 29,
+   "data": {
+    "v": 1,
+    "seq": 29,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43DHAFZ1SX878R9T39BM",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.3620664775371551,
+     "confidence_band": "low",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.6",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.6470947265625,
+       0.00390625,
+       0.292724609375,
+       0.2181396484375
+      ],
+      "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43G3GVGSVP1B1PZNC554?<signature removed>"
+     },
+     "source": "segmentation",
+     "model_version": "107151b7e97f9fff",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 30,
+   "data": {
+    "v": 1,
+    "seq": 30,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43DHSDJ1V327JYDBPP0K",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Plant",
+     "detail": {
+      "region_class": "plant"
+     },
+     "confidence": 0.8638516664505005,
+     "confidence_band": "high",
+     "region": {
+      "region_id": "01M5RB41D69HHF5E394YZ89A2T.7",
+      "image_id": "01M5RB41D69HHF5E394YZ89A2T",
+      "bbox": [
+       0.0,
+       0.0,
+       0.9857696533203124,
+       1.0
+      ],
+      "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43G835DP3NNVMCDGAXM1?<signature removed>"
+     },
+     "source": "segmentation",
+     "model_version": "107151b7e97f9fff",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 31,
+   "data": {
+    "v": 1,
+    "seq": 31,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB43DHN8D67YQ8B6FW80RD",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "segmentation",
+     "pipeline_stage": "segmentation",
+     "label": "Leaf",
+     "detail": {
+      "region_class": "leaf"
+     },
+     "confidence": 0.9263036847114564,
+     "confidence_band": "high",
+     "region": {
+      "region_id": "01M5RB41Y43RYRY6Q21GZSCS7P.1",
+      "image_id": "01M5RB41Y43RYRY6Q21GZSCS7P",
+      "bbox": [
+       0.09228515625,
+       0.192138671875,
+       0.826171875,
+       0.74853515625
+      ],
+      "mask_url": "https://pdm-cp.tailb3ce07.ts.net/scans/01M5RB40VME38RF1SAWN0V9CBY/masks/01M5RB43GC8ZB2WZWBJRB5R42N?<signature removed>"
+     },
+     "source": "segmentation",
+     "model_version": "107151b7e97f9fff",
+     "created_at": "2026-10-25T01:34:39Z"
+    }
+   }
+  },
+  {
+   "type": "finding_retracted",
+   "seq": 32,
+   "data": {
+    "v": 1,
+    "seq": 32,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding_retracted",
+    "observation_id": "01M5RB42SF50X2JZNRQKP6J75C"
+   }
+  },
+  {
+   "type": "finding_retracted",
+   "seq": 33,
+   "data": {
+    "v": 1,
+    "seq": 33,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding_retracted",
+    "observation_id": "01M5RB42SF82NZ76CNSYN84BJZ"
+   }
+  },
+  {
+   "type": "finding_retracted",
+   "seq": 34,
+   "data": {
+    "v": 1,
+    "seq": 34,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding_retracted",
+    "observation_id": "01M5RB42SFBR8GK9NMZEXE5MST"
+   }
+  },
+  {
+   "type": "finding_retracted",
+   "seq": 35,
+   "data": {
+    "v": 1,
+    "seq": 35,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding_retracted",
+    "observation_id": "01M5RB42SFETQ2CX25P9SRDH2R"
+   }
+  },
+  {
+   "type": "finding_retracted",
+   "seq": 36,
+   "data": {
+    "v": 1,
+    "seq": 36,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding_retracted",
+    "observation_id": "01M5RB42SFF95DTAVZ107VQNG8"
+   }
+  },
+  {
+   "type": "finding_retracted",
+   "seq": 37,
+   "data": {
+    "v": 1,
+    "seq": 37,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding_retracted",
+    "observation_id": "01M5RB42SFPHBG7A2D3KBE5P22"
+   }
+  },
+  {
+   "type": "finding_retracted",
+   "seq": 38,
+   "data": {
+    "v": 1,
+    "seq": 38,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding_retracted",
+    "observation_id": "01M5RB42SFY8N2E5K6D80HREKX"
+   }
+  },
+  {
+   "type": "finding_retracted",
+   "seq": 39,
+   "data": {
+    "v": 1,
+    "seq": 39,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "finding_retracted",
+    "observation_id": "01M5RB42SFX5DWRFZ4WYYG6780"
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 40,
+   "data": {
+    "v": 1,
+    "seq": 40,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_started",
+    "stage": "context"
+   }
+  },
+  {
+   "type": "weather_loaded",
+   "seq": 41,
+   "data": {
+    "v": 1,
+    "seq": 41,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "weather_loaded",
+    "weather": {
+     "provider": "open_meteo",
+     "fetched_at": "2026-10-25T01:09:57Z",
+     "location_precision": "city",
+     "current": {
+      "temp_c": 7.4,
+      "rh_pct": 85.0,
+      "wind_kmh": 6.0,
+      "precip_mm_last_24h": 0.0
+     },
+     "past_7_days": {
+      "precip_mm": 0.0,
+      "mean_rh_pct": 69.5297619047619,
+      "hours_rh_over_90": 9,
+      "longest_humid_run_days": 0
+     },
+     "forecast": [
+      {
+       "date": "2026-10-24",
+       "t_min_c": 1.4,
+       "t_max_c": 16.2,
+       "precip_mm": 0.0,
+       "mean_rh_pct": 76.125,
+       "hours_rh_over_90": 1,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-10-25",
+       "t_min_c": 2.9,
+       "t_max_c": 18.1,
+       "precip_mm": 0.0,
+       "mean_rh_pct": 72.875,
+       "hours_rh_over_90": 2,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-10-26",
+       "t_min_c": 7.3,
+       "t_max_c": 13.1,
+       "precip_mm": 0.0,
+       "mean_rh_pct": 68.25,
+       "hours_rh_over_90": 2,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-10-27",
+       "t_min_c": 1.1,
+       "t_max_c": 9.7,
+       "precip_mm": 0.0,
+       "mean_rh_pct": 56.833333333333336,
+       "hours_rh_over_90": 0,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-10-28",
+       "t_min_c": 3.3,
+       "t_max_c": 13.9,
+       "precip_mm": 0.0,
+       "mean_rh_pct": 53.666666666666664,
+       "hours_rh_over_90": 0,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-10-29",
+       "t_min_c": 7.4,
+       "t_max_c": 19.5,
+       "precip_mm": 0.3,
+       "mean_rh_pct": 73.91666666666667,
+       "hours_rh_over_90": 7,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-10-30",
+       "t_min_c": 8.3,
+       "t_max_c": 16.3,
+       "precip_mm": 0.0,
+       "mean_rh_pct": 68.5,
+       "hours_rh_over_90": 4,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-10-31",
+       "t_min_c": 8.6,
+       "t_max_c": 17.6,
+       "precip_mm": 0.0,
+       "mean_rh_pct": 68.08333333333333,
+       "hours_rh_over_90": 0,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-11-01",
+       "t_min_c": 13.2,
+       "t_max_c": 16.0,
+       "precip_mm": 9.9,
+       "mean_rh_pct": 79.25,
+       "hours_rh_over_90": 0,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-11-02",
+       "t_min_c": 10.4,
+       "t_max_c": 16.1,
+       "precip_mm": 0.9,
+       "mean_rh_pct": 82.58333333333333,
+       "hours_rh_over_90": 0,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-11-03",
+       "t_min_c": 4.4,
+       "t_max_c": 13.4,
+       "precip_mm": 0.0,
+       "mean_rh_pct": 62.0,
+       "hours_rh_over_90": 4,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-11-04",
+       "t_min_c": 3.1,
+       "t_max_c": 12.7,
+       "precip_mm": 11.7,
+       "mean_rh_pct": 71.29166666666667,
+       "hours_rh_over_90": 7,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-11-05",
+       "t_min_c": 6.1,
+       "t_max_c": 11.2,
+       "precip_mm": 3.9,
+       "mean_rh_pct": 83.5,
+       "hours_rh_over_90": 5,
+       "frost_risk": false
+      },
+      {
+       "date": "2026-11-06",
+       "t_min_c": 4.2,
+       "t_max_c": 9.0,
+       "precip_mm": 0.0,
+       "mean_rh_pct": 67.29166666666667,
+       "hours_rh_over_90": 0,
+       "frost_risk": false
+      }
+     ],
+     "soil": {
+      "moisture_0_9cm_m3m3": 0.17633333333333334,
+      "moisture_9_27cm_m3m3": 0.201,
+      "temp_6cm_c": 9.8,
+      "et0_mm_last_24h": 1.8800000000000001
+     }
+    }
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 42,
+   "data": {
+    "v": 1,
+    "seq": 42,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_completed",
+    "stage": "context",
+    "duration_ms": 1
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 43,
+   "data": {
+    "v": 1,
+    "seq": 43,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_started",
+    "stage": "retrieve"
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 44,
+   "data": {
+    "v": 1,
+    "seq": 44,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "stage_completed",
+    "stage": "retrieve",
+    "duration_ms": 1
+   }
+  },
+  {
+   "type": "candidates_selected",
+   "seq": 45,
+   "data": {
+    "v": 1,
+    "seq": 45,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:39Z",
+    "type": "candidates_selected",
+    "candidates": [
+     {
+      "problem_id": "tomato_early_blight",
+      "name": "Early blight",
+      "kind": "fungal",
+      "source": "classifier"
+     },
+     {
+      "problem_id": "tomato_septoria_leaf_spot",
+      "name": "Septoria leaf spot",
+      "kind": "fungal",
+      "source": "classifier"
+     },
+     {
+      "problem_id": "tomato_late_blight",
+      "name": "Late blight",
+      "kind": "fungal",
+      "source": "classifier"
+     },
+     {
+      "problem_id": "tomato_bacterial_speck",
+      "name": "Bacterial speck",
+      "kind": "bacterial",
+      "source": "species"
+     },
+     {
+      "problem_id": "tomato_bacterial_spot",
+      "name": "Bacterial spot",
+      "kind": "bacterial",
+      "source": "species"
+     },
+     {
+      "problem_id": "tomato_blossom_end_rot",
+      "name": "Blossom-end rot",
+      "kind": "abiotic",
+      "source": "species"
+     },
+     {
+      "problem_id": "tomato_hornworms",
+      "name": "Hornworms",
+      "kind": "pest",
+      "source": "species"
+     },
+     {
+      "problem_id": "tomato_spider_mites",
+      "name": "Spider mites",
+      "kind": "pest",
+      "source": "species"
+     },
+     {
+      "problem_id": "tomato_leaf_mold",
+      "name": "Leaf mold",
+      "kind": "fungal",
+      "source": "species"
+     }
+    ]
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 46,
+   "data": {
+    "v": 1,
+    "seq": 46,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:40Z",
+    "type": "stage_started",
+    "stage": "vlm_findings"
+   }
+  },
+  {
+   "type": "finding",
+   "seq": 47,
+   "data": {
+    "v": 1,
+    "seq": 47,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:45Z",
+    "type": "finding",
+    "observation": {
+     "id": "01M5RB48YCBFP8YRV1ZTY9GM73",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "stage": "species",
+     "pipeline_stage": "vlm_findings",
+     "label": "Tomato",
+     "ref": {
+      "table": "species",
+      "id": "tomato"
+     },
+     "confidence": 0.85,
+     "confidence_band": "high",
+     "source": "vlm",
+     "model_version": "partial",
+     "created_at": "2026-10-25T01:34:45Z"
+    }
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 48,
+   "data": {
+    "v": 1,
+    "seq": 48,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:45Z",
+    "type": "stage_completed",
+    "stage": "vlm_findings",
+    "duration_ms": 4413
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 49,
+   "data": {
+    "v": 1,
+    "seq": 49,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:45Z",
+    "type": "stage_started",
+    "stage": "vlm_indicators"
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 50,
+   "data": {
+    "v": 1,
+    "seq": 50,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:54Z",
+    "type": "stage_completed",
+    "stage": "vlm_indicators",
+    "duration_ms": 8933
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 51,
+   "data": {
+    "v": 1,
+    "seq": 51,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:54Z",
+    "type": "stage_started",
+    "stage": "scoring"
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 52,
+   "data": {
+    "v": 1,
+    "seq": 52,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:54Z",
+    "type": "stage_completed",
+    "stage": "scoring",
+    "duration_ms": 3
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 53,
+   "data": {
+    "v": 1,
+    "seq": 53,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:54Z",
+    "type": "stage_started",
+    "stage": "fusion"
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 54,
+   "data": {
+    "v": 1,
+    "seq": 54,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:54Z",
+    "type": "stage_completed",
+    "stage": "fusion",
+    "duration_ms": 4
+   }
+  },
+  {
+   "type": "diagnosis",
+   "seq": 55,
+   "data": {
+    "v": 1,
+    "seq": 55,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:54Z",
+    "type": "diagnosis",
+    "diagnosis": {
+     "id": "01M5RB4HXGNMYY2KZ06EFBVBC4",
+     "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+     "run": 1,
+     "status": "confirmed",
+     "low_evidence": false,
+     "primary": {
+      "problem_id": "tomato_septoria_leaf_spot",
+      "name": "Septoria leaf spot",
+      "kind": "fungal",
+      "score": 8,
+      "classifier_weight": 0,
+      "matched": [
+       {
+        "indicator_id": "tomato_septoria_leaf_spot.many_round_spots",
+        "text": "Many small, round spots on each affected leaf.",
+        "weight": 2,
+        "answer": "yes",
+        "reason": "Leaf has several distinct round spots.",
+        "source": "vlm"
+       },
+       {
+        "indicator_id": "tomato_septoria_leaf_spot.tan_centre_dark_border",
+        "text": "The spots have a light tan, beige or whitish centre with a dark brown border.",
+        "weight": 3,
+        "answer": "yes",
+        "reason": "Spots have pale centers and dark borders.",
+        "source": "vlm"
+       },
+       {
+        "indicator_id": "tomato_septoria_leaf_spot.black_specks_in_centre",
+        "text": "Tiny black specks (spore bodies) sit in the pale centre of older spots. A hand lens shows them clearly.",
+        "weight": 3,
+        "answer": "yes",
+        "reason": "Tiny dark dots are visible in spot centers.",
+        "source": "vlm"
+       }
+      ],
+      "contradicted": [],
+      "unsure": [],
+      "weather_fit": "unfavourable"
+     },
+     "candidates": [
+      {
+       "problem_id": "tomato_septoria_leaf_spot",
+       "name": "Septoria leaf spot",
+       "kind": "fungal",
+       "score": 8,
+       "classifier_weight": 0,
+       "matched": [
+        {
+         "indicator_id": "tomato_septoria_leaf_spot.many_round_spots",
+         "text": "Many small, round spots on each affected leaf.",
+         "weight": 2,
+         "answer": "yes",
+         "reason": "Leaf has several distinct round spots.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_septoria_leaf_spot.tan_centre_dark_border",
+         "text": "The spots have a light tan, beige or whitish centre with a dark brown border.",
+         "weight": 3,
+         "answer": "yes",
+         "reason": "Spots have pale centers and dark borders.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_septoria_leaf_spot.black_specks_in_centre",
+         "text": "Tiny black specks (spore bodies) sit in the pale centre of older spots. A hand lens shows them clearly.",
+         "weight": 3,
+         "answer": "yes",
+         "reason": "Tiny dark dots are visible in spot centers.",
+         "source": "vlm"
+        }
+       ],
+       "contradicted": [],
+       "unsure": [],
+       "weather_fit": "unfavourable"
+      },
+      {
+       "problem_id": "tomato_early_blight",
+       "name": "Early blight",
+       "kind": "fungal",
+       "score": 3,
+       "classifier_weight": 2,
+       "matched": [
+        {
+         "indicator_id": "tomato_early_blight.concentric_rings_bullseye",
+         "text": "As spots grow, dark rings form inside them in a bull's-eye or target pattern.",
+         "weight": 3,
+         "answer": "yes",
+         "reason": "Spots show dark centers with lighter rings.",
+         "source": "vlm"
+        }
+       ],
+       "contradicted": [
+        {
+         "indicator_id": "tomato_early_blight.spots_become_angular",
+         "text": "Spots get bigger and become angular over time.",
+         "weight": 2,
+         "answer": "no",
+         "reason": "Spots are round to oval, not angular.",
+         "source": "vlm"
+        }
+       ],
+       "unsure": [
+        {
+         "indicator_id": "tomato_early_blight.large_fruit_lesion_rings",
+         "text": "Fruit spots grow large, often covering nearly the whole fruit, and show rings like the leaf spots.",
+         "weight": 2,
+         "answer": "unsure",
+         "reason": "No fruit is visible in the photos.",
+         "source": "vlm"
+        }
+       ],
+       "weather_fit": "neutral"
+      },
+      {
+       "problem_id": "tomato_bacterial_spot",
+       "name": "Bacterial spot",
+       "kind": "bacterial",
+       "score": 0,
+       "classifier_weight": 0,
+       "matched": [
+        {
+         "indicator_id": "tomato_bacterial_spot.leaf_spot_size",
+         "text": "The largest leaf spots grow to about 3 to 5 mm across, bigger than the tiny specks of bacterial speck.",
+         "weight": 2,
+         "answer": "yes",
+         "reason": "Spots are larger than a pinhead but small.",
+         "source": "vlm"
+        }
+       ],
+       "contradicted": [
+        {
+         "indicator_id": "tomato_bacterial_spot.spot_centres_tear_holes",
+         "text": "Spot centres turn brown, dry out and tear, leaving holes. The leaves look tattered.",
+         "weight": 2,
+         "answer": "no",
+         "reason": "Spots are intact without holes or tears.",
+         "source": "vlm"
+        }
+       ],
+       "unsure": [
+        {
+         "indicator_id": "tomato_bacterial_spot.raised_scabby_fruit_spots",
+         "text": "Raised, rough, scabby spots on the fruit, bigger than pinpoint specks. They start as small dark brown to black raised spots on green fruit and can grow and turn brown and greasy-looking.",
+         "weight": 3,
+         "answer": "unsure",
+         "reason": "No fruit is visible in the photos.",
+         "source": "vlm"
+        }
+       ],
+       "weather_fit": "neutral"
+      },
+      {
+       "problem_id": "tomato_blossom_end_rot",
+       "name": "Blossom-end rot",
+       "kind": "abiotic",
+       "score": 0,
+       "classifier_weight": 0,
+       "matched": [],
+       "contradicted": [],
+       "unsure": [
+        {
+         "indicator_id": "tomato_blossom_end_rot.water_soaked_blossom_end_spot",
+         "text": "Spots that look wet or soaked with water, at the flower end of the fruit, opposite the stem.",
+         "weight": 2,
+         "answer": "unsure",
+         "reason": "No fruit is visible in the photos.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_blossom_end_rot.blossom_end_spot_black",
+         "text": "The spots on the blossom end grow larger and turn black.",
+         "weight": 2,
+         "answer": "unsure",
+         "reason": "No fruit is visible in the photos.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_blossom_end_rot.secondary_rot",
+         "text": "Rot from other decay organisms usually sets in on the damaged blossom end.",
+         "weight": 2,
+         "answer": "unsure",
+         "reason": "No fruit is visible in the photos.",
+         "source": "vlm"
+        }
+       ],
+       "weather_fit": "neutral"
+      },
+      {
+       "problem_id": "tomato_bacterial_speck",
+       "name": "Bacterial speck",
+       "kind": "bacterial",
+       "score": -3,
+       "classifier_weight": 0,
+       "matched": [],
+       "contradicted": [
+        {
+         "indicator_id": "tomato_bacterial_speck.tiny_leaf_specks_size",
+         "text": "Leaf specks are tiny, usually no more than 2 mm across, smaller than bacterial spot's leaf spots.",
+         "weight": 2,
+         "answer": "no",
+         "reason": "Spots are clearly larger than a pinhead.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_bacterial_speck.leaf_distortion",
+         "text": "Leaves with specks are sometimes distorted, because the infection stops the leaf from growing evenly.",
+         "weight": 1,
+         "answer": "no",
+         "reason": "Leaves appear flat and undistorted.",
+         "source": "vlm"
+        }
+       ],
+       "unsure": [
+        {
+         "indicator_id": "tomato_bacterial_speck.black_fruit_specks",
+         "text": "Tiny pinpoint black specks on the fruit, only slightly raised and not scabby, often with a narrow green to yellow ring. They sit on the surface and can be scraped off with a fingernail. Only young green fruit gets infected, but the black specks stay after the fruit ripens.",
+         "weight": 3,
+         "answer": "unsure",
+         "reason": "No fruit is visible in the photos.",
+         "source": "vlm"
+        }
+       ],
+       "weather_fit": "neutral"
+      },
+      {
+       "problem_id": "tomato_late_blight",
+       "name": "Late blight",
+       "kind": "fungal",
+       "score": -4,
+       "classifier_weight": 0,
+       "matched": [],
+       "contradicted": [
+        {
+         "indicator_id": "tomato_late_blight.dark_water_soaked_leaf_spots",
+         "text": "Young leaf spots are small, dark and look water-soaked.",
+         "weight": 2,
+         "answer": "no",
+         "reason": "No small, wet-looking spots are visible.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_late_blight.spots_enlarge_quickly",
+         "text": "The leaf spots quickly grow into large dark patches.",
+         "weight": 2,
+         "answer": "no",
+         "reason": "Spots are well-defined and not merging.",
+         "source": "vlm"
+        }
+       ],
+       "unsure": [
+        {
+         "indicator_id": "tomato_late_blight.white_mould_underside_margins",
+         "text": "White mould grows at the edges of the damaged areas on the underside of the leaves.",
+         "weight": 2,
+         "answer": "unsure",
+         "reason": "Leaf underside is not visible.",
+         "source": "vlm"
+        }
+       ],
+       "weather_fit": "neutral"
+      },
+      {
+       "problem_id": "tomato_leaf_mold",
+       "name": "Leaf mold",
+       "kind": "fungal",
+       "score": -5,
+       "classifier_weight": 0,
+       "matched": [],
+       "contradicted": [
+        {
+         "indicator_id": "tomato_leaf_mold.pale_spots_upper_surface",
+         "text": "Light green to yellowish spots on the top of the leaf.",
+         "weight": 2,
+         "answer": "no",
+         "reason": "Spots are brownish-gray, not pale green.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_leaf_mold.spots_turn_yellow",
+         "text": "The spots grow larger and turn a distinctive yellow.",
+         "weight": 3,
+         "answer": "no",
+         "reason": "Spots are brown, not bright yellow.",
+         "source": "vlm"
+        }
+       ],
+       "unsure": [
+        {
+         "indicator_id": "tomato_leaf_mold.gray_velvety_underside",
+         "text": "In humid weather, the spots on the leaf underside are covered with a gray, velvety growth of fungus spores.",
+         "weight": 2,
+         "answer": "unsure",
+         "reason": "Leaf underside is not visible.",
+         "source": "vlm"
+        }
+       ],
+       "weather_fit": "neutral"
+      },
+      {
+       "problem_id": "tomato_spider_mites",
+       "name": "Spider mites",
+       "kind": "pest",
+       "score": -6,
+       "classifier_weight": 0,
+       "matched": [],
+       "contradicted": [
+        {
+         "indicator_id": "tomato_spider_mites.fine_stippling",
+         "text": "Fine flecking or stippling: very tiny pale or yellowish-green speckles where the mites have fed.",
+         "weight": 3,
+         "answer": "no",
+         "reason": "Leaf surface is not covered in fine dots.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_spider_mites.fine_webbing",
+         "text": "Very fine strands of silk webbing on the leaves, mostly underneath, or on the stems.",
+         "weight": 3,
+         "answer": "no",
+         "reason": "No fine webbing is visible on leaves or stems.",
+         "source": "vlm"
+        }
+       ],
+       "unsure": [
+        {
+         "indicator_id": "tomato_spider_mites.mites_on_underside",
+         "text": "Tiny oval mites, about the size of a full stop, on the leaf underside. Most are green, greenish-yellow or almost see-through, often with two dark spots; some are brown or orange-red.",
+         "weight": 3,
+         "answer": "unsure",
+         "reason": "Leaf underside is not visible.",
+         "source": "vlm"
+        }
+       ],
+       "weather_fit": "neutral"
+      },
+      {
+       "problem_id": "tomato_hornworms",
+       "name": "Hornworms",
+       "kind": "pest",
+       "score": -7,
+       "classifier_weight": 0,
+       "matched": [],
+       "contradicted": [
+        {
+         "indicator_id": "tomato_hornworms.leaves_stripped",
+         "text": "Leaves are eaten away, and parts of the plant are quickly stripped bare.",
+         "weight": 2,
+         "answer": "no",
+         "reason": "Plant has many leaves, not stripped bare.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_hornworms.large_green_caterpillar",
+         "text": "A very large, fat, bright green caterpillar, about as thick as a thumb, is on the plant. It is the same colour as the leaves, so it is hard to see.",
+         "weight": 2,
+         "answer": "no",
+         "reason": "No caterpillars are visible on the plant.",
+         "source": "vlm"
+        },
+        {
+         "indicator_id": "tomato_hornworms.horn_on_rear_end",
+         "text": "The caterpillar has a horn sticking out from its back end. The horn may be red and curved, or black and straight, or green.",
+         "weight": 3,
+         "answer": "no",
+         "reason": "No caterpillar is present to check for a horn.",
+         "source": "vlm"
+        }
+       ],
+       "unsure": [],
+       "weather_fit": "neutral"
+      }
+     ],
+     "organisms": [],
+     "soil": [],
+     "risks": [],
+     "evidence_basis": {
+      "user_input": [],
+      "photo": [],
+      "modelled": [
+       "7 \u00b0C, 85% humidity now; 9 hours over 90% in the past week",
+       "Soil moisture 0.18 m\u00b3/m\u00b3 in the top 9 cm",
+       "SoilGrids pH 6.8 near the surface"
+      ]
+     },
+     "citations": [
+      {
+       "source_id": "clemson_hgic_tomato_diseases",
+       "title": "Tomato Diseases & Disorders (HGIC 2217)",
+       "publisher": "Clemson Cooperative Extension, Home & Garden Information Center",
+       "url": "https://hgic.clemson.edu/factsheet/tomato-diseases-disorders/"
+      },
+      {
+       "source_id": "isu_septoria_leaf_spot",
+       "title": "Septoria Leaf Spot",
+       "publisher": "Iowa State University Extension and Outreach, Yard and Garden",
+       "url": "https://yardandgarden.extension.iastate.edu/encyclopedia/septoria-leaf-spot"
+      },
+      {
+       "source_id": "ontario_tomato_bacterial_diseases",
+       "title": "Bacterial diseases of tomato: bacterial spot, bacterial speck and bacterial canker",
+       "publisher": "Ontario Ministry of Agriculture, Food and Agribusiness",
+       "url": "https://www.ontario.ca/page/bacterial-diseases-tomato-bacterial-spot-bacterial-speck-and-bacterial-canker"
+      }
+     ],
+     "model_versions": {
+      "classifier": "107151b7e97f9fff",
+      "segmentation": "107151b7e97f9fff",
+      "vlm_model": "cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4bbeb8d1910ee7be9196bafaf1bc052156"
+     },
+     "created_at": "2026-10-25T01:34:54Z"
+    }
+   }
+  },
+  {
+   "type": "status_changed",
+   "seq": 56,
+   "data": {
+    "v": 1,
+    "seq": 56,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:54Z",
+    "type": "status_changed",
+    "from": "analysing",
+    "to": "diagnosed"
+   }
+  },
+  {
+   "type": "stage_started",
+   "seq": 57,
+   "data": {
+    "v": 1,
+    "seq": 57,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:34:54Z",
+    "type": "stage_started",
+    "stage": "plan"
+   }
+  },
+  {
+   "type": "stage_completed",
+   "seq": 58,
+   "data": {
+    "v": 1,
+    "seq": 58,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:35:31Z",
+    "type": "stage_completed",
+    "stage": "plan",
+    "duration_ms": 36654
+   }
+  },
+  {
+   "type": "status_changed",
+   "seq": 59,
+   "data": {
+    "v": 1,
+    "seq": 59,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:35:31Z",
+    "type": "status_changed",
+    "from": "diagnosed",
+    "to": "planned"
+   }
+  },
+  {
+   "type": "plan_ready",
+   "seq": 60,
+   "data": {
+    "v": 1,
+    "seq": 60,
+    "run": 1,
+    "scan_id": "01M5RB40VME38RF1SAWN0V9CBY",
+    "ts": "2026-10-25T01:35:31Z",
+    "type": "plan_ready",
+    "plan_id": "01M5RB5NQ9H8SX0GJE3PV1GTQN",
+    "provisional": false
+   }
+  }
+ ],
+ "chat": {
+  "conversation": "01M5RB5NYY35QZ6V7ETJEN3F73",
+  "question": "What has the crew reported about bed 3 in #field-reports?",
+  "text": "The crew has been posting about bed 3 in #field-reports all season. One report clashes with this scan, so here it is first.\n\nOn 1 October, Dev wrote: \"Tomato plants out of bed 3. Bagged the diseased ones for the landfill, not the compost.\" But this scan of a tomato in bed 3 is from 24 October. So either some plants were left in, there are volunteers, or the scan was linked to the wrong bed. Can you check which it is? If the bed really is empty, most of the current plan doesn't apply anymore.\n\nHere is the rest of the history, in order:\n- **8 May (Sam):** compost spread on beds 3, 4 and 5.\n- **26 June (Dev):** tomatoes tied to the second wire. Lower leaves pruned for airflow.\n- **9 July (Dev):** brown spots with target rings and yellow around them on the lower leaves. About 8 plants at the west end were affected. Dev thought it looked like early blight. Maria said to bag the worst leaves, not compost them, and spray copper the next day. Dev filled two bags.\n- **14 July (Sam):** lower leaves looked stable after the copper, with no new spots.\n- **17 and 24 July (Dev, Sam):** more copper sprays, both logged.\n- **28 July (June):** first ripe tomatoes. By 8 August, June reported a good weekly harvest in #crew.\n- **27 August (Sam):** the rings came back after heavy rain, this time on upper leaves and a few stems at the east end. Maria called for copper the next morning and for bagging the infected leaves.\n- **18 September (Dev):** the blight hadn't spread past the east end, and the fruit was still clean.\n\nThe Spray log 2026 matches these reports. It lists six copper hydroxide sprays on bed 3 against early blight between 2 July and 4 September. The 4 September entry is marked as the farm's season limit.\n\nThe crew always called it early blight, with target rings. This scan points to Septoria leaf spot instead: small round spots with pale centres and tiny black specks. The early blight score in this scan was much lower. If you're not sure which it is, a sharp close-up of a spotted leaf would help, or you can ask your local extension office. Either way, the clean-up steps are much the same for both diseases.",
+  "route": "care_question",
+  "tools": [
+   "search_farm_records",
+   "search_farm_records"
+  ],
+  "usage": {
+   "tokens_in": 57838,
+   "tokens_out": 1035
+  },
+  "farm_citations": [
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1782498300.004500",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "Dev",
+    "at": "2026-06-26T18:25:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1782498300004500",
+    "text": "Tomatoes in bed 3 tied to the second wire. Lower leaves pruned to 30 cm for airflow."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1789746900.010800",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "Dev",
+    "at": "2026-09-18T15:55:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1789746900010800",
+    "text": "Bed 3 blight hasn't spread past the east end. Fruit is still clean."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1783606200.005400",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "Dev",
+    "at": "2026-07-09T14:10:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1783606200005400",
+    "text": "Bed 3: brown spots with target rings on the lower tomato leaves, yellow around them. About 8 plants at the west end. Looks like early blight.\n\nMaria: Pull the worst leaves and bag them, don't compost them. Copper tomorrow.\n\nDev: Done, two bags."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_CREW/1786220100.007800",
+    "system": "slack",
+    "title": "#crew",
+    "author": "June",
+    "at": "2026-08-08T20:15:00Z",
+    "link": "http://era-slack:8080/archives/C_CREW/p1786220100007800",
+    "text": "Tomato harvest from bed 3: 38 kg this week."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1784291100.006200",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "Dev",
+    "at": "2026-07-17T12:25:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1784291100006200",
+    "text": "Second copper on bed 3 since the spots, done and logged."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1785262800.006900",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "June",
+    "at": "2026-07-28T18:20:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1785262800006900",
+    "text": "First ripe tomatoes from bed 3! 4 kg.\n\nDev: Finally!"
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1790873400.011500",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "Dev",
+    "at": "2026-10-01T16:50:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1790873400011500",
+    "text": "Tomato plants out of bed 3. Bagged the diseased ones for the landfill, not the compost."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1784896800.006700",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "Sam",
+    "at": "2026-07-24T12:40:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1784896800006700",
+    "text": "Copper on bed 3 again, same as last week. Logged."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1784043000.005900",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "Sam",
+    "at": "2026-07-14T15:30:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1784043000005900",
+    "text": "Bed 3 lower leaves look stable after the copper. No new spots that I can see."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1778261400.001400",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "Sam",
+    "at": "2026-05-08T17:30:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1778261400001400",
+    "text": "Compost spread on beds 3, 4 and 5. Bed 4 is still a bit wet at the bottom."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000002.0.D_BEDMAP",
+    "system": "google_drive",
+    "title": "Bed map",
+    "at": "2026-10-15T12:00:00Z",
+    "link": "https://docs.google.com/document/d/D_BEDMAP/edit",
+    "text": "Bed map, Maple Row Farm\n\nSix beds run east to west, each 1.2 m wide and 15 m long, with 60 cm paths. Bed 1 is nearest the barn and bed 6 is nearest the fence and the river.\n\nBed 1: sweet peppers, King of the North. Drip zone 1.\nBed 2: kale, Winterbor. Drip zone 1.\nBed 3: tomatoes, Celebrity, staked on two wires. Drip zone 2. The drip line runs along the north edge. The west end sits low and is slow to dry after rain.\nBed 4: zucchini, Dunja. Drip zone 2. Garlic goes in here in October 2026 for 2027.\nBed 5: bush beans, Provider. Drip zone 3.\nBed 6: garlic, Music, planted October 2025. Buckwheat cover after the harvest. Drip zone 3.\n\nDrip zone valves are at the east header by the well. Zone 2 shares a header with the greenhouse line."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000001.0.C_FIELD/1787838900.009300",
+    "system": "slack",
+    "title": "#field-reports",
+    "author": "Sam",
+    "at": "2026-08-27T13:55:00Z",
+    "link": "http://era-slack:8080/archives/C_FIELD/p1787838900009300",
+    "text": "Rings are back on bed 3, this time on the upper leaves and a few stems at the east end. After all that rain.\n\nMaria: Copper tomorrow morning. Bag the infected leaves.\n\nDev: On it."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000002.0.D_SPRAY",
+    "system": "google_drive",
+    "title": "Spray log 2026",
+    "at": "2026-10-15T12:00:00Z",
+    "link": "https://docs.google.com/document/d/D_SPRAY/edit",
+    "text": "Spray log 2026, Maple Row Farm\n\nEvery application goes here the same day: date, bed and crop, product, rate, volume, target, applicator. Re-entry and harvest intervals are in SOP: copper sprays and on each product's label. Rates come from the label and the SOP only.\n\n2026-05-14. Bed 2 (kale). DiPel DF (Bacillus thuringiensis subsp. kurstaki). Rate 1 g/L. 20 L. Target: imported cabbageworm. Applicator: Dev Patel.\n\n2026-06-05. Bed 2 (kale). DiPel DF (Bacillus thuringiensis subsp. kurstaki). Rate 1 g/L. 20 L. Target: imported cabbageworm, second pass. Applicator: Dev Patel.\n\n2026-07-02. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight, preventive before a wet week; no symptoms yet. Applicator: Maria Lopez.\n\n2026-07-10. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight, rings on the lower leaves at the west end. Applicator: Dev Patel.\n\n2026-07-17. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight. Applicator: Dev Patel.\n\n2026-07-24. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight. Applicator: Sam Okafor.\n\n2026-08-06. Bed 4 (zucchini). Microthiol Disperss (sulfur). Rate 3 g/L. 30 L. Target: powdery mildew. Sprayed before 9am, 21 C. Applicator: Sam Okafor.\n\n2026-08-20. Bed 4 (zucchini). Microthiol Disperss (sulfur). Rate 3 g/L. 30 L. Target: powdery mildew. Applicator: Sam Okafor.\n\n2026-08-28. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight, rings back on the upper leaves at the east end. Applicator: Maria Lopez.\n\n2026-09-04. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight. Sixth copper application on bed 3 this season, the SOP limit. Applicator: Dev Patel.\n\nNo applications on beds 1, 5 or 6 in 2026."
+   },
+   {
+    "record_id": "01K7ERA5EED000000000000002.0.S_PLAN",
+    "system": "google_drive",
+    "title": "Planting plan 2026",
+    "at": "2026-10-15T12:00:00Z",
+    "link": "https://docs.google.com/spreadsheets/d/S_PLAN/edit",
+    "text": "bed,crop,variety,sown,transplanted,spacing_cm,first_harvest_expected\n1,sweet pepper,King of the North,2026-03-20,2026-05-29,45,2026-08-01\n2,kale,Winterbor,2026-03-25,2026-05-01,45,2026-06-01\n3,tomato,Celebrity,2026-03-28,2026-05-22,60,2026-07-25\n4,zucchini,Dunja,2026-05-25,,90,2026-07-01\n5,bush bean,Provider,2026-05-27,,10,2026-07-18\n6,garlic,Music,2025-10-20,,15,2026-07-15"
+   }
+  ]
+ },
+ "usage": {
+  "tokens_in": 57838,
+  "tokens_out": 1035
+ }
+}
