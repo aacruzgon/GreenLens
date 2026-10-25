@@ -1,0 +1,859 @@
+{
+ "name": "e2e-2026-10-25-check",
+ "made_at": "2026-10-25T17:42:44+00:00",
+ "git_sha": "0dc753e8",
+ "command": "python3 ml/training/eval/score.py ml/training/runs/e2e/j5-2026-10-25-check-confirm.jsonl ml/training/runs/e2e/j5-2026-10-25-check-confirm2.jsonl --name e2e-2026-10-25-check",
+ "split": "dev",
+ "cases": 5,
+ "base_url": "https://pdm-cp.tailb3ce07.ts.net",
+ "garden_id": "01M5T27KYV5WV6G7AZFSVMTMDP",
+ "run_names": [
+  "j5-2026-10-25-check"
+ ],
+ "policy": {
+  "answers": "labels",
+  "closeup_copy": true,
+  "species": "confirm"
+ },
+ "inputs": {
+  "runs": [
+   {
+    "file": "ml/training/runs/e2e/j5-2026-10-25-check-confirm.jsonl",
+    "sha256": "dce4f9eceab881217a99fddf88c438e13563be1c3660fe64e896be458fb5ff63"
+   },
+   {
+    "file": "ml/training/runs/e2e/j5-2026-10-25-check-confirm2.jsonl",
+    "sha256": "ce0e180ec6c7cb9a8a1eee1e055b01c63f7d0d0848b32c8ce5b740b70343ba8a"
+   }
+  ],
+  "manifest": {
+   "file": "ml/training/eval/manifest.jsonl",
+   "sha256": "e562c89716fc452f8200d2507ccdaba1c574ef737b3f4d1968da60d0f4d0c8af"
+  }
+ },
+ "knowledge": {
+  "label_only": [
+   "apple",
+   "basil",
+   "bean",
+   "blueberry",
+   "cherry",
+   "corn",
+   "cucumber",
+   "grape",
+   "hosta",
+   "lettuce",
+   "onion",
+   "peach",
+   "pepper",
+   "potato",
+   "raspberry",
+   "rose",
+   "soybean",
+   "squash",
+   "strawberry"
+  ],
+  "problems": [
+   "apple_cedar_apple_rust",
+   "apple_scab",
+   "corn_common_rust",
+   "corn_gray_leaf_spot",
+   "corn_northern_leaf_blight",
+   "grape_black_rot",
+   "pepper_bacterial_leaf_spot",
+   "tomato_bacterial_speck",
+   "tomato_bacterial_spot",
+   "tomato_blossom_end_rot",
+   "tomato_early_blight",
+   "tomato_hornworms",
+   "tomato_late_blight",
+   "tomato_leaf_mold",
+   "tomato_septoria_leaf_spot",
+   "tomato_spider_mites",
+   "tomato_whiteflies",
+   "tomato_yellow_leaf_curl_virus"
+  ]
+ },
+ "rows": [
+  {
+   "case_id": "apple-inat-408956748",
+   "truth_outcome": "diagnosed",
+   "truth_species": "apple",
+   "truth_problems": [
+    "apple_scab"
+   ],
+   "known_problems": [
+    "apple_scab"
+   ],
+   "look_alike": false,
+   "label_confidence": "probable",
+   "species_profile": "label_only",
+   "outcome": "failed",
+   "error": null,
+   "failure": "no_plant_found",
+   "status": null,
+   "low_evidence": null,
+   "primary": null,
+   "primary_affects": null,
+   "ranked": [],
+   "scores": [],
+   "top_score": null,
+   "top_matched": 0,
+   "lead": null,
+   "open_question": false,
+   "questions": [],
+   "working_species": null,
+   "species_rerun": false,
+   "bioclip_top3": [],
+   "photos_sent": 3,
+   "photos_refused": [],
+   "vlm_path": "none",
+   "workers_at_submit": [
+    "cp-fallback-1:fallback",
+    "rig-3070-perception-1:perception",
+    "rig-5070ti-vlm-1:vlm"
+   ],
+   "model_versions": null,
+   "machine_s": null,
+   "diagnosed_s": null,
+   "first_diagnosis_s": null,
+   "plan_ready_s": null,
+   "awaiting_answer_s": 0.0,
+   "harness_s": 8.6,
+   "scan_id": "01M5T2BN45G94149G2651SKGXW",
+   "policy": {
+    "answers": "labels",
+    "closeup_copy": true,
+    "species": "confirm"
+   }
+  },
+  {
+   "case_id": "corn-maize-bd-2026-common-rust-img-250",
+   "truth_outcome": "diagnosed",
+   "truth_species": "corn",
+   "truth_problems": [
+    "corn_common_rust"
+   ],
+   "known_problems": [
+    "corn_common_rust"
+   ],
+   "look_alike": false,
+   "label_confidence": "sure",
+   "species_profile": "label_only",
+   "outcome": "planned",
+   "error": null,
+   "failure": null,
+   "status": "uncertain",
+   "low_evidence": true,
+   "primary": null,
+   "primary_affects": null,
+   "ranked": [],
+   "scores": [],
+   "top_score": null,
+   "top_matched": 0,
+   "lead": null,
+   "open_question": false,
+   "questions": [],
+   "working_species": "corn",
+   "species_rerun": false,
+   "bioclip_top3": [
+    "corn",
+    "soybean",
+    "bean"
+   ],
+   "photos_sent": 2,
+   "photos_refused": [],
+   "vlm_path": "rig_vlm",
+   "workers_at_submit": [
+    "cp-fallback-1:fallback",
+    "rig-3070-perception-1:perception",
+    "rig-5070ti-vlm-1:vlm"
+   ],
+   "model_versions": {
+    "bioclip": "107151b7e97f9fff",
+    "classifier": "107151b7e97f9fff",
+    "segmentation": "107151b7e97f9fff",
+    "vlm_model": "cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4bbeb8d1910ee7be9196bafaf1bc052156"
+   },
+   "machine_s": 3.0,
+   "diagnosed_s": 3.0,
+   "first_diagnosis_s": 3.0,
+   "plan_ready_s": 12.0,
+   "awaiting_answer_s": 0.0,
+   "harness_s": 20.7,
+   "scan_id": "01M5T2BN43G91GCB8FKX503XTN",
+   "policy": {
+    "answers": "labels",
+    "closeup_copy": true,
+    "species": "confirm"
+   }
+  },
+  {
+   "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-73",
+   "truth_outcome": "diagnosed",
+   "truth_species": "tomato",
+   "truth_problems": [
+    "tomato_early_blight"
+   ],
+   "known_problems": [
+    "tomato_early_blight"
+   ],
+   "look_alike": false,
+   "label_confidence": "sure",
+   "species_profile": "full",
+   "outcome": "planned",
+   "error": null,
+   "failure": null,
+   "status": "confirmed",
+   "low_evidence": false,
+   "primary": "tomato_bacterial_spot",
+   "primary_affects": [
+    "tomato"
+   ],
+   "ranked": [
+    "tomato_bacterial_spot",
+    "tomato_blossom_end_rot",
+    "tomato_late_blight",
+    "tomato_early_blight",
+    "tomato_leaf_mold",
+    "tomato_hornworms",
+    "tomato_bacterial_speck",
+    "tomato_yellow_leaf_curl_virus",
+    "tomato_spider_mites"
+   ],
+   "scores": [
+    4,
+    0,
+    0,
+    -1,
+    -1,
+    -2,
+    -3,
+    -6,
+    -6
+   ],
+   "top_score": 4,
+   "top_matched": 2,
+   "lead": 4,
+   "open_question": false,
+   "questions": [],
+   "working_species": "blueberry",
+   "species_rerun": true,
+   "bioclip_top3": [
+    "blueberry",
+    "soybean",
+    "bean"
+   ],
+   "photos_sent": 2,
+   "photos_refused": [],
+   "vlm_path": "rig_vlm",
+   "workers_at_submit": [
+    "cp-fallback-1:fallback",
+    "rig-3070-perception-1:perception",
+    "rig-5070ti-vlm-1:vlm"
+   ],
+   "model_versions": {
+    "bioclip": "107151b7e97f9fff",
+    "classifier": "107151b7e97f9fff",
+    "segmentation": "107151b7e97f9fff",
+    "vlm_model": "cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4bbeb8d1910ee7be9196bafaf1bc052156"
+   },
+   "machine_s": 19.0,
+   "diagnosed_s": 3.0,
+   "first_diagnosis_s": 3.0,
+   "plan_ready_s": 47.0,
+   "awaiting_answer_s": 0.0,
+   "harness_s": 48.1,
+   "scan_id": "01M5T2E3W8FBKKTYWHW3P0FZV8",
+   "policy": {
+    "answers": "labels",
+    "closeup_copy": true,
+    "species": "confirm"
+   }
+  },
+  {
+   "case_id": "tomato-tomato-bd-2025-healthy-healthy-31",
+   "truth_outcome": "healthy",
+   "truth_species": "tomato",
+   "truth_problems": [],
+   "known_problems": [],
+   "look_alike": false,
+   "label_confidence": "sure",
+   "species_profile": "full",
+   "outcome": "planned",
+   "error": null,
+   "failure": null,
+   "status": "healthy",
+   "low_evidence": false,
+   "primary": null,
+   "primary_affects": null,
+   "ranked": [
+    "tomato_bacterial_speck",
+    "tomato_bacterial_spot",
+    "tomato_late_blight",
+    "tomato_leaf_mold",
+    "tomato_early_blight",
+    "tomato_septoria_leaf_spot"
+   ],
+   "scores": [
+    -3,
+    -4,
+    -4,
+    -5,
+    -5,
+    -8
+   ],
+   "top_score": -3,
+   "top_matched": 0,
+   "lead": 1,
+   "open_question": false,
+   "questions": [],
+   "working_species": "tomato",
+   "species_rerun": false,
+   "bioclip_top3": [
+    "tomato",
+    "potato",
+    "pepper"
+   ],
+   "photos_sent": 2,
+   "photos_refused": [],
+   "vlm_path": "rig_vlm",
+   "workers_at_submit": [
+    "cp-fallback-1:fallback",
+    "rig-3070-perception-1:perception",
+    "rig-5070ti-vlm-1:vlm"
+   ],
+   "model_versions": {
+    "bioclip": "107151b7e97f9fff",
+    "classifier": "107151b7e97f9fff",
+    "segmentation": "107151b7e97f9fff",
+    "vlm_model": "cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4bbeb8d1910ee7be9196bafaf1bc052156"
+   },
+   "machine_s": 9.0,
+   "diagnosed_s": 9.0,
+   "first_diagnosis_s": 9.0,
+   "plan_ready_s": 29.0,
+   "awaiting_answer_s": 0.0,
+   "harness_s": 30.1,
+   "scan_id": "01M5T2BN48MCA59H59HC4DXEW3",
+   "policy": {
+    "answers": "labels",
+    "closeup_copy": true,
+    "species": "confirm"
+   }
+  },
+  {
+   "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-30",
+   "truth_outcome": "diagnosed",
+   "truth_species": "tomato",
+   "truth_problems": [
+    "tomato_late_blight"
+   ],
+   "known_problems": [
+    "tomato_late_blight"
+   ],
+   "look_alike": false,
+   "label_confidence": "sure",
+   "species_profile": "full",
+   "outcome": "planned",
+   "error": null,
+   "failure": null,
+   "status": "confirmed",
+   "low_evidence": false,
+   "primary": "tomato_bacterial_spot",
+   "primary_affects": [
+    "tomato"
+   ],
+   "ranked": [
+    "tomato_bacterial_spot",
+    "tomato_leaf_mold",
+    "tomato_blossom_end_rot",
+    "tomato_late_blight",
+    "tomato_whiteflies",
+    "tomato_bacterial_speck",
+    "tomato_early_blight",
+    "tomato_hornworms",
+    "tomato_spider_mites"
+   ],
+   "scores": [
+    4,
+    2,
+    0,
+    0,
+    -2,
+    -3,
+    -5,
+    -5,
+    -6
+   ],
+   "top_score": 4,
+   "top_matched": 2,
+   "lead": 2,
+   "open_question": false,
+   "questions": [
+    {
+     "kind": "indicator",
+     "indicator_id": "spots_turn_yellow",
+     "photo_kind": null,
+     "answer": "unsure"
+    }
+   ],
+   "working_species": "pepper",
+   "species_rerun": true,
+   "bioclip_top3": [
+    "pepper",
+    "tomato",
+    "grape"
+   ],
+   "photos_sent": 2,
+   "photos_refused": [],
+   "vlm_path": "rig_vlm",
+   "workers_at_submit": [
+    "cp-fallback-1:fallback",
+    "rig-3070-perception-1:perception",
+    "rig-5070ti-vlm-1:vlm"
+   ],
+   "model_versions": {
+    "bioclip": "107151b7e97f9fff",
+    "classifier": "107151b7e97f9fff",
+    "segmentation": "107151b7e97f9fff",
+    "vlm_model": "cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4bbeb8d1910ee7be9196bafaf1bc052156"
+   },
+   "machine_s": 21.0,
+   "diagnosed_s": 4.0,
+   "first_diagnosis_s": 4.0,
+   "plan_ready_s": 49.0,
+   "awaiting_answer_s": 0.0,
+   "harness_s": 50.0,
+   "scan_id": "01M5T2E3W9JNK30J7SJRW0RADD",
+   "policy": {
+    "answers": "labels",
+    "closeup_copy": true,
+    "species": "confirm"
+   }
+  }
+ ],
+ "metrics": {
+  "outcomes": {
+   "failed": 1,
+   "planned": 4
+  },
+  "statuses": {
+   "no_plant_found": 1,
+   "uncertain": 1,
+   "confirmed": 2,
+   "healthy": 1
+  },
+  "upload": {
+   "k": 0,
+   "n": 11,
+   "rate": 0.0,
+   "interval": [
+    0.0,
+    0.2588329669680317
+   ],
+   "target": 0.05,
+   "at_least": false,
+   "verdict": "undecided",
+   "cases": []
+  },
+  "plant_check": {
+   "k": 4,
+   "n": 5,
+   "rate": 0.8,
+   "interval": [
+    0.37553462976252533,
+    0.9637758913675698
+   ],
+   "target": 0.99,
+   "at_least": true,
+   "verdict": "missed",
+   "cases": [
+    "apple-inat-408956748"
+   ]
+  },
+  "species_top1": {
+   "k": 2,
+   "n": 4,
+   "rate": 0.5,
+   "interval": [
+    0.15003898915214947,
+    0.8499610108478506
+   ],
+   "target": 0.85,
+   "at_least": true,
+   "verdict": "missed",
+   "cases": [
+    "tomato-tomato-bd-2025-early-blight-early-blight-73",
+    "tomato-tomato-bd-2025-late-blight-late-blight-30"
+   ]
+  },
+  "species_reruns": 2,
+  "species_bioclip_top3": {
+   "k": 3,
+   "n": 4,
+   "rate": 0.75,
+   "interval": [
+    0.30064184258240184,
+    0.9544127391902995
+   ],
+   "target": 0.95,
+   "at_least": true,
+   "verdict": "undecided"
+  },
+  "problem_top1": {
+   "k": 0,
+   "n": 3,
+   "rate": 0.0,
+   "interval": [
+    5.551115123125783e-17,
+    0.5614970317550454
+   ],
+   "cases": [
+    "corn-maize-bd-2026-common-rust-img-250",
+    "tomato-tomato-bd-2025-early-blight-early-blight-73",
+    "tomato-tomato-bd-2025-late-blight-late-blight-30"
+   ]
+  },
+  "problem_top3": {
+   "k": 0,
+   "n": 3,
+   "rate": 0.0,
+   "interval": [
+    5.551115123125783e-17,
+    0.5614970317550454
+   ]
+  },
+  "T11_confirmed_precision": {
+   "k": 0,
+   "n": 2,
+   "rate": 0.0,
+   "interval": [
+    0.0,
+    0.6576197724933469
+   ],
+   "target": 0.9,
+   "at_least": true,
+   "verdict": "missed",
+   "cases": [
+    "tomato-tomato-bd-2025-early-blight-early-blight-73",
+    "tomato-tomato-bd-2025-late-blight-late-blight-30"
+   ]
+  },
+  "coverage": {
+   "k": 2,
+   "n": 3,
+   "rate": 0.6666666666666666,
+   "interval": [
+    0.2076596008020477,
+    0.9385080552796037
+   ]
+  },
+  "coverage_known": {
+   "k": 2,
+   "n": 3,
+   "rate": 0.6666666666666666,
+   "interval": [
+    0.2076596008020477,
+    0.9385080552796037
+   ]
+  },
+  "T12_healthy_called_sick": {
+   "k": 0,
+   "n": 1,
+   "rate": 0.0,
+   "interval": [
+    0.0,
+    0.7934506856227626
+   ],
+   "target": 0.1,
+   "at_least": false,
+   "verdict": "undecided",
+   "cases": []
+  },
+  "T13_sick_called_healthy": {
+   "k": 0,
+   "n": 3,
+   "rate": 0.0,
+   "interval": [
+    5.551115123125783e-17,
+    0.5614970317550454
+   ],
+   "target": 0.05,
+   "at_least": false,
+   "verdict": "undecided",
+   "cases": []
+  },
+  "lookalike_called_healthy": {
+   "k": 0,
+   "n": 0,
+   "rate": null,
+   "interval": null
+  },
+  "T14_no_plant_correct": {
+   "k": 0,
+   "n": 0,
+   "rate": null,
+   "interval": null,
+   "target": 0.9,
+   "at_least": true,
+   "verdict": "not measured"
+  },
+  "T15_label_only_wrong_crop": {
+   "k": 0,
+   "n": 1,
+   "rate": 0.0,
+   "interval": [
+    0.0,
+    0.7934506856227626
+   ],
+   "target": 0.0,
+   "at_least": false,
+   "verdict": "undecided",
+   "cases": []
+  },
+  "statuses_by_truth": {
+   "healthy": {
+    "healthy": 1
+   },
+   "diagnosed": {
+    "uncertain": 1,
+    "confirmed": 2
+   },
+   "lookalike": {}
+  },
+  "time": {
+   "rig_vlm": {
+    "n": 4,
+    "machine_p50": 14.0,
+    "machine_p95": 20.7,
+    "first_diagnosis_p50": 3.5,
+    "first_diagnosis_p95": 8.2,
+    "plan_ready_p50": 38.0,
+    "plan_ready_p95": 48.7,
+    "continued": 0
+   }
+  },
+  "T16_wall_time_gpu_p95": {
+   "p95": 20.7,
+   "n": 4,
+   "target_s": 90,
+   "verdict": "met"
+  },
+  "workers": {
+   "vlm_path": {
+    "rig_vlm": 4
+   },
+   "at_submit": {
+    "cp-fallback-1:fallback,rig-3070-perception-1:perception,rig-5070ti-vlm-1:vlm": 5
+   },
+   "model_versions": {
+    "{\"bioclip\": \"107151b7e97f9fff\", \"classifier\": \"107151b7e97f9fff\", \"segmentation\": \"107151b7e97f9fff\", \"vlm_model\": \"cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4bbeb8d1910ee7be9196bafaf1bc052156\"}": 4
+   }
+  },
+  "questions": {
+   "asked": 1,
+   "by_kind": {
+    "indicator": 1
+   },
+   "answers": {
+    "unsure": 1
+   },
+   "scans_with_question": 1,
+   "open_at_end": 0
+  },
+  "margin": {
+   "sweep": [
+    {
+     "margin": 1,
+     "precision": {
+      "k": 0,
+      "n": 2,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.6576197724933469
+      ]
+     },
+     "coverage": {
+      "k": 2,
+      "n": 3,
+      "rate": 0.6666666666666666,
+      "interval": [
+       0.2076596008020477,
+       0.9385080552796037
+      ]
+     },
+     "healthy_confirmed": {
+      "k": 0,
+      "n": 1,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.7934506856227626
+      ]
+     }
+    },
+    {
+     "margin": 2,
+     "precision": {
+      "k": 0,
+      "n": 2,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.6576197724933469
+      ]
+     },
+     "coverage": {
+      "k": 2,
+      "n": 3,
+      "rate": 0.6666666666666666,
+      "interval": [
+       0.2076596008020477,
+       0.9385080552796037
+      ]
+     },
+     "healthy_confirmed": {
+      "k": 0,
+      "n": 1,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.7934506856227626
+      ]
+     }
+    },
+    {
+     "margin": 3,
+     "precision": {
+      "k": 0,
+      "n": 1,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.7934506856227626
+      ]
+     },
+     "coverage": {
+      "k": 1,
+      "n": 3,
+      "rate": 0.3333333333333333,
+      "interval": [
+       0.06149194472039621,
+       0.7923403991979522
+      ]
+     },
+     "healthy_confirmed": {
+      "k": 0,
+      "n": 1,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.7934506856227626
+      ]
+     }
+    },
+    {
+     "margin": 4,
+     "precision": {
+      "k": 0,
+      "n": 1,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.7934506856227626
+      ]
+     },
+     "coverage": {
+      "k": 1,
+      "n": 3,
+      "rate": 0.3333333333333333,
+      "interval": [
+       0.06149194472039621,
+       0.7923403991979522
+      ]
+     },
+     "healthy_confirmed": {
+      "k": 0,
+      "n": 1,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.7934506856227626
+      ]
+     }
+    },
+    {
+     "margin": 5,
+     "precision": {
+      "k": 0,
+      "n": 0,
+      "rate": null,
+      "interval": null
+     },
+     "coverage": {
+      "k": 0,
+      "n": 3,
+      "rate": 0.0,
+      "interval": [
+       5.551115123125783e-17,
+       0.5614970317550454
+      ]
+     },
+     "healthy_confirmed": {
+      "k": 0,
+      "n": 1,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.7934506856227626
+      ]
+     }
+    },
+    {
+     "margin": 6,
+     "precision": {
+      "k": 0,
+      "n": 0,
+      "rate": null,
+      "interval": null
+     },
+     "coverage": {
+      "k": 0,
+      "n": 3,
+      "rate": 0.0,
+      "interval": [
+       5.551115123125783e-17,
+       0.5614970317550454
+      ]
+     },
+     "healthy_confirmed": {
+      "k": 0,
+      "n": 1,
+      "rate": 0.0,
+      "interval": [
+       0.0,
+       0.7934506856227626
+      ]
+     }
+    }
+   ],
+   "consistent_with_live": [
+    1,
+    2
+   ],
+   "proposed": null,
+   "weights": null,
+   "leads": {
+    "2": 1,
+    "4": 1
+   },
+   "cases_with_scores": 3
+  }
+ },
+ "rebuilt": {
+  "command": "python3 ml/training/eval/score.py --rebuild ml/training/eval/reports/e2e-2026-10-25-check.json",
+  "at": "2026-10-25T17:42:58+00:00"
+ }
+}
