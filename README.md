@@ -22,7 +22,7 @@ Tomato 1 was diagnosed with early blight on Oct 11 and is recovering under its p
 |---|---|---|
 | Capture | A camera-style capture with a mode bar, a coverage dial and guidance cards | App built, mock data; scan upload runs live against the deployed API |
 | Live analysis | The pipeline's stages stream to the app over SSE as the scan runs | App built, mock data; the backend streams events (S1) |
-| Diagnosis and action plan | A diagnosis with citations and a step-by-step plan, tinted from the photo | Backend built (S4); a scan ran end to end on the rig on Oct 24, ending in a cited plan from Claude. Diagnosis accuracy is not measured yet. App on mock data |
+| Diagnosis and action plan | A diagnosis with citations and a step-by-step plan, tinted from the photo | Backend built (S4). A scan ran end to end on the rig on Oct 24 and ended in a cited plan from Claude, but its early-blight photo came back as Septoria leaf spot, so S4's rig check is still open and diagnosis accuracy is not measured yet. App on mock data |
 | Chat with answer blocks | Streaming chat with tools, memories and interactive blocks such as the frost cover planner | Backend built (S5); app on mock data, waiting on the block contract in the app |
 | LiDAR and the 3D garden | Depth capture, plant measurement, a garden map and a 3D view | Native code compiles; waits on the iPhone for its checks. The 3D screen runs on mock data |
 | Insights | Charts of a plant's health, spot cover, height and weather before the diagnosis | App built, mock data |
