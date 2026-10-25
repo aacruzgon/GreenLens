@@ -112,6 +112,7 @@ Day 8 of 10 (Oct 23). **The models are trained, calibrated and frozen (M17), and
 | [#211](https://github.com/aacruzgon/GreenLens/pull/211) | `docs/m19-devpost-pasting` | `main` | Merged (997ec88) | M19: devpost.md's pasting checks (absolute links, numbers against their sources, Devpost's format, the AI tools disclosed); `checklinks.py` checks absolute links into the repository |
 | [#214](https://github.com/aacruzgon/GreenLens/pull/214) | `fix/indicators-reason-length` | `main` | Merged (6d19b7e) | #183's fix: the indicators' reason cap at 100 above the prompt's 60, its check on the 72 dev bench cases, and `vlm_bench`'s reason lengths ([report](../../ml/training/eval/reports/reason-cap-2026-10-24.md)) |
 | [#221](https://github.com/aacruzgon/GreenLens/pull/221) | `feat/j1-preprocess-parity` | `main` | Merged (220b284) | J1 ([#218](https://github.com/aacruzgon/GreenLens/issues/218)): the `vision` example `preprocess_dump` and `preprocess_parity.py`. The worker's resize runs its passes vertically first (G8, Sara's fix); `crop_box` confirmed; the stored `WebP` is G12 |
+| [#227](https://github.com/aacruzgon/GreenLens/pull/227) | `feat/p11-rig-rerun` | `main` | Open | #216 step 6: P11's rerun on the rig, Qwen3.5 and FP8 on `findings@6` ([report](../../ml/training/eval/reports/p11-rig-2026-10-24.md)), `p11_damage.py`, and Qwen3.5's seven calls as the fake server's default |
 | [#31](https://github.com/aacruzgon/GreenLens/pull/31) | `docs/roadmap-day1-wrap` | `main` | Merged (691bb40) | This file at the end of day 1 |
 
 ## 3. Tracker by build-plan period
