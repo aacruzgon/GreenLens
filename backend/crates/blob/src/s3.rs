@@ -214,4 +214,27 @@ impl BlobStore for S3BlobStore {
             .flatten()
             .collect())
     }
+
+    /// `ListObjectsV2` with `delimiter("/")`: each page's `CommonPrefixes`, no object read.
+    async fn list_prefixes(&self, prefix: &ObjectPrefix) -> Result<Vec<ObjectPrefix>, BlobError> {
+        let mut pages = self
+            .client
+            .list_objects_v2()
+            .bucket(&self.bucket)
+            .prefix(prefix.as_str())
+            .delimiter("/")
+            .into_paginator()
+            .send();
+        let mut out = Vec::new();
+        while let Some(page) = pages.next().await {
+            let page = page.map_err(|e| map_sdk_error("ListObjectsV2", e))?;
+            out.extend(
+                page.common_prefixes()
+                    .iter()
+                    .filter_map(|p| p.prefix())
+                    .filter_map(ObjectPrefix::from_listed),
+            );
+        }
+        Ok(out)
+    }
 }

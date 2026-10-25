@@ -839,6 +839,12 @@ mod garden_repo {
         ) -> Result<Vec<(GardenId, Coordinates)>, StoreError> {
             self.garden_repo.gardens_due_soil_profile(now, limit).await
         }
+        async fn existing_gardens(
+            &self,
+            gardens: &[GardenId],
+        ) -> Result<Vec<GardenId>, StoreError> {
+            self.garden_repo.existing_gardens(gardens).await
+        }
         async fn members(
             &self,
             member: Membership<Viewer>,

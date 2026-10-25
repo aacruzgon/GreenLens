@@ -186,6 +186,10 @@ pub trait GardenRepo: Send + Sync {
         self.gardens_without_soil_profile(limit).await
     }
 
+    /// Which of these gardens still have a record, live or being deleted: the orphan sweep
+    /// sweeps the prefix of a garden that has none.
+    async fn existing_gardens(&self, gardens: &[GardenId]) -> Result<Vec<GardenId>, StoreError>;
+
     /// `GET /gardens/{id}/members`, by `since`.
     async fn members(
         &self,

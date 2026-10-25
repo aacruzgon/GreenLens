@@ -3,6 +3,7 @@
 //! token fires. A failed run is logged and the next tick tries again; every task is idempotent
 //! (alert keys, compare-and-set claims, batched deletes), so an overlap or a repeat is harmless.
 
+pub mod orphans;
 pub mod triggers;
 
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
@@ -12,7 +13,7 @@ use tokio::time::MissedTickBehavior;
 use domain::{
     garden::{gardens::SoilProfileStatus, push::PushPayload},
     id::GardenId,
-    ports::{CellRequest, IdGenExt, NewTask, ObjectPrefix},
+    ports::{CellRequest, IdGenExt, NewTask},
     records::{
         plan::TriggerKind,
         task::{AlertKey, TaskSource, TaskTrigger},
@@ -24,8 +25,6 @@ use domain::{
     },
     wire::{LocalDate, Timestamp, V1},
 };
-
-use blob::DeleteJob;
 
 use crate::{error::ApiError, push::Pusher, state::AppState};
 
@@ -470,39 +469,29 @@ async fn receipts(state: Arc<AppState>) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// The daily orphan sweep ([storage 4], uploads): objects older than an hour under a garden's
-/// prefix that no record points to. Deletes go through the `DeleteQueue`: detached, never
-/// cancelled, retried, drained at shutdown.
+/// The daily orphan sweep ([storage 4], uploads; [`orphans::sweep`]): objects older than an
+/// hour that no record points to, under each live garden's prefix and each prefix whose garden
+/// record is gone, deleted through the `DeleteQueue`. One line a run says what it did.
 async fn orphans(state: Arc<AppState>) -> Result<(), ApiError> {
-    let cutoff = state.ports.clock.now().minus(Duration::from_hours(1));
-    for cell in state.ports.store.gardens_by_cell().await? {
-        for garden in cell.gardens {
-            let old: Vec<_> = state
-                .ports
-                .blob
-                .list(&ObjectPrefix::garden(garden))
-                .await?
-                .into_iter()
-                .filter(|o| o.last_modified < cutoff)
-                .map(|o| o.key)
-                .collect();
-            if old.is_empty() {
-                continue;
-            }
-            let orphans = state.ports.store.unreferenced_keys(&old).await?;
-            if orphans.is_empty() {
-                continue;
-            }
-            let outcome = state
-                .deletes
-                .submit(DeleteJob::Keys(orphans))
-                .outcome()
-                .await;
-            if !outcome.is_some_and(|o| o.is_done()) {
-                tracing::warn!(%garden, "orphans not deleted; the next sweep retries");
-            }
-        }
-    }
+    let p = &state.ports;
+    let r = orphans::sweep(
+        p.store.as_ref(),
+        p.blob.as_ref(),
+        &state.deletes,
+        p.clock.now(),
+    )
+    .await?;
+    tracing::info!(
+        gardens = r.gardens,
+        gone_gardens = r.gone_gardens,
+        listed = r.listed,
+        candidates = r.candidates,
+        orphans = r.orphans,
+        deleted = r.deleted,
+        not_deleted = r.not_deleted,
+        failed = r.failed,
+        "orphan sweep finished"
+    );
     Ok(())
 }
 

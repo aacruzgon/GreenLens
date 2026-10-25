@@ -203,6 +203,10 @@ impl BlobStore for QueuedDeletes {
     ) -> Result<Vec<domain::ports::ObjectInfo>, BlobError> {
         self.queue.store.list(prefix).await
     }
+
+    async fn list_prefixes(&self, prefix: &ObjectPrefix) -> Result<Vec<ObjectPrefix>, BlobError> {
+        self.queue.store.list_prefixes(prefix).await
+    }
 }
 
 /// One job: up to [`DELETE_ATTEMPTS`] attempts, retrying what failed; each S3 call is bounded only
