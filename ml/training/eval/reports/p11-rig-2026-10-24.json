@@ -1,0 +1,4207 @@
+{
+ "about": "P11 on the rig (#216 steps 3 and 4), 2026-10-24: damage findings before and after findings@6's trace rule, and P5's conditions. Made by ml/training/eval/p11_damage.py; see p11-rig-2026-10-24.md.",
+ "cases": {
+  "file": "ml/training/runs/vlm-bench/cases-p11-dev.jsonl",
+  "sha256_16": "6ccdbfe872e1e9d8",
+  "n": 120
+ },
+ "qwen35": {
+  "bench": {
+   "recordings": "p11-qwen35-raw.json",
+   "findings_calls": 120,
+   "damage_raw": 143,
+   "damage_kept": 19,
+   "dropped": 124,
+   "dropped_disease_sign": 90,
+   "dropped_traces": [
+    {
+     "pattern": "other",
+     "trace": "small spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "small spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "brown discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "brown streaks",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "yellowing",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "decay",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrosis",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrosis",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic tissue",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dark spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dark spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dark spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "small dark spot",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "brown spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "hole",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "necrosis",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrosis",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dark spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dark spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dark spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "torn_stems",
+     "trace": "torn tissue",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "yellowing",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "discolored spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic tissue",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dried leaves",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "discolored fruit",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dark spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "yellowing",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic lesion",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dead tissue",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dead tissue",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dead tissue",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrosis",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrosis",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "dark spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "dried leaves",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "other",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "yellowing",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "rot",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "rot",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "yellowing",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "tissue death",
+     "disease_sign": true
+    },
+    {
+     "pattern": "torn_stems",
+     "trace": "torn tissue",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "small spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "hole",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "hole",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "dead tissue",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "browning",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "small dark spot",
+     "disease_sign": true
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf_mine",
+     "disease_sign": false
+    }
+   ],
+   "statuses": [
+    200
+   ],
+   "bench": {
+    "jobs": 120,
+    "recordings_used": 240,
+    "recordings": 240,
+    "agree": 120,
+    "differ": [],
+    "cases": [
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-261",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-250",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "small spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-284",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-960",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "small spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-649",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-597",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "browning"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-552",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "brown discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-700",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-560",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "brown streaks",
+       "yellowing"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-5",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-20",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-78",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-946",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-gray-leaf-spot-img-410",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-gray-leaf-spot-img-467",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf_mine",
+       "leaf_mine"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-410",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "decay"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-168",
+      "raw": 5,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-173",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrosis"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-474",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrosis"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-111",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-73",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrotic tissue"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-30",
+      "raw": 3,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "browning",
+       "discoloration",
+       "discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-98",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "browning"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-118",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "holes"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-7",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-42",
+      "raw": 3,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "dark spots",
+       "dark spots",
+       "dark spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-10",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "browning"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-78",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "small dark spot"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-31",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-60",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "brown spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-187",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "hole"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-61",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-134",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrosis",
+       "necrosis"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-171",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-31",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-178",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-early-blight-img-5844-02d",
+      "raw": 3,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "browning",
+       "browning",
+       "browning"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-5647-02d",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "dark spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3717-02d",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "dark spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3761-02d",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "dark spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3652-02d",
+      "raw": 10,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-spider-mites-img-3926-02d",
+      "raw": 10,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf_mine",
+       "leaf_mine",
+       "leaf_mine",
+       "leaf_mine",
+       "leaf_mine",
+       "leaf_mine",
+       "leaf_mine",
+       "leaf_mine",
+       "leaf_mine",
+       "leaf_mine"
+      ],
+      "kept_findings": [],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-spider-mites-img-3827-02d",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "torn tissue",
+       "yellowing"
+      ],
+      "kept_findings": [],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-healthy-img-3513-02d",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-healthy-img-3558-02d",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-healthy-img-3472-02d",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-healthy-img-3504-02d",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1910-ko9m8s",
+      "raw": 10,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots",
+       "necrotic spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1143",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrotic spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1693",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot113",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "discolored spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1544",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "frass",
+        "frass",
+        "small dark speckles covering the leaf surface"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-401228814",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrotic tissue"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-402177099",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "dried leaves",
+       "discolored fruit"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-401855015",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "dark spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-338400963",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "yellowing",
+       "browning"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-388547158",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "webbing",
+        "webbing",
+        "fine silk strands connecting leaves"
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-28",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-100",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-2",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-258",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrotic lesion"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-35",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "browning"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-368",
+      "raw": 3,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "dead tissue",
+       "dead tissue",
+       "dead tissue"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-31",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrosis"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-24",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "necrosis"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-8",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "dark spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-215",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-314",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-380",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-310",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1804",
+      "raw": 10,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "holes",
+       "holes",
+       "holes",
+       "holes",
+       "holes",
+       "holes",
+       "holes",
+       "holes",
+       "holes",
+       "holes"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1297",
+      "raw": 5,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "holes",
+       "holes",
+       "holes",
+       "holes",
+       "holes"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-frost-indale",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-frost-old-dairy",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "dried leaves"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-hail",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-commons-corn-hail",
+      "raw": 2,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [
+       "other"
+      ],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "chewed_margins",
+        "irregular holes and torn edges along leaf margins"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-potassium",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "yellowing"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-commons-corn-potassium",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-commons-corn-magnesium",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-blossom-end-rot-vine",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "rot",
+       "rot"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-75",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "yellowing",
+       "discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-68",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-64",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "frass",
+        "frass",
+        "small dark specks scattered across the leaf surface"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-94",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-18",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "frass",
+        "frass",
+        "small dark specks on leaf surface"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-3",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-28",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "ragged_holes",
+        "insect bite",
+        "irregular hole on the leaf margin"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-4",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf_mine"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-50",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "frass",
+        "frass",
+        "small dark specks scattered on the leaf surface"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-51",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "tissue death"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-40",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-37",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-33",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "torn tissue"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-57",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "small spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-17",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-39",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-65",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-81",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-50",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-31",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-16",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-90",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "hole",
+       "discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-79",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-1",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-36",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-7",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-97",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-mg-magnesium-deficiency-magnesium-deficiency-614",
+      "raw": 2,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "hole",
+       "dead tissue"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-mg-magnesium-deficiency-magnesium-deficiency-34",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-mg-magnesium-deficiency-magnesium-deficiency-22",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "browning"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-mg-magnesium-deficiency-magnesium-deficiency-540",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "small dark spot"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-391389211",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "leaf_mines",
+        "leaf miner larva",
+        "pale winding tunnels inside the leaf tissue"
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-382707209",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf_mine"
+      ],
+      "kept_findings": [],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-402514941",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "tomato_hornworm",
+        "large green caterpillar with white spots on stem"
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-410400928",
+      "raw": 3,
+      "kept": 3,
+      "decoded": 3,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "tomato_hornworm",
+        "large green caterpillars on stems"
+       ],
+       [
+        "other",
+        "tomato_hornworm",
+        "large green caterpillars on stems"
+       ],
+       [
+        "other",
+        "tomato_hornworm",
+        "large green caterpillars on stems"
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-409677023",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "tomato_hornworm",
+        null
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-409375217",
+      "raw": 3,
+      "kept": 3,
+      "decoded": 3,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "larva",
+        "larva on leaf surface"
+       ],
+       [
+        "other",
+        "larva",
+        "larva on leaf surface"
+       ],
+       [
+        "other",
+        "larva",
+        "larva on leaf surface"
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-407094587",
+      "raw": 2,
+      "kept": 2,
+      "decoded": 2,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "tomato_hornworm",
+        "large green caterpillar on stem"
+       ],
+       [
+        "other",
+        "tomato_hornworm",
+        "large green caterpillar on stem"
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-406188529",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "tomato_hornworm",
+        "large green caterpillar on fruit"
+       ]
+      ],
+      "animal": true
+     }
+    ],
+    "animal_cases": {
+     "cases": 11,
+     "with_kept": 8,
+     "kept": 13
+    },
+    "other_cases": {
+     "cases": 109,
+     "with_kept": 6,
+     "kept": 6
+    }
+   }
+  },
+  "seven_photos": {
+   "recordings": "worker-qwen35-9b-awq-2026-10-24.json",
+   "findings_calls": 2,
+   "damage_raw": 4,
+   "damage_kept": 1,
+   "dropped": 3,
+   "dropped_disease_sign": 0,
+   "dropped_traces": [
+    {
+     "pattern": "other",
+     "trace": "tissue death",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "tissue death",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "tissue death",
+     "disease_sign": false
+    }
+   ],
+   "statuses": [
+    200
+   ],
+   "p5": {
+    "findings": [
+     {
+      "species": "tomato",
+      "other_name": null,
+      "certainty": "high",
+      "soil_readings": 8,
+      "damage": [
+       [
+        "other",
+        "frass"
+       ]
+      ],
+      "organisms": 0
+     },
+     {
+      "species": "corn",
+      "other_name": null,
+      "certainty": "high",
+      "soil_readings": 0,
+      "damage": [
+       [
+        "other",
+        "tissue death"
+       ],
+       [
+        "other",
+        "tissue death"
+       ],
+       [
+        "other",
+        "tissue death"
+       ]
+      ],
+      "organisms": 0
+     }
+    ],
+    "non_latin_characters": 0,
+    "reasons": {
+     "n": 27,
+     "longest": 83,
+     "no_closing_stop": 0
+    },
+    "retries": 0
+   }
+  },
+  "dscn3175": {
+   "recordings": "worker-qwen35-9b-awq-2026-10-24-dscn3175.json",
+   "findings_calls": 2,
+   "damage_raw": 13,
+   "damage_kept": 0,
+   "dropped": 13,
+   "dropped_disease_sign": 13,
+   "dropped_traces": [
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "necrotic spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "tissue death",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "tissue death",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "tissue death",
+     "disease_sign": true
+    }
+   ],
+   "statuses": [
+    200
+   ],
+   "p5": {
+    "findings": [
+     {
+      "species": "tomato",
+      "other_name": null,
+      "certainty": "high",
+      "soil_readings": 0,
+      "damage": [
+       [
+        "other",
+        "necrotic spots"
+       ],
+       [
+        "other",
+        "necrotic spots"
+       ],
+       [
+        "other",
+        "necrotic spots"
+       ],
+       [
+        "other",
+        "necrotic spots"
+       ],
+       [
+        "other",
+        "necrotic spots"
+       ],
+       [
+        "other",
+        "necrotic spots"
+       ],
+       [
+        "other",
+        "necrotic spots"
+       ],
+       [
+        "other",
+        "necrotic spots"
+       ],
+       [
+        "other",
+        "necrotic spots"
+       ],
+       [
+        "other",
+        "necrotic spots"
+       ]
+      ],
+      "organisms": 0
+     },
+     {
+      "species": "corn",
+      "other_name": null,
+      "certainty": "high",
+      "soil_readings": 0,
+      "damage": [
+       [
+        "other",
+        "tissue death"
+       ],
+       [
+        "other",
+        "tissue death"
+       ],
+       [
+        "other",
+        "tissue death"
+       ]
+      ],
+      "organisms": 0
+     }
+    ],
+    "non_latin_characters": 0,
+    "reasons": {
+     "n": 27,
+     "longest": 81,
+     "no_closing_stop": 0
+    },
+    "retries": 0
+   }
+  }
+ },
+ "fp8": {
+  "bench": {
+   "recordings": "p11-fp8-raw.json",
+   "findings_calls": 120,
+   "damage_raw": 130,
+   "damage_kept": 95,
+   "dropped": 23,
+   "dropped_disease_sign": 7,
+   "dropped_traces": [
+    {
+     "pattern": "chewed_margins",
+     "trace": "leaf tip drying and curling",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "brown discoloration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "small dark spots",
+     "disease_sign": true
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "shot_holes",
+     "trace": "brown spots and holes",
+     "disease_sign": true
+    },
+    {
+     "pattern": "chewed_margins",
+     "trace": "leaf edge eaten away",
+     "disease_sign": false
+    },
+    {
+     "pattern": "other",
+     "trace": "small black speck",
+     "disease_sign": true
+    },
+    {
+     "pattern": "other",
+     "trace": "brown spots and discolouration",
+     "disease_sign": true
+    },
+    {
+     "pattern": "ragged_holes",
+     "trace": "ragged_holes",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    }
+   ],
+   "statuses": [
+    200
+   ],
+   "bench": {
+    "jobs": 120,
+    "recordings_used": 240,
+    "recordings": 240,
+    "agree": 120,
+    "differ": [],
+    "cases": [
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-261",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-284",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-960",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-946",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-gray-leaf-spot-img-410",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf tip drying and curling"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-gray-leaf-spot-img-467",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "brownish spots on leaf surface"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-649",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-597",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "brown discoloration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-552",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-560",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-5",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-20",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-78",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-corn-leaf-blight-img-700",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-common-rust-img-250",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-410",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-73",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf tip"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-168",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "dark spots on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-173",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-474",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-111",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "tomato hornworm",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-30",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-98",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-118",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "holes"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-7",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-42",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-10",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-78",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "swollen, bronze or papery aphid"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-31",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-60",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-187",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-61",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "small green bumps on leaf surface"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-134",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "tomato hornworm",
+        "leaf eaten away"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-171",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-31",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-178",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-early-blight-img-5844-02d",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-5647-02d",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3717-02d",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "small dark spots"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3761-02d",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3652-02d",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-spider-mites-img-3926-02d",
+      "raw": 10,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf mines",
+       "leaf mines",
+       "leaf mines",
+       "leaf mines",
+       "leaf mines",
+       "leaf mines",
+       "leaf mines",
+       "leaf mines",
+       "leaf mines",
+       "leaf mines"
+      ],
+      "kept_findings": [],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-spider-mites-img-3827-02d",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "ragged_holes",
+        "chewed leaf tip",
+        "leaf tip eaten away"
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-healthy-img-3513-02d",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-healthy-img-3558-02d",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-healthy-img-3472-02d",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-iphone-2025-healthy-img-3504-02d",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1910-ko9m8s",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1143",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "brown spots and holes"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1693",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "brown spots on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot113",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "leaf_mines",
+        "aphid",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1544",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "many small dark spots on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-401228814",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-402177099",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on tomato fruit"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-401855015",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "webbing",
+        "webbing",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-338400963",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-388547158",
+      "raw": 2,
+      "kept": 2,
+      "decoded": 2,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "webbing",
+        "webbing",
+        null
+       ],
+       [
+        "webbing",
+        "webbing",
+        null
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-28",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-100",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-bd-2026-healthy-leaf-img-2",
+      "raw": 10,
+      "kept": 3,
+      "decoded": 3,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid",
+        "aphid damage"
+       ],
+       [
+        "other",
+        "aphid",
+        "aphid damage"
+       ],
+       [
+        "other",
+        "aphid",
+        "aphid damage"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-258",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-35",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "aphid",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-early-blight-early-blight-368",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "leaf with brown, shriveled, damaged areas"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-31",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf edge eaten away"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-late-blight-late-blight-24",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "brownish, shriveled leaf tissue with dark spots"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-8",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-215",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-314",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf surface"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-380",
+      "raw": 2,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [
+       "small black speck"
+      ],
+      "kept_findings": [
+       [
+        "frass",
+        "small black insect",
+        "small dark droppings"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-healthy-healthy-310",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1804",
+      "raw": 10,
+      "kept": 5,
+      "decoded": 5,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "small dark spots on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1297",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "shot_holes",
+        "aphid mummy",
+        "small holes in leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-frost-indale",
+      "raw": 2,
+      "kept": 2,
+      "decoded": 2,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "sticky_residue",
+        "aphid",
+        "shiny coating on leaves"
+       ],
+       [
+        "chewed_margins",
+        "tomato_hornworm",
+        "leaf edges eaten away"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-frost-old-dairy",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaves"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-hail",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "tomato_hornworm",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-commons-corn-hail",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "chewed leaf margins",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-potassium",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "sticky_residue",
+        "aphid",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-commons-corn-potassium",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "chewed leaf tips",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-commons-corn-magnesium",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-commons-tomato-blossom-end-rot-vine",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on tomato fruit"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-75",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "brown spots and discolouration"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-68",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-64",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "frass",
+        "aphid",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-94",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-18",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "sticky_residue",
+        "aphid",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-nitrogen-2-3",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-28",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "ragged_holes"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-4",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-50",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-51",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-40",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-37",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-pottasium-4-33",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-57",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-17",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-39",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-65",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid",
+        "small dark spot on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-81",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-50",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "leaf_mines",
+        "aphid damage",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-magnessium-1-31",
+      "raw": 10,
+      "kept": 10,
+      "decoded": 10,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ],
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummies on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-16",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-90",
+      "raw": 2,
+      "kept": 2,
+      "decoded": 2,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "shot_holes",
+        "aphid",
+        null
+       ],
+       [
+        "leaf_mines",
+        "aphid",
+        null
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-79",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-1",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-36",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-7",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "corn-maize-in-2025-phosphorous-3-97",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-mg-magnesium-deficiency-magnesium-deficiency-614",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "aphid mummy on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-mg-magnesium-deficiency-magnesium-deficiency-34",
+      "raw": 0,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-mg-magnesium-deficiency-magnesium-deficiency-22",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf mines"
+      ],
+      "kept_findings": [],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-tomato-bd-2025-mg-magnesium-deficiency-magnesium-deficiency-540",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "aphid mummy",
+        "small dark spot on leaf"
+       ]
+      ],
+      "animal": false
+     },
+     {
+      "case_id": "tomato-inat-391389211",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf mines"
+      ],
+      "kept_findings": [],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-382707209",
+      "raw": 1,
+      "kept": 0,
+      "decoded": 0,
+      "dropped": [
+       "leaf mines"
+      ],
+      "kept_findings": [],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-402514941",
+      "raw": 2,
+      "kept": 2,
+      "decoded": 2,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "tomato hornworm",
+        null
+       ],
+       [
+        "sticky_residue",
+        "aphid",
+        null
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-410400928",
+      "raw": 3,
+      "kept": 3,
+      "decoded": 3,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "tomato_hornworm",
+        null
+       ],
+       [
+        "chewed_margins",
+        "tomato_hornworm",
+        null
+       ],
+       [
+        "chewed_margins",
+        "tomato_hornworm",
+        null
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-409677023",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "tomato hornworm",
+        null
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-409375217",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "leaf_mines",
+        "caterpillar",
+        null
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-407094587",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "chewed_margins",
+        "tomato hornworm eating",
+        null
+       ]
+      ],
+      "animal": true
+     },
+     {
+      "case_id": "tomato-inat-406188529",
+      "raw": 1,
+      "kept": 1,
+      "decoded": 1,
+      "dropped": [],
+      "kept_findings": [
+       [
+        "other",
+        "tomato hornworm eating fruit",
+        "large green caterpillar on fruit"
+       ]
+      ],
+      "animal": true
+     }
+    ],
+    "animal_cases": {
+     "cases": 11,
+     "with_kept": 8,
+     "kept": 12
+    },
+    "other_cases": {
+     "cases": 109,
+     "with_kept": 66,
+     "kept": 83
+    }
+   }
+  },
+  "seven_photos": {
+   "recordings": "worker-qwen3vl8b-fp8-2026-10-24.json",
+   "findings_calls": 2,
+   "damage_raw": 3,
+   "damage_kept": 2,
+   "dropped": 1,
+   "dropped_disease_sign": 0,
+   "dropped_traces": [
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    }
+   ],
+   "statuses": [
+    200
+   ],
+   "p5": {
+    "findings": [
+     {
+      "species": "tomato",
+      "other_name": null,
+      "certainty": "high",
+      "soil_readings": 2,
+      "damage": [
+       [
+        "shot_holes",
+        "aphid"
+       ]
+      ],
+      "organisms": 1
+     },
+     {
+      "species": "corn",
+      "other_name": null,
+      "certainty": "high",
+      "soil_readings": 0,
+      "damage": [
+       [
+        "chewed_margins",
+        "chewed margins"
+       ],
+       [
+        "leaf_mines",
+        "leaf mines"
+       ]
+      ],
+      "organisms": 1
+     }
+    ],
+    "non_latin_characters": 0,
+    "reasons": {
+     "n": 27,
+     "longest": 49,
+     "no_closing_stop": 27
+    },
+    "retries": 0
+   }
+  },
+  "dscn3175": {
+   "recordings": "worker-qwen3vl8b-fp8-2026-10-24-dscn3175.json",
+   "findings_calls": 2,
+   "damage_raw": 3,
+   "damage_kept": 1,
+   "dropped": 2,
+   "dropped_disease_sign": 1,
+   "dropped_traces": [
+    {
+     "pattern": "other",
+     "trace": "spots on leaves",
+     "disease_sign": true
+    },
+    {
+     "pattern": "leaf_mines",
+     "trace": "leaf mines",
+     "disease_sign": false
+    }
+   ],
+   "statuses": [
+    200
+   ],
+   "p5": {
+    "findings": [
+     {
+      "species": "tomato",
+      "other_name": null,
+      "certainty": "high",
+      "soil_readings": 2,
+      "damage": [
+       [
+        "other",
+        "spots on leaves"
+       ]
+      ],
+      "organisms": 0
+     },
+     {
+      "species": "corn",
+      "other_name": null,
+      "certainty": "high",
+      "soil_readings": 0,
+      "damage": [
+       [
+        "chewed_margins",
+        "chewed margins"
+       ],
+       [
+        "leaf_mines",
+        "leaf mines"
+       ]
+      ],
+      "organisms": 1
+     }
+    ],
+    "non_latin_characters": 0,
+    "reasons": {
+     "n": 27,
+     "longest": 44,
+     "no_closing_stop": 27
+    },
+    "retries": 0
+   }
+  }
+ }
+}
