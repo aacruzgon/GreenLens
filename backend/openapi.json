@@ -1984,7 +1984,7 @@
         "tags": [
           "worker"
         ],
-        "summary": "`POST /internal/workers/heartbeat`: every 10 s. Extends the listed leases (only the worker's\nown, never past `claimed_at + max_runtime`), records `versions` for `/status`, and answers\nthe jobs to stop.",
+        "summary": "`POST /internal/workers/heartbeat`: every 10 s. Extends the listed leases (only the worker's\nown, never past `claimed_at + max_runtime`), records `versions` for the label-version rule\n(`pipeline::runs::labels_loaded`), and answers the jobs to stop.",
         "operationId": "heartbeat",
         "requestBody": {
           "content": {
@@ -2169,7 +2169,7 @@
         "tags": [
           "account"
         ],
-        "summary": "`POST /me/push-tokens`: `204`; registering the same token again is a no-op.",
+        "summary": "`POST /me/push-tokens`: `204`; registering the same token again is a no-op. An `ios` or\n`android` token that isn't an Expo push token (`ExponentPushToken[…]`, `ExpoPushToken[…]`)\nis `400 invalid_request` on `token`.",
         "operationId": "register_push_token",
         "requestBody": {
           "content": {
@@ -3967,7 +3967,7 @@
         "tags": [
           "ops"
         ],
-        "summary": "`GET /status`: worker health, their model versions (contracts v0.9 keys) and the queue. No\nuser data.",
+        "summary": "`GET /status`: each known worker's capabilities, health, last heartbeat and GPU name, and the\nqueue's counts. No user data, and no model versions: a heartbeat's `versions` are kept for\nthe label-version rule (contracts 5), and results carry their own `model_versions`.",
         "operationId": "status",
         "responses": {
           "200": {
@@ -10318,6 +10318,121 @@
           }
         }
       },
+      "PushPayload": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "To the scan's creator, while still a member.",
+            "required": [
+              "v",
+              "reason",
+              "garden_id",
+              "plant_id",
+              "scan_id",
+              "kind"
+            ],
+            "properties": {
+              "garden_id": {
+                "$ref": "#/components/schemas/Id",
+                "description": "The garden."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "scan"
+                ]
+              },
+              "plant_id": {
+                "$ref": "#/components/schemas/Id",
+                "description": "The plant."
+              },
+              "reason": {
+                "$ref": "#/components/schemas/PushScanReason",
+                "description": "Why."
+              },
+              "scan_id": {
+                "$ref": "#/components/schemas/Id",
+                "description": "The scan."
+              },
+              "v": {
+                "$ref": "#/components/schemas/V1",
+                "description": "`1`."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A forecast alert's task, to every member.",
+            "required": [
+              "v",
+              "garden_id",
+              "task_id",
+              "trigger",
+              "kind"
+            ],
+            "properties": {
+              "garden_id": {
+                "$ref": "#/components/schemas/Id",
+                "description": "The garden."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "alert"
+                ]
+              },
+              "task_id": {
+                "$ref": "#/components/schemas/Id",
+                "description": "The alert task."
+              },
+              "trigger": {
+                "$ref": "#/components/schemas/TriggerKind",
+                "description": "The rule."
+              },
+              "v": {
+                "$ref": "#/components/schemas/V1",
+                "description": "`1`."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "To every other member the garden had.",
+            "required": [
+              "v",
+              "garden_name",
+              "kind"
+            ],
+            "properties": {
+              "garden_name": {
+                "type": "string",
+                "description": "Its name."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "garden_deleted"
+                ]
+              },
+              "v": {
+                "$ref": "#/components/schemas/V1",
+                "description": "`1`."
+              }
+            }
+          }
+        ],
+        "description": "`PushPayload` ([contracts 9]): the `data` of an Expo push message, tagged by `kind`."
+      },
+      "PushScanReason": {
+        "type": "string",
+        "description": "`PushPayload.reason` for `kind: \"scan\"`.",
+        "enum": [
+          "plan_ready",
+          "plan_superseded",
+          "question",
+          "failed"
+        ]
+      },
       "PushToken": {
         "type": "string",
         "description": "push token"
@@ -10336,7 +10451,7 @@
           },
           "token": {
             "$ref": "#/components/schemas/PushToken",
-            "description": "The Expo push token."
+            "description": "The Expo push token (`ExponentPushToken[…]` or `ExpoPushToken[…]`) for `ios` and\n`android`; for `web`, any printable string of at most 255 bytes, stored and never sent."
           }
         },
         "additionalProperties": false

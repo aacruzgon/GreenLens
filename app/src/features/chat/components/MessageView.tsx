@@ -5,9 +5,9 @@ import { Image } from "expo-image";
 import { ActivityIndicator, View } from "react-native";
 
 import { imageSource } from "@/api";
-import type { AnswerBlock, FarmCitationWithText } from "@/domain/proposed";
+import type { AnswerBlock } from "@/domain/proposed";
 import { formatDateTime } from "@/domain/format";
-import type { Attachment, Citation, Memory, PendingAction } from "@/domain/types";
+import type { Attachment, Citation, FarmCitation, Memory, PendingAction } from "@/domain/types";
 import { links } from "@/platform";
 import { Button, CitationList, Text, radii, space, useTheme } from "@/ui";
 
@@ -71,7 +71,7 @@ interface AnswerProps {
   tools: readonly ToolChip[];
   blocks: readonly AnswerBlock[];
   citations: readonly Citation[];
-  farm: readonly FarmCitationWithText[];
+  farm: readonly FarmCitation[];
   pending: readonly PendingAction[];
   memories: readonly Memory[];
   rescans: readonly RescanRequest[];

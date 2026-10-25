@@ -94,9 +94,31 @@ def test_committed_report():
     assert all(v["matches_pp"] for v in r["recipes"].values())
     assert s["crops"]["same_rect"]
     # The finding: the worker's resize differs from Pillow's by its pass order, so the target fails
-    # as the worker is today, and a horizontal-first resize brings BioCLIP's tensors within a level.
+    # as the worker is today, and a horizontal-first resize brings BioCLIP's tensors within a level
+    # but leaves the detector's and SAM's at two, still over the target. When #218's fix lands,
+    # run again and point REPORT at the new report: `passes` stays false unless the target or the
+    # fix moves.
     assert not s["passes"]
     assert s["bioclip"]["hfirst_max"] <= s["bioclip"]["one_level"] * 1.001
     assert s["crops"]["hfirst_max"] <= s["bioclip"]["one_level"] * 1.001
+    assert max(s[n]["hfirst_max"] for n in par.RECIPES) >= r["target"]
     assert s["resize_hfirst"]["max"] <= 2
+    # The upload ran through `UploadProcessor::process`: the blur layer is zero where it found no
+    # face, and the `WebP` layer never includes the blur.
+    assert r["inputs"]["worker"]["face_model"].startswith("yunet")
+    for p in r["photos"]:
+        assert p["blurred"] == (p["blur"]["max"] > 0), p["id"]
+        assert p["blurred"] == (p["id"] in s["blurred"]), p["id"]
     assert REPORT.with_suffix(".md").read_text() == par.report_md(r)
+
+
+def test_upload_manifest_needs_the_repositorys_yunet(tmp_path):
+    with pytest.raises(SystemExit, match="fetch --for api"):
+        par.upload_manifest(tmp_path)
+    entry = par.manifest_entries()["yunet"]
+    (tmp_path / "manifest.toml").write_text(
+        f'[[model]]\nname = "yunet"\nversion = "{entry["version"]}"\nfile = "{entry["file"]}"\nsha256 = "{"0" * 64}"\n')
+    with pytest.raises(SystemExit, match="fetch --for api"):
+        par.upload_manifest(tmp_path)
+    (tmp_path / "manifest.toml").write_text(par.MODELS.read_text())
+    assert par.upload_manifest(tmp_path) == tmp_path / "manifest.toml"

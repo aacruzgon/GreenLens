@@ -1,4 +1,5 @@
-//! `S3BlobStore` against the pinned `rustfs/rustfs:1.0.1` image. Ignored by default:
+//! `S3BlobStore` against the pinned `rustfs/rustfs:1.0.1` image: put, 412, streamed get, the
+//! delimiter listing, 1005 keys listed and deleted. Ignored by default:
 //!
 //! ```sh
 //! docker run -d --rm --name pdm-rustfs -p 127.0.0.1:19000:9000 \
@@ -103,6 +104,15 @@ async fn put_get_list_and_delete_against_rustfs() {
     assert_eq!(
         store.list(&ObjectPrefix::scan(g, s)).await.unwrap().len(),
         1005
+    );
+    // The orphan sweep's delimiter listing: one common prefix for the garden's 1006 objects.
+    assert_eq!(
+        store.list_prefixes(&ObjectPrefix::gardens()).await.unwrap(),
+        vec![ObjectPrefix::garden(g)]
+    );
+    assert_eq!(
+        blob::garden_prefixes(store.as_ref()).await.unwrap(),
+        vec![g]
     );
 
     let queue = DeleteQueue::new(store.clone());

@@ -29,8 +29,9 @@ pub async fn healthz(State(state): State<SharedState>) -> Result<Wire<Healthz>, 
     Ok(Wire::ok(Healthz { ok: BoolLit }))
 }
 
-/// `GET /status`: worker health, their model versions (contracts v0.9 keys) and the queue. No
-/// user data.
+/// `GET /status`: each known worker's capabilities, health, last heartbeat and GPU name, and the
+/// queue's counts. No user data, and no model versions: a heartbeat's `versions` are kept for
+/// the label-version rule (contracts 5), and results carry their own `model_versions`.
 #[utoipa::path(get, path = "/status", tag = "ops", security(()),
     responses((status = 200, body = Status), (status = 503, body = ErrorBody)))]
 pub async fn status(State(state): State<SharedState>) -> Result<Wire<Status>, ApiError> {

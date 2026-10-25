@@ -31,8 +31,8 @@ use crate::{
 };
 
 /// `POST /internal/workers/heartbeat`: every 10 s. Extends the listed leases (only the worker's
-/// own, never past `claimed_at + max_runtime`), records `versions` for `/status`, and answers
-/// the jobs to stop.
+/// own, never past `claimed_at + max_runtime`), records `versions` for the label-version rule
+/// (`pipeline::runs::labels_loaded`), and answers the jobs to stop.
 #[utoipa::path(post, path = "/internal/workers/heartbeat", tag = "worker", security(("worker" = [])), request_body = Heartbeat,
     responses((status = 200, body = HeartbeatResponse), (status = 401, body = ErrorBody)))]
 pub async fn heartbeat(

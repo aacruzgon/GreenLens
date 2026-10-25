@@ -128,7 +128,8 @@ PDM/
    ├─ storage/         RustFS setup and notes
    ├─ connectors/      farm connectors (Slack, Google Drive) and Era by Eon as their test bench
    ├─ setup/           what each team member installs, per OS
-   └─ infra/           CI, images, compose files, secrets and deploys
+   ├─ infra/           CI, images, compose files, secrets and deploys
+   └─ site/            the landing page (index.html), published as the README's interactive overview
 ```
 
 What each crate does is in architecture §3 (Rust crates); how each is built is in [`docs/backend`](docs/backend/README.md).

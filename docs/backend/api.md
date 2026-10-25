@@ -1,6 +1,6 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.7.25, 2026-10-24. v0.7.25: `wiring::router_calibration` gives the LLM classifier `Calibration::llm()` (`safety_sensitive` +0.1) instead of the default. v0.7.24: `JEV_MODEL` pins the Jev version (`jev-1.14.0` unless set; an alias such as `jev-latest` stops start-up), and `wiring` gives the chat agent the router calibration of the classifier it wires (`Calibration::jev()` with Jev, the default with the LLM classifier) and logs which one (backend roadmap S5). v0.7.23: `tests/chat.rs` drives `POST /conversations/{id}/messages` with a turn that sends an answer block: the stream carries the `answer_block` frame and the replay stored under the idempotency key holds the block in `message.blocks`; the generated fake store delegates `plant_summaries`. v0.7.22: `tests/pending_actions.rs` drives confirm and reject of a pending action through the router, including a lost plan race, a removed neighbour, a confirm retry and an unknown card (S5). v0.7.20: the optional `POISON_CONTROL_TEXT` setting is read into `Config::poison_control_text` and `wiring::agent_config` puts it in the `AgentConfig` (S5 work 6); start-up refuses a text whose sentence the dose check would replace (`config::check_poison_control_text`). v0.7.19: `POST /conversations/{id}/messages` lists both its `200` content types in OpenAPI, `text/event-stream` (`ChatEvent`) and `application/json` (`MessageReplay`), so `Message` and `MessageReplay` are named schemas. v0.7.18: `tests/pipeline.rs` drives the `plan` step: the plan writer gets the garden's farm records and the stored plan keeps the cited ones (EON E5.4); the generated fake store delegates `search_records_for_plan`. v0.7.17: the pipeline's object store is the delete queue's (`DeleteQueue::queued_store`), so the masks it deletes after a lost lease go through the queue (section 17). v0.7.16: `outbound` parses Soil Landscapes of Canada once at start and gives it to `SoilGrids`, so a Canadian garden where SoilGrids has no data is `ready` after one call (a test runs the wired adapter for a Toronto garden); a GPS garden whose reverse lookup fails is created with the time zone's label instead of `503` ([integrations 8, 9](integrations.md#8-soilgrids)). v0.7.15: start-up step 3 runs `store::SurrealStore::migrate` (the schema, the numbered files, then `knowledge.surql`) instead of applying the schema alone and logs what it applied, and step 6 stops when `knowledge_meta:current` names another text embedder (`check_embedder`). v0.7.14: `ApiError::chain` gives the log form of an error handled outside a request (its code and message, then the cause's `source()` chain), so a failed follow-up or scheduled task, the weather-cell and `SoilGrids` warnings and `ApiError`'s `Debug` log the cause, not only "store failed" or the user's message; `POST /plants`, `POST /plants/{id}/species`, a new plant of `POST /scans` and of `PUT /gardens/{id}/map` answer `400 invalid_request` for a species the knowledge base doesn't hold (the store's check, contracts 9); `tests/pipeline.rs` drives the real pipeline over the fake store (`state_with_pipeline`) for `complete`'s catch-up stage events and species confirmation (section 21). v0.7.13: `farm_sync/tests_era.rs` has T-E4.5's Slack half (a `day2` Slack sync, then the 180-day cleanup) and E4.3's resync against Era's Drive simulator, and Slack's re-read starts at the newest message seen when that is older than its 7 days. v0.7.12: a farm record is embedded and hashed under a line naming its author and title (`chunk::embedded_text`, EON gap G12), and a source's stored state carries `text_version`, so a state from before it starts afresh (keeping `failing`) and every record is read and embedded again once. v0.7.11: the modules are a library target (`lib.rs`) and `main.rs` the binary, so `backend/tools/era-eval` (docs/EON E8) can run the real farm sync; `connect`, `farm_sync`, `sealing`, `config`, `router`, `scheduler` and `wiring` are public, the rest stay private, the library has no doc tests, and the signal handler's test moved into `main.rs` (section 3). v0.7.10: the farm sync reads Google Drive (roadmap E4.3): `FarmSources` holds `DriveSource` for owners' connectors and, with `ERA_GOOGLE_BASE`, for the `era` ones; the sync renews Google's access token before a run when it has under 5 minutes left and once a run after Google refuses it, storing each grant through `connect::refresh_and_store`, the compare-and-set the source picker now shares (`ConnectVendors::refresh` takes `force`); an `era` connector is never renewed (section 16); after its audit, a page that lists the whole source (`FarmPage::listed`) makes the sync delete the source's other records, `TooLarge` from an adapter stops with `too_large`, the renewal before a run gives way to shutdown, and one Drive page can overrun the 3-minute budget (section 16). v0.7.9: the account deletion finishes the user's `deleting` connectors through `deleting_connectors_of_user`, so one in a garden being deleted no longer blocks `DELETE $user`, and a connect lost to a deletion is answered as not found; `complete` runs its work on the tracker in a `connect` route group with a 60 s timeout, so a dropped request neither keeps a claim nor orphans tokens, and a panic releases the claim; a final write that fails ambiguously re-reads the row before revoking; the pending cleanup leaves claims younger than `CONNECT_CLAIM_HOLD`; without `CONNECTOR_KEY` an account cascade deletes the user's connectors unrevoked (sections 7, 11, 16, 17). v0.7.8: the connect and deletion branches share one path: `DeletionRunner::finish_connector` is the only revoke-then-delete (the owner's `DELETE /connectors/{id}` spawns it; `revoke.rs` and `connect::disconnect` are gone), `sealing::StoredTokens` the only reader of a sealed token, and `ConnectVendors` the only revoke seam; a token another live `vendor` connector of the same Slack team or Google account holds isn't revoked; each revoke runs in a task of its own; a demotion starts the task only when an owner was demoted; `complete` claims the state before the exchange and revokes tokens it can't store; a refreshed Google token is stored with a compare-and-set; the callback passes on only a short vendor error code (sections 11, 17). v0.7.7: connector deletion (roadmap E3.6): a garden's cascade, an owner's demotion, removal or leaving, and account deletion delete the connectors that owner created; the store marks them `deleting` in its transaction, and the deletion runner unseals each token, revokes it through the `TokenRevoker` seam (`revoke.rs`, Slack's `auth.revoke` and Google's `revoke`; never for an `era` connector) after that commit, then deletes the records and the row, resumed at start while the mark remains; the deletion runner opens tokens with `unseal` too (section 17). v0.7.6: farm connectors connect (roadmap E3.3–E3.5): `connect.rs` signs the OAuth state (`OAuthState`, an HMAC-SHA256 under `ConnectorKey::state_key` over the connector id, the nonce and the expiry), seals the tokens as `StoredTokens` (Slack's bot token as its plain string, Google's grant as JSON `{access_token, refresh_token, expires_at}`), and holds the `ConnectVendors` seam that `wiring/connect.rs` implements over the Slack and Drive clients on the vendors' own hosts; the seven connector routes are built (section 11), refuse an `era` connector with `409 invalid_state`, and the `cleanup` task deletes pending connectors after 10 minutes (section 16). v0.7.5: the farm sync's rounds decide turns and `synced_at`, never who is read (section 16): a round gives every chosen source a turn, a page asked whatever follows (`Rotation::turned`), the budget left then goes to the passes in progress, and the round ends with `Synced` only when every source is caught up, `RoundEnded` when one has pages left or a failed last turn (`SourceState::failing`, which keeps `last_error`), and `NoSources` for a connector without sources; older-item checks need 140 s left, and a page can still overrun the budget by several paced calls. The farm sync's audit fixes (section 16): the sources rotate per run (`state::Rotation`, stored under `SYNC_STATE_KEY`), so each run starts after the last source the previous one read, a new source joins the round in progress, and the run reports `Synced` (setting `synced_at`) only when every chosen source has finished its pass in the round; older-thread checks are two per connector run (`PROBES_PER_RUN`), none on a first pass, and a page is offered only as many as 70 s each of the budget left covers after 70 s for the page; the garden's record count is read before each page is stored; a page of a source dropped meanwhile doesn't count toward the record limit; seeding reports a garden or a connector being deleted (`Seeded::GardenDeleting`, `Seeded::ConnectorDeleting`); shutdown interrupts a page in flight (the budget is still checked between pages), a `429`'s wait is kept between 60 s and 1 h, and seeding repairs an existing demo connector (token sealed again, status and `last_error` reset) and warns when the fixed id lives in another garden. v0.7.4: start-up seeds the demo garden's two `era` connectors after resuming deletions (roadmap E4.6), by fixed id, into the garden `ERA_DEMO_GARDEN_ID` names, with their tokens sealed under `CONNECTOR_KEY` (sections 4, 5 and 16). v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7.26, 2026-10-24. v0.7.26: the orphan sweep (`scheduler/orphans.rs`) uses `blob::orphan_candidates`, also sweeps the prefixes under `gardens/` whose garden record is gone, logs a garden that fails and goes on with the next, and logs one `orphan sweep finished` line a run with its counts; `tests/orphans.rs` drives it over a `MemoryBlobStore` and the fake store (sections 16, 21); section 23 item 4 says a resumed deletion's objects go about an hour after the restart, at the sweep's first run (backend roadmap S6). The `weather` task alerts once per spell of consecutive fired days (`triggers::Spell`, `triggers::spells`), for forecast alerts and plan triggers, and logs one `weather sweep` line of counts per run (section 16). Deletion cascades always finish (backend roadmap S6): a failed background run is retried in the process after each of `RETRY_WAITS` and then resumed by the new `deletions` task every 15 minutes, each run claiming its target, account or connector so a second waits and `resume` skips it; the account cascade leaves its shared gardens and then finishes what is left of the user from the records (`account_leftovers`: a leave cut off after `remove_member`, a garden being deleted, which it waits for or runs), and deletes the user's `usage_daily` and `idempotency_key` rows (`delete_user_rows`), so only the tombstone stays; `tests/account_deletion.rs` (section 17). The broker logs `job leased` (job, scan, kind, worker, attempt, `fallback`, `max_runtime_s`); `POST /me/push-tokens` refuses a non-Expo token for `ios` and `android` (`PushTokenRequest::check`); `Pusher::send` skips stored non-Expo tokens and logs `push sent`, and the `receipts` task logs `push receipts checked`; `PushPayload` is in the OpenAPI components. v0.7.25: `wiring::router_calibration` gives the LLM classifier `Calibration::llm()` (`safety_sensitive` +0.1) instead of the default. v0.7.24: `JEV_MODEL` pins the Jev version (`jev-1.14.0` unless set; an alias such as `jev-latest` stops start-up), and `wiring` gives the chat agent the router calibration of the classifier it wires (`Calibration::jev()` with Jev, the default with the LLM classifier) and logs which one (backend roadmap S5). v0.7.23: `tests/chat.rs` drives `POST /conversations/{id}/messages` with a turn that sends an answer block: the stream carries the `answer_block` frame and the replay stored under the idempotency key holds the block in `message.blocks`; the generated fake store delegates `plant_summaries`. v0.7.22: `tests/pending_actions.rs` drives confirm and reject of a pending action through the router, including a lost plan race, a removed neighbour, a confirm retry and an unknown card (S5). v0.7.20: the optional `POISON_CONTROL_TEXT` setting is read into `Config::poison_control_text` and `wiring::agent_config` puts it in the `AgentConfig` (S5 work 6); start-up refuses a text whose sentence the dose check would replace (`config::check_poison_control_text`). v0.7.19: `POST /conversations/{id}/messages` lists both its `200` content types in OpenAPI, `text/event-stream` (`ChatEvent`) and `application/json` (`MessageReplay`), so `Message` and `MessageReplay` are named schemas. v0.7.18: `tests/pipeline.rs` drives the `plan` step: the plan writer gets the garden's farm records and the stored plan keeps the cited ones (EON E5.4); the generated fake store delegates `search_records_for_plan`. v0.7.17: the pipeline's object store is the delete queue's (`DeleteQueue::queued_store`), so the masks it deletes after a lost lease go through the queue (section 17). v0.7.16: `outbound` parses Soil Landscapes of Canada once at start and gives it to `SoilGrids`, so a Canadian garden where SoilGrids has no data is `ready` after one call (a test runs the wired adapter for a Toronto garden); a GPS garden whose reverse lookup fails is created with the time zone's label instead of `503` ([integrations 8, 9](integrations.md#8-soilgrids)). v0.7.15: start-up step 3 runs `store::SurrealStore::migrate` (the schema, the numbered files, then `knowledge.surql`) instead of applying the schema alone and logs what it applied, and step 6 stops when `knowledge_meta:current` names another text embedder (`check_embedder`). v0.7.14: `ApiError::chain` gives the log form of an error handled outside a request (its code and message, then the cause's `source()` chain), so a failed follow-up or scheduled task, the weather-cell and `SoilGrids` warnings and `ApiError`'s `Debug` log the cause, not only "store failed" or the user's message; `POST /plants`, `POST /plants/{id}/species`, a new plant of `POST /scans` and of `PUT /gardens/{id}/map` answer `400 invalid_request` for a species the knowledge base doesn't hold (the store's check, contracts 9); `tests/pipeline.rs` drives the real pipeline over the fake store (`state_with_pipeline`) for `complete`'s catch-up stage events and species confirmation (section 21). v0.7.13: `farm_sync/tests_era.rs` has T-E4.5's Slack half (a `day2` Slack sync, then the 180-day cleanup) and E4.3's resync against Era's Drive simulator, and Slack's re-read starts at the newest message seen when that is older than its 7 days. v0.7.12: a farm record is embedded and hashed under a line naming its author and title (`chunk::embedded_text`, EON gap G12), and a source's stored state carries `text_version`, so a state from before it starts afresh (keeping `failing`) and every record is read and embedded again once. v0.7.11: the modules are a library target (`lib.rs`) and `main.rs` the binary, so `backend/tools/era-eval` (docs/EON E8) can run the real farm sync; `connect`, `farm_sync`, `sealing`, `config`, `router`, `scheduler` and `wiring` are public, the rest stay private, the library has no doc tests, and the signal handler's test moved into `main.rs` (section 3). v0.7.10: the farm sync reads Google Drive (roadmap E4.3): `FarmSources` holds `DriveSource` for owners' connectors and, with `ERA_GOOGLE_BASE`, for the `era` ones; the sync renews Google's access token before a run when it has under 5 minutes left and once a run after Google refuses it, storing each grant through `connect::refresh_and_store`, the compare-and-set the source picker now shares (`ConnectVendors::refresh` takes `force`); an `era` connector is never renewed (section 16); after its audit, a page that lists the whole source (`FarmPage::listed`) makes the sync delete the source's other records, `TooLarge` from an adapter stops with `too_large`, the renewal before a run gives way to shutdown, and one Drive page can overrun the 3-minute budget (section 16). v0.7.9: the account deletion finishes the user's `deleting` connectors through `deleting_connectors_of_user`, so one in a garden being deleted no longer blocks `DELETE $user`, and a connect lost to a deletion is answered as not found; `complete` runs its work on the tracker in a `connect` route group with a 60 s timeout, so a dropped request neither keeps a claim nor orphans tokens, and a panic releases the claim; a final write that fails ambiguously re-reads the row before revoking; the pending cleanup leaves claims younger than `CONNECT_CLAIM_HOLD`; without `CONNECTOR_KEY` an account cascade deletes the user's connectors unrevoked (sections 7, 11, 16, 17). v0.7.8: the connect and deletion branches share one path: `DeletionRunner::finish_connector` is the only revoke-then-delete (the owner's `DELETE /connectors/{id}` spawns it; `revoke.rs` and `connect::disconnect` are gone), `sealing::StoredTokens` the only reader of a sealed token, and `ConnectVendors` the only revoke seam; a token another live `vendor` connector of the same Slack team or Google account holds isn't revoked; each revoke runs in a task of its own; a demotion starts the task only when an owner was demoted; `complete` claims the state before the exchange and revokes tokens it can't store; a refreshed Google token is stored with a compare-and-set; the callback passes on only a short vendor error code (sections 11, 17). v0.7.7: connector deletion (roadmap E3.6): a garden's cascade, an owner's demotion, removal or leaving, and account deletion delete the connectors that owner created; the store marks them `deleting` in its transaction, and the deletion runner unseals each token, revokes it through the `TokenRevoker` seam (`revoke.rs`, Slack's `auth.revoke` and Google's `revoke`; never for an `era` connector) after that commit, then deletes the records and the row, resumed at start while the mark remains; the deletion runner opens tokens with `unseal` too (section 17). v0.7.6: farm connectors connect (roadmap E3.3–E3.5): `connect.rs` signs the OAuth state (`OAuthState`, an HMAC-SHA256 under `ConnectorKey::state_key` over the connector id, the nonce and the expiry), seals the tokens as `StoredTokens` (Slack's bot token as its plain string, Google's grant as JSON `{access_token, refresh_token, expires_at}`), and holds the `ConnectVendors` seam that `wiring/connect.rs` implements over the Slack and Drive clients on the vendors' own hosts; the seven connector routes are built (section 11), refuse an `era` connector with `409 invalid_state`, and the `cleanup` task deletes pending connectors after 10 minutes (section 16). v0.7.5: the farm sync's rounds decide turns and `synced_at`, never who is read (section 16): a round gives every chosen source a turn, a page asked whatever follows (`Rotation::turned`), the budget left then goes to the passes in progress, and the round ends with `Synced` only when every source is caught up, `RoundEnded` when one has pages left or a failed last turn (`SourceState::failing`, which keeps `last_error`), and `NoSources` for a connector without sources; older-item checks need 140 s left, and a page can still overrun the budget by several paced calls. The farm sync's audit fixes (section 16): the sources rotate per run (`state::Rotation`, stored under `SYNC_STATE_KEY`), so each run starts after the last source the previous one read, a new source joins the round in progress, and the run reports `Synced` (setting `synced_at`) only when every chosen source has finished its pass in the round; older-thread checks are two per connector run (`PROBES_PER_RUN`), none on a first pass, and a page is offered only as many as 70 s each of the budget left covers after 70 s for the page; the garden's record count is read before each page is stored; a page of a source dropped meanwhile doesn't count toward the record limit; seeding reports a garden or a connector being deleted (`Seeded::GardenDeleting`, `Seeded::ConnectorDeleting`); shutdown interrupts a page in flight (the budget is still checked between pages), a `429`'s wait is kept between 60 s and 1 h, and seeding repairs an existing demo connector (token sealed again, status and `last_error` reset) and warns when the fixed id lives in another garden. v0.7.4: start-up seeds the demo garden's two `era` connectors after resuming deletions (roadmap E4.6), by fixed id, into the garden `ERA_DEMO_GARDEN_ID` names, with their tokens sealed under `CONNECTOR_KEY` (sections 4, 5 and 16). v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 42 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
@@ -190,6 +190,7 @@ bins/api/src/
 ├─ broker.rs         JobBroker: Notify-woken claim long poll
 ├─ push.rs           Pusher: who gets which push
 ├─ scheduler.rs      the background tasks
+│  ├─ orphans.rs     the orphan sweep: live gardens and prefixes whose garden is gone; OrphanReport
 │  └─ triggers.rs    the trigger rules (frost, heat, humid stretch, heavy rain, after rain, dry soil)
 ├─ farm_sync.rs      FarmSync: the connectors task's body over the FarmSource adapters; FarmSources
 │  ├─ chunk.rs       chunks of at most 2,000 characters, their embedded text and text_hash
@@ -204,6 +205,7 @@ bins/api/src/
 │                    internal, media, ops
 └─ tests.rs          handler tests
    ├─ tests/fake_store.rs  generated: a Store of per-area mockall mocks
+   ├─ tests/account_deletion.rs  account runs resumed, a cut-off leave, the account-and-garden race, retries
    ├─ tests/beliefs.rs     the beliefs route and the deletion runner's Agent Memory step
    ├─ tests/chat.rs        the chat stream and its JSON replay carry the answer blocks
    ├─ tests/connect.rs     the connect flow and the owner routes on, with a mocked ConnectVendors
@@ -1855,7 +1857,12 @@ pub fn app(state: SharedState) -> Router {
     info(title = "PDM API", description = "Plant, crop and garden health monitoring."),
     modifiers(&BearerAuth),
     security(("clerk" = [])),
-    components(schemas(domain::chat::AnchorType, domain::records::task::TaskState)),
+    // Types no path names: `PushPayload` is the `data` of a push message, which the app reads.
+    components(schemas(
+        domain::chat::AnchorType,
+        domain::records::task::TaskState,
+        domain::garden::push::PushPayload
+    )),
     tags(
         (name = "scans", description = "contracts 3 and 4"),
         (name = "gardens", description = "contracts 9"),
@@ -3927,7 +3934,7 @@ impl ScanWriter for ScanWriters {
 
 - **One actor per active scan**, fed by a bounded `mpsc` channel (64 commands). Every event of a scan goes through `ScanWriter::emit`, from the pipeline (worker results, answers, the sweep, species changes) and from `api` itself (the claim's `queued → analysing`). For each event the actor calls `EventRepo::append_event`, which increments `scan.last_event_seq` and creates `scan_event:[scan, seq]` in one transaction ([database 4](../database/README.md#scan-events-a-gap-free-seq-)), then publishes. Because `seq` comes from the database, ordering doesn't depend on the actor's lifetime: a writer recreated later continues the sequence.
 - **Resting points.** After the last event of each `emit` call, if that event can end a resting point (`plan_ready`, `plan_superseded`, `diagnosis`, `question_resolved`, `guided_check_done`, `failed`), the actor reads `EventRepo::stream_state` and flags the event `rests` when the scan is at rest: `planned` or `failed`, no question open or `answering`, no guided check `analysing`, **and no step claim held** (`step_claimed`, the pipeline's addition, so a late answer's `question_resolved`, emitted while `score` runs, doesn't close the stream before the new diagnosis and plan). The pipeline emits each resting point's final events in one call (agreed by message).
-- **Pushes.** The writer sees every event, so the push rule of [contracts 9](../architecture/contracts.md#push-notifications) lives here (`Pusher::scan_reason`): `plan_ready`, `plan_superseded` (not for a chat revision), `question` and `failed` go to the scan's creator while still a member, in a spawned task.
+- **Pushes.** The writer sees every event, so the push rule of [contracts 9](../architecture/contracts.md#push-notifications) lives here (`Pusher::scan_reason`): `plan_ready`, `plan_superseded` (not for a chat revision), `question` and `failed` go to the scan's creator while still a member, in a spawned task. `Pusher::send` sends only to Expo push tokens of `ios` and `android` (a token stored before `POST /me/push-tokens` checked its form is skipped, since Expo would refuse its whole batch), forgets the `DeviceNotRegistered` ones, and logs one `push sent` line per call: `kind`, `reason` (scan pushes), `recipients`, `devices`, `skipped`, `messages`, `accepted`, `unregistered`, `forgotten`, `failed` (`push not sent`, a warning, when the whole send failed).
 - **Plan writes** of a scan run one at a time under `plan_lock`: an owned guard of a per-scan `tokio::sync::Mutex<()>`, separate from the event channel so a 10-second plan-writer call never delays event delivery ([contracts 7](../architecture/contracts.md#actionplan), re-planning).
 
 **Lifecycle (question 22).** Three pieces, each with its own rule, so none keeps another alive: the actor starts on a scan's first `emit` and retires after 60 s without a command or on shutdown, removing only its own entry (a generation number), then closing its channel and draining what was queued, so no accepted command is lost; an `emit` that races the retirement gets its command back from the failed send and starts a new actor. The broadcast channel lives in the hub (below). The plan lock is swept when nobody holds or waits for it (`Arc::strong_count == 1`). Settled with the pipeline author.
@@ -4428,12 +4435,22 @@ impl JobBroker {
             tokio::pin!(notified);
             notified.as_mut().enable();
             let now = self.clock.now();
-            if let Some(job) = self
-                .jobs
-                .claim_job(worker, slots, claim_policy(caps, now), now)
-                .await?
-            {
-                return Ok(Some(job));
+            let policy = claim_policy(caps, now);
+            let fallback = policy.on_fallback;
+            if let Some(claimed) = self.jobs.claim_job(worker, slots, policy, now).await? {
+                // The attribution of every lease, which the rig-failure test times the
+                // fallback's takeover from.
+                tracing::info!(
+                    job_id = %claimed.job.job_id,
+                    scan_id = %claimed.job.scan_id,
+                    kind = claimed.job.spec.kind().as_str(),
+                    worker_id = %worker,
+                    attempt = claimed.job.attempt,
+                    fallback,
+                    max_runtime_s = claimed.job.max_runtime_s,
+                    "job leased"
+                );
+                return Ok(Some(claimed));
             }
             tokio::select! {
                 () = &mut notified => {}
@@ -4449,14 +4466,14 @@ impl JobBroker {
 }
 ```
 
-**The long poll** ([database 4](../database/README.md#job-claim-with-slots-), [architecture 8.4](../architecture/README.md#84-job-leasing-and-fallback)): claim at once if a job is eligible (the store's transaction: the worker's `slots`, its kinds, `queued_at` 15 s back for the fallback, the photo-answer hold); otherwise wait for a wake-up, the 1-second fallback poll, the deadline (`204`) or shutdown (`204`, and the worker reconnects to the next process). `Notify::notify_waiters` wakes **every** waiting claim, each re-runs its query and one wins (the transaction's re-check makes the losers conflict and retry onto the next job), and it stores no permit, so a claim that starts later doesn't wake for nothing. The `Notified` future is created and `enable`d *before* each query, so a job queued between the query and the wait still wakes it. ✓ `an_empty_queue_answers_none_at_the_deadline_after_polling` (paused time: 3 queries in a 3-second wait).
+**The long poll** ([database 4](../database/README.md#job-claim-with-slots-), [architecture 8.4](../architecture/README.md#84-job-leasing-and-fallback)): claim at once if a job is eligible (the store's transaction: the worker's `slots`, its kinds, `queued_at` 15 s back for the fallback, the photo-answer hold); otherwise wait for a wake-up, the 1-second fallback poll, the deadline (`204`) or shutdown (`204`, and the worker reconnects to the next process). `Notify::notify_waiters` wakes **every** waiting claim, each re-runs its query and one wins (the transaction's re-check makes the losers conflict and retry onto the next job), and it stores no permit, so a claim that starts later doesn't wake for nothing. The `Notified` future is created and `enable`d *before* each query, so a job queued between the query and the wait still wakes it. ✓ `an_empty_queue_answers_none_at_the_deadline_after_polling` (paused time: 3 queries in a 3-second wait). Every lease is logged at `info` as `job leased`, with `job_id`, `scan_id`, `kind`, `worker_id`, `attempt`, `fallback` (the claimer has the `fallback` capability, so its runtime is doubled) and `max_runtime_s`: the attribution the rig-failure test times the fallback's takeover from.
 
 **One wake-up path.** The `Notify` is the store's own (`SurrealStore::jobs_queued()`), and only the store signals it, after the commit of every write that queues or requeues a job: `enqueue_job`, step commits and run starts, `add_image` (a guided or segmentation job), a retryable failure in `complete_job`, and `requeue_stale` when any job went back to `queued` ([store 14](store.md#14-jobs-and-workers)). Neither `api` nor the pipeline signals it by hand (there is no `ScanWriter::job_queued` or `JobBroker::job_queued`), so a new write path can't forget to, and the stale-lease requeue wakes waiting claims like every other.
 
 ```rust
 /// `POST /internal/workers/heartbeat`: every 10 s. Extends the listed leases (only the worker's
-/// own, never past `claimed_at + max_runtime`), records `versions` for `/status`, and answers
-/// the jobs to stop.
+/// own, never past `claimed_at + max_runtime`), records `versions` for the label-version rule
+/// (`pipeline::runs::labels_loaded`), and answers the jobs to stop.
 #[utoipa::path(post, path = "/internal/workers/heartbeat", tag = "worker", security(("worker" = [])), request_body = Heartbeat,
     responses((status = 200, body = HeartbeatResponse), (status = 401, body = ErrorBody)))]
 pub async fn heartbeat(
@@ -4625,7 +4642,7 @@ pub struct Task {
 
 /// Every task of the table in api.md section 16. The 10-minute question continuation is part
 /// of `sweep` (`Pipeline::sweep` owns it), not a task of its own.
-pub const TASKS: [Task; 10] = [
+pub const TASKS: [Task; 11] = [
     Task {
         name: "requeue",
         every: Duration::from_secs(5),
@@ -4650,6 +4667,11 @@ pub const TASKS: [Task; 10] = [
         name: "cleanup",
         every: Duration::from_mins(10),
         first_after: Duration::from_mins(1),
+    },
+    Task {
+        name: "deletions",
+        every: Duration::from_mins(15),
+        first_after: Duration::from_mins(15),
     },
     Task {
         name: "weather",
@@ -4688,6 +4710,7 @@ pub fn start(state: &Arc<AppState>) {
             "idle" => every(state, task, idle),
             "beliefs" => every(state, task, beliefs),
             "cleanup" => every(state, task, cleanup),
+            "deletions" => every(state, task, deletions),
             "weather" => every(state, task, weather_and_triggers),
             "soil" => every(state, task, soil),
             "connectors" => {
@@ -4766,11 +4789,71 @@ Each task is a loop on the process `TaskTracker`: `interval_at` with a first del
 | `idle` | 60 s | Limiter keys (`retain_recent`, `shrink_to_fit`), idle broadcast channels, unheld plan locks | In memory |
 | `beliefs` | 10 s | `agent::beliefs::sync_pending(…, 50)`, the only writer to Agent Memory: erases the subjects queued in `belief_forget` (then re-marks their remaining shared memories unsynced), then records the unsynced shared memories, oldest first. A failure is logged and retried next run without holding up the rest; a failed erase holds back the records under its subject. The counts are logged when any is above 0. With Agent Memory off it only empties the queue | `belief_forget` (`belief_forgets`, `finish_belief_forget`); `memory.belief_synced_at` (`unsynced_shared`, `mark_synced`) |
 | `cleanup` | 10 min | Expired idempotency keys, weather older than 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion (`TOMBSTONE_KEEP`), farm connectors still `pending` 10 minutes after their connect started (`PENDING_CONNECT_TTL`, `delete_expired_connects`), except one a `complete` claimed less than 10 minutes ago, whose exchange may still be running (`CONNECT_CLAIM_HOLD`), synced Slack messages older than 180 days (`farm_sync::delete_old_messages`; Drive documents stay while they are under the folder) | Batches of 500; `weather_cache` by key range ([database 4](../database/README.md#cleanup-no-ttl)) |
-| `weather` | 1 h | Group gardens by cell, fetch each missing cell once (batches of 50, a failed batch retried once, then cell by cell, `integrations::open_meteo::fetch_cells`), cache them; fire forecast alerts (task + push to every member) and plan triggers (task on the rule's plant) | `weather_cache:[hour, cell]`; tasks deduplicated by the unique `alert_key` ([database 4](../database/README.md#alert-dedupe-)) |
+| `deletions` | 15 min | `DeletionRunner::resume`, as at start: the cascades whose in-process retries ran out (an outage longer than `RETRY_WAITS`), skipping the runs this process holds; first run 15 minutes after start, which resumes on its own | `unfinished_deletions`, `unfinished_account_deletions`, `deleting_connectors(None)` |
+| `weather` | 1 h | Group gardens by cell, fetch each missing cell once (batches of 50, a failed batch retried once, then cell by cell, `integrations::open_meteo::fetch_cells`), cache them; fire forecast alerts (task + push to every member) and plan triggers (task on the rule's plant), once per spell; log `weather sweep` with its counts | `weather_cache:[hour, cell]`; tasks once per spell (`task.spell_until`) and deduplicated by the unique `alert_key` ([database 4](../database/README.md#alert-dedupe-)) |
 | `soil` | 15 min | `SoilGrids` for due gardens, at most 4 a run (its limit is 5 calls a minute): `pending`, or `unavailable` past `soil_retry_at`. A failure stores `unavailable` with the next attempt `soil_retry_after` it ([contracts 9](../architecture/contracts.md#gardens)): 15 minutes after an outage (timeout, connection error, `5xx`, `429`), 7 days after `NotFound` (null pixels at the point, no soil in Soil Landscapes of Canada, and null at the 8 nearby probes). So a null Canadian point inside SLC costs one call and is `ready`, a null-pixel garden outside it costs its 9 paced calls once a week, not every 15 minutes; an outage stops at the first call. `POST /gardens` makes the first attempt the same way (`fetch_soil_profile`) | `garden.soil_profile`, `garden.soil_retry_at`; `gardens_due_soil_profile`, `soil_profile_failed` |
 | `connectors` | 1 min | Only when connectors are on. `FarmSync::run_due`: at most 4 due connectors (`active`, `next_sync_at` passed, not stopped by `too_large` or `source_missing`), synced side by side; each is due again 15 minutes after a sync that finished (below) | `connector_due` index (`due_connectors`), `finish_sync`, `farm_record` upserts by `(connector, vendor_id, n)` |
-| `receipts` | 15 min | Expo push receipts: forget `DeviceNotRegistered` tokens (`Notifier::check_receipts`) | `push_token` deletes |
-| `orphans` | 24 h | Objects older than an hour under each garden's prefix that no record points to, deleted through the delete queue ([storage 4](../storage/README.md#4-writes-and-deletes)) | `DeletionRepo::unreferenced_keys` over every key field |
+| `receipts` | 15 min | Expo push receipts: forget `DeviceNotRegistered` tokens (`Notifier::check_receipts`), and log `push receipts checked` (`checked`, `ok`, `errors`, `forgotten`) when there were any | `push_token` deletes |
+| `orphans` | 24 h, first run 1 h after start | Objects older than an hour that no record points to, under each live garden's prefix and each prefix under `gardens/` whose garden record is gone, deleted through the delete queue ([storage 4](../storage/README.md#4-writes-and-deletes); below). A garden that fails is logged and skipped; one line a run gives the counts | `gardens_by_cell`; `GardenRepo::existing_gardens`; `DeletionRepo::unreferenced_keys` over every key field |
+
+**The orphan sweep** ([blob 9](blob.md#9-the-orphan-sweep)) sweeps the live gardens (`gardens_by_cell`), then lists the prefixes under `gardens/` (`blob::garden_prefixes`, one delimiter listing) and sweeps each that isn't live and whose garden has no record (`existing_gardens`): objects that landed after their garden's cascade deleted its prefix, such as an upload racing the deletion. A garden being deleted still has its record, so it is left to its cascade. The live gardens are read first, so a garden created meanwhile has its record by the time the prefixes are checked. Each garden runs `orphan_candidates` (the hour is `blob::ORPHAN_MIN_AGE`), `unreferenced_keys` and one `DeleteJob::Keys`, awaited; a key the store answers outside the garden's prefix is dropped, so nothing outside `gardens/{garden}/` is ever deleted. Only the list of live gardens failing fails the run; a garden whose listing, key check or delete fails, or a failed listing of `gardens/`, is logged as a warning (`garden not swept; the next sweep retries`, `deleted gardens' prefixes not listed; the next sweep retries`, `orphans not deleted; the next sweep retries`) and the run goes on. Each run ends with one `info` line, `orphan sweep finished`, with `gardens`, `gone_gardens`, `listed`, `candidates`, `orphans`, `deleted`, `not_deleted` and `failed`. The first run is an hour after start (`first_after`), then every 24 hours; neither is configurable.
+
+```rust
+/// What one run did, for its log line.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OrphanReport {
+    /// Gardens swept, live and gone.
+    pub gardens: usize,
+    /// Of those, gardens with objects but no record.
+    pub gone_gardens: usize,
+    /// Objects listed under the gardens' prefixes.
+    pub listed: usize,
+    /// Of those, objects older than `blob::ORPHAN_MIN_AGE`.
+    pub candidates: usize,
+    /// Of those, objects no record points to.
+    pub orphans: usize,
+    /// Objects deleted.
+    pub deleted: u64,
+    /// Orphans whose delete gave up; the next run finds them again.
+    pub not_deleted: usize,
+    /// Gardens (or the listing of `gardens/`) that failed and were skipped.
+    pub failed: usize,
+}
+
+/// One run: the gardens to sweep, then each garden in turn. Only the list of live gardens is
+/// fatal; every later failure is logged, counted in `failed` and skipped.
+pub async fn sweep(
+    store: &dyn Store,
+    blob: &dyn BlobStore,
+    deletes: &DeleteQueue,
+    now: Timestamp,
+) -> Result<OrphanReport, ApiError> {
+    let mut report = OrphanReport::default();
+    let live: BTreeSet<GardenId> = store
+        .gardens_by_cell()
+        .await?
+        .into_iter()
+        .flat_map(|cell| cell.gardens)
+        .collect();
+    let gone = match gone_gardens(store, blob, &live).await {
+        Ok(gone) => gone,
+        Err(error) => {
+            tracing::warn!(error = %error.chain(), "deleted gardens' prefixes not listed; the next sweep retries");
+            report.failed += 1;
+            Vec::new()
+        }
+    };
+    report.gone_gardens = gone.len();
+    for garden in live.into_iter().chain(gone) {
+        report.gardens += 1;
+        if let Err(error) = sweep_garden(store, blob, deletes, garden, now, &mut report).await {
+            tracing::warn!(%garden, error = %error.chain(), "garden not swept; the next sweep retries");
+            report.failed += 1;
+        }
+    }
+    Ok(report)
+}
+```
 
 ```rust
 /// `SoilGrids` retries ([contracts 9], the soil profile): at most 4 due gardens a run, inside
@@ -4819,12 +4902,18 @@ pub async fn fetch_soil_profile(
 ```rust
 /// Weather by cell, forecast alerts and plan triggers ([architecture 8.3]): group the gardens by
 /// cell, fetch each missing cell once in requests of up to 50 (a failed batch is retried once,
-/// then cell by cell), cache it, then fire the rules. Alert tasks are deduplicated by their
-/// unique `alert_key`, so overlapping runs create each alert once.
-async fn weather_and_triggers(state: Arc<AppState>) -> Result<(), ApiError> {
+/// then cell by cell), cache it, then fire the rules. One alert per spell: the consecutive days
+/// a trigger fires on alert once, when first seen, and the store keeps how far each alerted
+/// spell has been seen, so later runs, forecast updates, restarts and overlapping runs never
+/// alert it again. Ends with one `weather sweep` log line of counts.
+pub(crate) async fn weather_and_triggers(state: Arc<AppState>) -> Result<(), ApiError> {
     let now = state.ports.clock.now();
     let hour = hour_of(now);
     let cells = state.ports.store.gardens_by_cell().await?;
+    let mut counts = SweepCounts {
+        cells: cells.len(),
+        ..SweepCounts::default()
+    };
     let mut weather: HashMap<WeatherCell, CellWeather> = HashMap::new();
     let mut missing = Vec::new();
     for cell in &cells {
@@ -4838,7 +4927,8 @@ async fn weather_and_triggers(state: Arc<AppState>) -> Result<(), ApiError> {
             }),
         }
     }
-    fetch_missing_weather(&state, &missing, hour, &mut weather).await?;
+    counts.cached = weather.len();
+    counts.fetched = fetch_missing_weather(&state, &missing, hour, &mut weather).await?;
     let thresholds = state.config.weather;
     let pusher = Pusher::new(state.ports.store.clone(), state.ports.notifier.clone());
     let mut fired_by_garden: HashMap<GardenId, Vec<_>> = HashMap::new();
@@ -4847,47 +4937,42 @@ async fn weather_and_triggers(state: Arc<AppState>) -> Result<(), ApiError> {
             continue;
         };
         let fired = triggers::fired(w, &thresholds);
+        let spells = triggers::spells(&fired);
         for &garden in &cell.gardens {
             fired_by_garden.insert(garden, fired.clone());
-            for &(trigger, date) in &fired {
-                let (title, detail) = triggers::alert_text(trigger);
-                let task = NewTask {
-                    id: state.ports.ids.id(),
-                    plant: None,
-                    plan: None,
-                    plan_step: None,
-                    scan: None,
-                    title: title.to_owned(),
-                    detail: Some(detail.to_owned()),
-                    due: Some(date),
-                    repeat: None,
-                    source: TaskSource::ForecastAlert,
-                    trigger: Some(TaskTrigger {
-                        kind: trigger,
-                        date,
-                    }),
-                    alert_key: Some(AlertKey::Forecast {
-                        garden,
-                        trigger,
-                        date,
-                    }),
-                    created_by: None,
-                    created_at: now,
-                };
-                if let Some(created) = state.ports.store.create_alert_task(garden, task).await? {
-                    let members = pusher.members(garden).await;
-                    let payload = PushPayload::Alert {
-                        v: V1,
-                        garden_id: garden,
-                        task_id: created.id,
-                        trigger,
-                    };
-                    pusher.send(&members, title, detail, payload).await;
+            for spell in &spells {
+                counts.spells += 1;
+                if alert_spell(&state, &pusher, garden, spell, now).await? {
+                    counts.created += 1;
+                } else {
+                    counts.suppressed += 1;
                 }
             }
         }
     }
-    create_plan_trigger_tasks(&state, &fired_by_garden, now).await?;
+    (counts.plan_spells, counts.plan_created) =
+        create_plan_trigger_tasks(&state, &fired_by_garden, now).await?;
+    let SweepCounts {
+        cells,
+        cached,
+        fetched,
+        spells,
+        created,
+        suppressed,
+        plan_spells,
+        plan_created,
+    } = counts;
+    tracing::info!(
+        cells,
+        cached,
+        fetched,
+        spells,
+        created,
+        suppressed,
+        plan_spells,
+        plan_created,
+        "weather sweep"
+    );
     Ok(())
 }
 ```
@@ -5838,7 +5923,7 @@ pub async fn seed_era_connectors(
 }
 ```
 
-**Alert and plan-trigger dedupe.** A forecast alert's key is `<garden>:<trigger>:<date>` and a plan trigger's `plan:<plan>:<step>:<date>` ([contracts 7](../architecture/contracts.md#task)); the store's insert fails on a duplicate and `create_alert_task` answers `None`, so overlapping runs, or a run repeated after a crash, create each task once and push once. "Today" is the forecast's first day: Open-Meteo answers in the cell's time zone, so no time-zone database is needed.
+**One alert per spell.** `triggers::spells` groups a run's fired days into spells, the consecutive days one trigger fires on (a frost on three nights, the overlapping starts of a long humid stretch), and each spell is one `create_alert_task` call: the key's date is the spell's first day and `until` its last. The store continues a spell whose first day is at most a day after the `spell_until` of a task of the same spell, whatever the task's state, and creates nothing; so later runs, a forecast shifted as the past drops out, a restart and a dismissal never alert it again, and only a new spell's alert is pushed ([flows 11](flows.md#weather-forecast-alerts-and-plan-triggers)). Plan triggers do the same per rule, with the rule's dates up to its `until`. A forecast alert's key is `<garden>:<trigger>:<date>` and a plan trigger's `plan:<plan>:<step>:<date>` ([contracts 7](../architecture/contracts.md#task)); the store's insert fails on a duplicate and `create_alert_task` answers `None`, so overlapping runs, or a run repeated after a crash, create each task once and push once. A garden being deleted gets `None` too. "Today" is the forecast's first day: Open-Meteo answers in the cell's time zone, so no time-zone database is needed. The cache keeps each day's minimum, not its hours, so a frost today whose cold hours are past still counts when a run first sees it. Each run ends with one `info` line, `weather sweep`, with `cells`, `cached`, `fetched`, `spells`, `created`, `suppressed`, `plan_spells` and `plan_created`.
 
 **The trigger rules** are pure functions of a cell's weather. Their thresholds are `domain::rules::weather::WeatherThresholds` ([domain 7, weather thresholds](domain.md#weather-thresholds)), held in `Config::weather` and also given to Open-Meteo (each day's `frost_risk`) and the pipeline (fusion), so an alert and a diagnosis never disagree about frost or a humid stretch. The thresholds aren't in the contracts, so the defaults are a proposal (section 23). Only the 3-day horizon is the scheduler's own:
 
@@ -5877,6 +5962,41 @@ pub fn fired(weather: &CellWeather, t: &WeatherThresholds) -> Vec<(TriggerKind, 
     }
     out
 }
+
+/// A spell: the consecutive days on which one trigger fires, the unit an alert is created for
+/// ([architecture 8.3], one alert per spell).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spell {
+    /// The rule.
+    pub trigger: TriggerKind,
+    /// Its first fired day: the alert's date.
+    pub from: LocalDate,
+    /// Its last fired day in this forecast, the store's `spell_until`.
+    pub until: LocalDate,
+}
+
+/// The spells of a list of fired triggers: each trigger's dates grouped into runs of
+/// consecutive days, by trigger name and then date. A frost on three days is one spell, and so
+/// are the overlapping starts of a long humid stretch.
+pub fn spells(fired: &[(TriggerKind, LocalDate)]) -> Vec<Spell> {
+    let mut sorted = fired.to_vec();
+    sorted.sort_by_key(|&(trigger, date)| (trigger.as_str(), date));
+    sorted.dedup();
+    let mut out: Vec<Spell> = Vec::new();
+    for (trigger, date) in sorted {
+        match out.last_mut() {
+            Some(spell) if spell.trigger == trigger && spell.until.plus_days(1) == Some(date) => {
+                spell.until = date;
+            }
+            _ => out.push(Spell {
+                trigger,
+                from: date,
+                until: date,
+            }),
+        }
+    }
+    out
+}
 ```
 
 ---
@@ -5884,7 +6004,18 @@ pub fn fired(weather: &CellWeather, t: &WeatherThresholds) -> Vec<(TriggerKind, 
 ## 17. Deletion
 
 ```rust
-/// Why a background cascade stopped; it resumes on the next start.
+/// The waits before each retry of a background run that failed: 9 minutes 40 seconds in all,
+/// so an outage of a few minutes is ridden out in the process. After the last, the scheduler's
+/// `deletions` task resumes the run.
+pub const RETRY_WAITS: [Duration; 5] = [
+    Duration::from_secs(10),
+    Duration::from_secs(30),
+    Duration::from_mins(1),
+    Duration::from_mins(2),
+    Duration::from_mins(6),
+];
+
+/// Why a background cascade stopped; it is retried after each of [`RETRY_WAITS`], then resumed.
 #[derive(Debug, thiserror::Error)]
 pub enum DeletionError {
     /// The database.
@@ -5915,6 +6046,8 @@ pub struct DeletionRunner {
     /// The key that opens connector tokens and the vendors that revoke them; `None` with
     /// connectors off (no `CONNECTOR_KEY`), when no token can be opened to revoke.
     revoke: Option<Revoke>,
+    /// The runs in progress, shared by every clone.
+    running: Arc<Running>,
 }
 ```
 
@@ -5939,6 +6072,7 @@ impl DeletionRunner {
             tasks,
             shutdown,
             revoke: None,
+            running: Arc::default(),
         }
     }
 
@@ -5949,16 +6083,58 @@ impl DeletionRunner {
         self
     }
 
-    /// Runs a started cascade in the background. Not tied to the shutdown token: shutdown waits
-    /// for it up to its drain deadline, and a cascade cut off there resumes on the next start.
+    /// Runs a started cascade in the background, after any run of the same target, retried
+    /// after each of [`RETRY_WAITS`]. Not tied to the shutdown token: shutdown waits for it up
+    /// to its drain deadline (a retry's wait ends at shutdown), and a cascade cut off there
+    /// resumes on the next start.
     pub fn spawn(&self, started: DeletionStarted) {
         let runner = self.clone();
+        let key = RunKey::Target(started.target);
+        let mut claim = self.running.enter(key);
         self.tasks.spawn(async move {
-            let target = started.target;
-            if let Err(error) = runner.run(started).await {
-                tracing::error!(?target, error = %error, "deletion failed; it resumes on restart");
-            }
+            claim.acquire().await;
+            runner.retrying(key, || runner.run(started.clone())).await;
         });
+    }
+
+    /// Runs `attempt` until it succeeds, again after each of [`RETRY_WAITS`]; a failure after
+    /// the last, or a shutdown, leaves the run to `resume` (the scheduler's `deletions` task, or
+    /// the next start).
+    async fn retrying<F, Fut>(&self, key: RunKey, mut attempt: F)
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = Result<(), DeletionError>>,
+    {
+        let mut waits = RETRY_WAITS.iter();
+        loop {
+            let error = match attempt().await {
+                Ok(()) => return,
+                Err(DeletionError::ShutDown) => {
+                    tracing::warn!(run = ?key, "deletion stopped by shutdown; it resumes on restart");
+                    return;
+                }
+                Err(error) => error,
+            };
+            let Some(&wait) = waits.next() else {
+                tracing::error!(run = ?key, error = %error, "deletion failed after its retries; the deletions task resumes it");
+                return;
+            };
+            tracing::warn!(run = ?key, error = %error, ?wait, "deletion failed; retrying");
+            tokio::select! {
+                () = tokio::time::sleep(wait) => {}
+                () = self.shutdown.cancelled() => {
+                    tracing::warn!(run = ?key, "deletion stopped by shutdown; it resumes on restart");
+                    return;
+                }
+            }
+        }
+    }
+
+    /// [`run`](Self::run) once no other run holds the target: the account cascade's way into a
+    /// garden whose own cascade may be running.
+    async fn run_claimed(&self, started: DeletionStarted) -> Result<(), DeletionError> {
+        let _claim = self.running.claim(RunKey::Target(started.target)).await;
+        self.run(started).await
     }
 
     /// A removed member's connectors, then objects, then records, then pushes. Records go only
@@ -6043,7 +6219,7 @@ impl DeletionRunner {
         self.tasks.spawn(async move {
             let connector = row.connector.id;
             if let Err(error) = runner.finish_connector(row).await {
-                tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+                tracing::error!(%connector, error = %error, "connector deletion stopped; the deletions task resumes it");
             }
         });
     }
@@ -6067,7 +6243,7 @@ impl DeletionRunner {
         for row in rows.into_iter().filter(|r| r.created_by == owner) {
             let connector = row.connector.id;
             if let Err(error) = self.finish_connector(row).await {
-                tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+                tracing::error!(%connector, error = %error, "connector deletion stopped; the deletions task resumes it");
             }
         }
     }
@@ -6090,8 +6266,9 @@ impl DeletionRunner {
     /// (unless another live connector holds the account's), then deletes its records and the
     /// row, 500 records a batch. A failed revoke is logged and the deletion goes on.
     pub async fn finish_connector(&self, row: ConnectorRow) -> Result<(), StoreError> {
-        self.revoke_stored(&row).await;
         let connector = row.connector.id;
+        let _claim = self.running.claim(RunKey::Connector(connector)).await;
+        self.revoke_stored(&row).await;
         while self.store.delete_connector_batch(connector).await? > 0 {}
         tracing::info!(%connector, "connector deleted");
         Ok(())
@@ -6194,14 +6371,21 @@ impl DeletionRunner {
         }
     }
 
-    /// Resumes every cascade a restart cut off: targets still marked `deleting_at`, account
-    /// deletions whose tombstone has no `clerk_deleted_at`, and connectors still marked
-    /// `deleting` outside a garden being deleted (a demotion's or a removal's, cut off between
-    /// the store's commit and the last batch).
+    /// Resumes every cascade a restart or its last retry cut off, and returns how many it
+    /// started: targets still marked `deleting_at`, account deletions whose tombstone has no
+    /// `clerk_deleted_at`, and connectors still marked `deleting` outside a garden being deleted
+    /// (a demotion's or a removal's, cut off between the store's commit and the last batch).
+    /// Skips what a run in this process holds, so the scheduler's `deletions` task can call it
+    /// while runs are in progress. Accounts and targets start together: an account run waits
+    /// for (or runs) a garden of its own cascade.
     pub async fn resume(&self) -> Result<usize, StoreError> {
-        let targets = self.store.unfinished_deletions().await?;
-        let accounts = self.store.unfinished_account_deletions().await?;
+        let free = |key| !self.running.holds(key);
+        let mut targets = self.store.unfinished_deletions().await?;
+        targets.retain(|t| free(RunKey::Target(*t)));
+        let mut accounts = self.store.unfinished_account_deletions().await?;
+        accounts.retain(|m| free(RunKey::Account(m.user)));
         let mut connectors = self.store.deleting_connectors(None).await?;
+        connectors.retain(|r| free(RunKey::Connector(r.connector.id)));
         if self.revoke.is_none() && !connectors.is_empty() {
             // A former owner's connectors wait for the key, so their tokens can be revoked.
             tracing::warn!(
@@ -6213,13 +6397,19 @@ impl DeletionRunner {
         let count = targets.len() + accounts.len() + connectors.len();
         if !connectors.is_empty() {
             let runner = self.clone();
+            // Registered now, so a resume before the task reaches a connector skips it too.
+            let entered: Vec<Claim> = connectors
+                .iter()
+                .map(|r| self.running.enter(RunKey::Connector(r.connector.id)))
+                .collect();
             self.tasks.spawn(async move {
                 for row in connectors {
                     let connector = row.connector.id;
                     if let Err(error) = runner.finish_connector(row).await {
-                        tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+                        tracing::error!(%connector, error = %error, "connector deletion stopped; the deletions task resumes it");
                     }
                 }
+                drop(entered);
             });
         }
         for marker in accounts {
@@ -6272,22 +6462,25 @@ impl DeletionRunner {
         Ok(true)
     }
 
+    /// The account cascade in the background, after any run of the same account, retried
+    /// after each of [`RETRY_WAITS`].
     fn spawn_account_run(&self, marker: AccountDeletionMarker) {
         let runner = self.clone();
+        let key = RunKey::Account(marker.user);
+        let mut claim = self.running.enter(key);
         self.tasks.spawn(async move {
-            let user = marker.user;
-            if let Err(error) = runner.run_account(marker).await {
-                tracing::error!(%user, error = %error, "account deletion stopped; it resumes on restart");
-            }
+            claim.acquire().await;
+            runner.retrying(key, || runner.run_account(&marker)).await;
         });
     }
 
-    /// The account cascade, in the background: ownership transfers, the gardens the user alone
-    /// used, the shared gardens they leave (their chats there), their scan feedback, the user
-    /// record, and last the account at Clerk, retried until it succeeds or the process stops
-    /// (the tombstone resumes it). Every step is idempotent, so a resumed run repeats them; a
-    /// garden whose own cascade a restart cut off is resumed by `unfinished_deletions`.
-    async fn run_account(&self, marker: AccountDeletionMarker) -> Result<(), DeletionError> {
+    /// The account cascade: ownership transfers, the gardens the user alone used, the shared
+    /// gardens they leave, then whatever of theirs is left in any garden
+    /// ([`finish_leftovers`](Self::finish_leftovers)), their scan feedback and connectors, the
+    /// user record, the rows keyed by the user, and last the account at Clerk, retried until it
+    /// succeeds or the process stops (the tombstone resumes it). Every step is idempotent, so a
+    /// retried or resumed run repeats them.
+    async fn run_account(&self, marker: &AccountDeletionMarker) -> Result<(), DeletionError> {
         let user = marker.user;
         if !marker.user_deleted {
             let plan = self.store.plan_account_deletion(user).await?;
@@ -6298,25 +6491,21 @@ impl DeletionRunner {
             for garden in plan.delete {
                 let owner = authz::check_membership_of::<Owner>(&*self.store, user, garden).await?;
                 let started = self.store.start_garden_deletion(owner, now).await?;
-                self.run(started).await?;
+                self.run_claimed(started).await?;
             }
+            // Leaving commits first; the chats there go with the leftovers below, so a leave
+            // cut off here is finished from the records on the next attempt.
             for garden in plan.leave {
                 let member =
                     authz::check_membership_of::<Viewer>(&*self.store, user, garden).await?;
-                let removed = self.store.remove_member(member, user).await?;
-                if self.revoke.is_some() {
-                    self.finish_member_connectors(garden, user).await;
-                }
-                if !self.delete_objects(removed.chat_prefixes, Vec::new()).await {
-                    return Err(DeletionError::Objects);
-                }
-                self.delete_records(DeletionTarget::Member { garden, user })
-                    .await?;
+                self.store.remove_member(member, user).await?;
             }
+            self.finish_leftovers(user).await?;
             self.store.delete_user_feedback(user).await?;
             self.finish_account_connectors(user).await?;
             self.store.delete_user(user).await?;
         }
+        while self.store.delete_user_rows(user).await? > 0 {}
         let mut wait = Duration::from_secs(1);
         while let Err(error) = self.auth_admin.delete_account(&marker.auth_id).await {
             tracing::warn!(%user, error = %error, ?wait, "Clerk account deletion failed; retrying");
@@ -6329,6 +6518,40 @@ impl DeletionRunner {
         self.store
             .finish_account_deletion(&marker.auth_id, self.clock.now())
             .await?;
+        tracing::info!(%user, "account deleted");
+        Ok(())
+    }
+
+    /// Every garden still holding the user's records (`account_leftovers`, found from the
+    /// records): one being deleted gets its own cascade, run here once no other run holds it,
+    /// so the account never races it to `delete_user`; any other (a garden left by this or an
+    /// earlier attempt) gets the `Member` cascade, the chat objects first.
+    async fn finish_leftovers(&self, user: UserId) -> Result<(), DeletionError> {
+        for left in self.store.account_leftovers(user).await? {
+            let garden = left.garden;
+            if left.deleting {
+                self.run_claimed(DeletionStarted {
+                    target: DeletionTarget::Garden(garden),
+                    prefixes: vec![ObjectPrefix::garden(garden)],
+                    keys: Vec::new(),
+                    notify: Vec::new(),
+                    garden_name: None,
+                })
+                .await?;
+                continue;
+            }
+            let target = DeletionTarget::Member { garden, user };
+            let _claim = self.running.claim(RunKey::Target(target)).await;
+            let prefixes = left
+                .conversations
+                .iter()
+                .map(|c| ObjectPrefix::chat(garden, *c))
+                .collect();
+            if !self.delete_objects(prefixes, Vec::new()).await {
+                return Err(DeletionError::Objects);
+            }
+            self.delete_records(target).await?;
+        }
         Ok(())
     }
 }
@@ -6341,7 +6564,7 @@ impl DeletionRunner {
 | A pending scan (`DELETE /scans/{id}`, editor) | `start_scan_deletion` (`pending` only, `409` otherwise); `204` | Its prefix; its own short step list |
 | A member leaving or removed | `remove_member` (the last owner can't), which marks the connectors they created there `deleting` | Their conversations' image prefixes; those connectors, revoked and deleted; their conversations and unshared chat memories in that garden |
 | An owner demoted (`PATCH /gardens/{id}/members/{user_id}` to any other role) | `change_role`, which marks the connectors they created there `deleting`; `200` | Those connectors, revoked and deleted (`spawn_connectors_of`) |
-| An account (`DELETE /me`, or `user.deleted`) | The plan, for the `202` body; then `start_account_deletion`, the tombstone's compare-and-set: a second request, or the webhook during a `DELETE /me` cascade, starts nothing | Transfers; each solely used garden as above; each shared garden left as a member; scan feedback; the user; the account at Clerk, retried with back-off up to an hour until it succeeds; then `finish_account_deletion` |
+| An account (`DELETE /me`, or `user.deleted`) | The plan, for the `202` body; then `start_account_deletion`, the tombstone's compare-and-set: a second request, or the webhook during a `DELETE /me` cascade, starts nothing | Transfers; each solely used garden as above; each shared garden left (`remove_member`); then `account_leftovers`, from the records: a garden being deleted gets its own cascade once no other run holds it, any other the `Member` steps, chat objects first; scan feedback; the user's `deleting` connectors; the user; `delete_user_rows` until 0; the account at Clerk, retried with back-off up to an hour until it succeeds; then `finish_account_deletion` |
 
 **Agent Memory.** A garden's or plant's cascade erases its scope in Agent Memory without a step of its own: `start_garden_deletion` and `start_plant_deletion` queue the subject in `belief_forget` in the transaction that sets `deleting_at` ([store](store.md)), and the `beliefs` task erases it within seconds while Agent Memory is up (section 16). The queued row is a plain link, not a reference, so it outlives the records, and a cascade resumed after a restart needs nothing. From `deleting_at` on, the sweep records nothing of that plant or garden. Account deletion needs nothing: shared memories stay with the garden (a garden deleted with the account is queued as above) and private ones were never sent.
 
@@ -6351,7 +6574,11 @@ The record steps are `CascadeStep::steps_for(target)` in [database 4](../databas
 
 **Resumable.** At start, `unfinished_deletions` lists every target still marked `deleting_at`, and each is run again from its first step. A garden's objects are one prefix, deleted again; a plant's or scan's objects, whose keys aren't known any more once their records are gone, are left to the orphan sweep, which deletes them once nothing points to them.
 
-**The account tombstone** (`deleted_user:[auth_id]`, `AccountDeletionMarker`, [database 4](../database/README.md#deletion-)) is written first, by `start_account_deletion`, as a compare-and-set on its absence, so two cascades for one user can't run at once: a `DELETE /me` repeated, or a dashboard deletion's `user.deleted` arriving while a `DELETE /me` cascade runs, gets `false` and starts nothing. While it exists, `upsert_user` refuses the auth id, so a session token still valid after the deletion answers `401` and never creates the user again (section 9). It also makes the Clerk deletion durable: `resume` lists `unfinished_account_deletions` (no `clerk_deleted_at`), re-runs the record steps when the user record is still there (each step is idempotent; a garden whose own cascade was cut off is resumed from `deleting_at`), and retries Clerk until it answers; `finish_account_deletion` records it, and the `cleanup` task deletes the tombstone 24 h later (`TOMBSTONE_KEEP`, far longer than a Clerk session token lives). Clerk answers `404` for an account already gone (a dashboard deletion), which counts as success.
+**Retried, and resumed without a restart.** A background run (`spawn`, `spawn_account_run`) that fails with anything but `ShutDown` runs again from its first step after each of `RETRY_WAITS` (10 s, 30 s, 1, 2 and 6 minutes; a wait ends at shutdown), logged `deletion failed; retrying` with the run's key; after the last it logs `deletion failed after its retries` and the `deletions` task's `resume` takes it up within 15 minutes, so a `RustFS` or database outage never leaves a cascade for the next deploy. Each run holds a claim on its key (a target, an account, a connector) while it runs and retries, registered before its task starts: a second run of the same key waits for the first, and `resume` skips a key that is claimed, so the periodic resume never doubles a run in progress. The account cascade takes a garden's claim before it runs that garden's cascade, so the garden's own run and the account's never overlap, whichever starts first.
+
+**The account tombstone** (`deleted_user:[auth_id]`, `AccountDeletionMarker`, [database 4](../database/README.md#deletion-)) is written first, by `start_account_deletion`, as a compare-and-set on its absence, so two cascades for one user can't run at once: a `DELETE /me` repeated, or a dashboard deletion's `user.deleted` arriving while a `DELETE /me` cascade runs, gets `false` and starts nothing. While it exists, `upsert_user` refuses the auth id, so a session token still valid after the deletion answers `401` and never creates the user again (section 9). It also makes the Clerk deletion durable: `resume` lists `unfinished_account_deletions` (no `clerk_deleted_at`), re-runs the record steps when the user record is still there (each step is idempotent), deletes the rows keyed by the user either way, and retries Clerk until it answers; `finish_account_deletion` records it, and the `cleanup` task deletes the tombstone 24 h later (`TOMBSTONE_KEEP`, far longer than a Clerk session token lives). Clerk answers `404` for an account already gone (a dashboard deletion), which counts as success.
+
+**What is left of the account, from the records.** The leave step is `remove_member` alone; the user's chats there go afterwards, with everything else of theirs still in a garden, from `account_leftovers`, which reads the user's conversations and unshared chat memories and the gardens being deleted they belong to. A leave cut off after `remove_member` committed (objects that wouldn't delete, a restart) has no membership left, so the plan no longer lists the garden, while its conversations hold `conversation.user` (`REFERENCE ON DELETE REJECT`) and would refuse `delete_user` on every later run; the leftovers find them. A garden whose own cascade runs (the account's, cut off by a restart, or another owner's) is in the leftovers through the membership and is waited for, or run, before `delete_user`, so one `resume` finishes the account even when it starts the garden's cascade at the same time. After the user record, `delete_user_rows` deletes `usage_daily:[user, …]` and `idempotency_key:[user, …]`, which hold no reference: the tombstone is the only row left (`store/tests/account_deletion.rs` checks every user-linked table).
 
 **Farm connectors** ([connectors 8](../connectors/README.md#8-privacy-and-security); roadmap E3.6). A connector goes with its garden, with the owner who created it when that owner stops being one, and when its owner disconnects it. The store marks it `deleting` in the transaction that changes the garden, the membership or the connector: `start_garden_deletion`, `change_role` from `owner` (which returns `RoleChange { demoted_owner }`, so the route starts the task only for a demotion), `remove_member`, account deletion's `transfer_ownership`, and `start_connector_deletion`. The vendor's revoke is an HTTP call, so the runner makes it after that commit and never inside a transaction, through one path, `finish_connector`: it skips the revoke for an `era` connector (the fixed demo string of start-up seeding) and one without a token, opens the rest with `StoredTokens::unseal`, and leaves the token alone while another live `vendor` connector holds the same account (`shared_account_connectors`: Slack gives one bot token per app and workspace, and revoking Google's refresh token ends the whole grant of that account to our client; a store error counts as held). Otherwise it calls `ConnectVendors::revoke` (the routes' own instance; Google's refresh token first) in a task of its own on the tracker, so a panic is a `JoinError` logged as one failed revoke. The outcome is logged by connector id and kind only, never the token or the vendor's body, and a failure never stops what follows: `delete_connector_batch` until it deletes nothing (records 500 at a time, then the row). A garden's connectors are finished just before its `FarmRecordsAndConnectors` step, whose own batches then delete anything left; a removed member's before their chat objects, and a store error listing them is logged without skipping the chat steps; a demotion's in a task of its own (`spawn_connectors_of`); a disconnect's with `spawn_connector`.
 
@@ -6562,7 +6789,7 @@ The hub, writer and plan-lock maps use `std::sync::Mutex`: their critical sectio
 |---|---|
 | Handlers | The real router (`router::app`), so layers, extractors, the renderer and request ids are under test, driven with `tower::ServiceExt::oneshot`. The ports are mockall mocks from `domain`'s `mock` feature; the store is `tests/fake_store.rs`, a `Store` made of one mock per repository trait with every method delegated, **generated** from `domain::ports::store` by `backend/tools/apigen/gen_fake_store.py` (regenerate when a store trait changes). The generator scans each trait body for `async fn` signatures that end in `;` or open a default body, skipping the body by brace matching, so a method with a default body (`live_lease`, `soil_profile_failed`, `gardens_due_soil_profile`, the account-tombstone methods) is delegated like any other and a test sets its expectations. The seams are small fakes: `NoPipeline` and `NoChat` (`unreachable!()`), `FixedImages` with a fixed answer. `tests/pipeline.rs` builds the real `pipeline::Pipeline` over the same fake store (`state_with_pipeline`), with a recording `ScanWriter` and `unreachable!()` measurement and plan writer, to drive `Pipeline::job_completed` and `POST /plants/{id}/species`; one test drives the `plan` step with a recording plan writer, which receives the garden's farm records from one search for the plant and the leading candidate, and the stored plan keeps the cited ones in `farm_records` (EON E5.4) |
 | Time | `FixedClock`; tokio's paused clock (`start_paused = true`) for the broker's long poll |
-| Scheduler | `scheduler::fetch_soil_profile` called directly, with a mocked `SoilProvider`, and with the adapter `wiring.rs` builds (`SoilGrids` over `wiremock`, answering Toronto's live null pixel, and the embedded SLC lookup) |
+| Scheduler | `scheduler::fetch_soil_profile` called directly, with a mocked `SoilProvider`, and with the adapter `wiring.rs` builds (`SoilGrids` over `wiremock`, answering Toronto's live null pixel, and the embedded SLC lookup). `tests/orphans.rs` runs `scheduler::orphans::sweep` over a `MemoryBlobStore` and the fake store: a live garden's old orphan and a gone garden's old object are deleted, while referenced keys (a photo and its depth map), objects younger than an hour, a garden being deleted, a non-ULID prefix under `gardens/` and `knowledge/` stay; a garden whose key check fails is counted and skipped and the next one is still swept; a failed list of live gardens fails the run. The key check itself runs on the embedded engine in `crates/store/tests/orphans.rs` |
 | Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7), and so is one whose author or channel was renamed (gap G12), and records stored with the text-only hash under a cursor without `text_version` are read again from the start and embedded again once, keeping their ids; a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); seeding twice gives one pair of sealed `era` connectors, a missing garden is skipped, and a garden or a connector being deleted is reported and left so (T-E4.10); a throttled pass resumes from its cursor; ten quiet paced sources each have their turn within four runs, once and in order, the round then ends synced, and the next round starts one further on; no run reports `Synced` while a source is mid-pass, a source added meanwhile included, and a source left mid-pass resumes from its cursor; a new source with a 1,000-page first pass leaves nine others read in every round, and the round it finishes in sets `synced_at`; a source that always fails leaves the others read in every round, the connector keeps its error and no `synced_at` until it answers; a connector without sources reads nothing and waits 15 minutes; a source added later joins the others' round; older-item checks are two a run over every source, none on a first pass, and a page is offered only as many as its budget covers; a page of a source dropped meanwhile doesn't count toward the limit, and the limit counts what another connector stored during the run; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; a re-read catching up after a month keeps only its window's ids in the cursor, an unchanged thread's when its record is in the window, and deletes nothing older; an outage waits 15 minutes. Its `drive` module runs `DriveSource` against a `wiremock` Google with a mocked `ConnectVendors`: an expiring token renewed before the run and stored over the one read, a refused token renewed once and the page asked again, a refused refresh making the connector `reauth_needed`, an `era` connector never renewed, a renewal that loses the compare-and-set keeping its own token for the run while the other grant stays stored, a token refused again after its renewal making the connector `reauth_needed`, nested folders read and a file moved out losing its records, a resync deleting the records of files no longer listed, a document cut at 1 MB before chunking, and a `429` that keeps the first page and the cursor (T-E4.3, T-E4.5). `wiring/connect.rs` tests `VendorClients::refresh` against a mocked token endpoint: an expiring token renewed and a fresh one left, `force` renewing a fresh one, the old refresh token kept when Google sends none, and `expires_at` the clock plus `expires_in`. `farm_sync/tests_era.rs` runs the Slack sync against Era's Slack simulator on the Maple Row Farm fixture (`#[ignore]`d, `era_` names, the nextest `era` group), with `integrations`' `era-sim` harness as a dev-dependency: the first sync stores the chosen channel with authors, links and joined replies (T-E4.2); a quiet channel costs one `conversations.history` call and no embedding, a new message arrives, and a new reply arrives through the re-read, with the `conversations.replies` calls counted exactly through a forwarding proxy that records each `limit` (one check, the 3-minute budget's, and no full read on a quiet pass, one full read for the new reply) (T-E4.4, T-E4.7); a check, one a run in turn over the two threads due one, finds a new reply to a thread older than 7 days and reads it in full; the re-read deletes a message gone at the vendor (T-E4.6); after `day2` and 91 days, the first run, a re-read, reads from each channel's newest message, so a message from the quarter's middle arrives with the last week's and a new thread with its reply, each once, with one `conversations.history` call per channel and nothing deleted; the 91 days away don't count toward a thread's quiet days, so the next sync's check finds a new reply to a thread active at the `day1` sync, and one to a thread quiet for 44 days then is missed; the 180-day cleanup then deletes the 47 fixture messages older than 180 days, and the next day's re-read brings none back (T-E4.5); a throttled first sync resumes without duplicates, `fail_next` is waited out, and an outage is `vendor_unavailable` for 15 minutes (T-E4.8); no log line or record holds a fixture email or a message's text (T-E4.11). Its `drive` module runs the Drive sync on an `era` connector against Era's Drive simulator: every file under `F_FARM`, a nested folder's included, becomes records and nothing outside it does, the Sheet's text is its first tab and the PDF is kept by name (T-E4.3); after `day2` and 91 days, the changed files arrive through `changes.list`, read past Northwind's thousands of changes, with no listing again and no record stored twice (T-E4.5); a change token Drive refuses (`400`) gets a new start token and the folder listed again, the records of a file gone from the folder are deleted and the others kept with their ids and vectors, and the next sync reads `changes.list` (E4.3's resync); a throttled Drive sync finishes on a later run |
 | Pure parts | Config parsing, error mapping and statuses, the fallback renderer, canonical fingerprints, multipart fingerprints, the HMAC signer, the invite limiter, trigger rules, hour truncation, worker tokens |
 
@@ -7000,7 +7227,7 @@ Also settled here, outside the numbered questions:
 1. **Trigger thresholds** (section 16), now `domain::rules::weather::WeatherThresholds`, shared with Open-Meteo's `frost_risk` and the pipeline's fusion ([domain 12](domain.md#12-open-questions), item 17): frost at a 2 m minimum ≤ 0.5 °C (or the day's `frost_risk`), hard frost ≤ −2 °C, heat ≥ 30 °C, a humid stretch of two days in a row each with ≥ 10 hours over 90% RH, heavy rain ≥ 20 mm a day, after rain ≥ 5 mm in 24 h, dry soil below 0.15 m³/m³ with ET₀ ≥ 3 mm. The contracts fix the vocabulary, not the numbers; they belong beside the fusion thresholds in [architecture 15](../architecture/README.md#15-open-decisions).
 2. **The general rate limit** (120 requests a minute per user) and the JSON body limit (1 MiB) are placeholders the documents don't give.
 3. **One user upsert per request.** `authz::authenticate` calls `IdentityRepo::upsert_user` on every authenticated request; the store reads first and checks the account's tombstone in the same call. A short in-process cache of `auth_id → UserId` would remove the read, but it would also skip the tombstone check, so a deleted account's token would work until the entry expired; not done.
-4. **Resumed plant and scan deletions** leave their objects to the daily orphan sweep, up to a day later, because `unfinished_deletions` returns targets without their prefixes. If that delay matters, the store can return each target's prefixes from the records still present.
+4. **Resumed plant and scan deletions** leave their objects to the orphan sweep, about an hour after the restart that resumed them (resumption runs at start, the sweep's first run an hour later, and it takes objects older than an hour), because `unfinished_deletions` returns targets without their prefixes. If that delay matters, the store can return each target's prefixes from the records still present.
 5. **Two OpenAPI component names** are shared by every instantiation of a generic domain type (`Id`, `Slug`), and `ReferenceImage` appears twice (`ReferenceImage`, `ReferenceImage_Signed`); the generated TypeScript types should be checked once ([domain 12](domain.md#12-open-questions)).
 
 ---

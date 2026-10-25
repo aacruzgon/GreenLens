@@ -1,8 +1,8 @@
 # PDM Backend: `blob` crate
 
-> **Status:** Draft v0.2.2, 2026-10-23. v0.2.2: `DeleteQueue::queued_store` gives `pipeline` an `Arc<dyn BlobStore>` whose deletes go through the queue (`QueuedDeletes`), for the masks it deletes when a job's lease is lost after their puts. v0.2.1: the research notes are no longer named by a path outside the repository. v0.2: a delete's only deadline is the client's 120-second operation timeout per attempt (storage v1.2.3), no task timeout around it. v0.1: `S3BlobStore`, the object store over `RustFS` 1.0.1 with `aws-sdk-s3` 1.152, a `DeleteQueue` that runs every delete detached so it is never cancelled, an in-memory store for tests and the orphan sweep's listing side, run against the pinned `RustFS` image.
+> **Status:** Draft v0.2.3, 2026-10-24. v0.2.3: the orphan sweep also sweeps prefixes under `gardens/` whose garden record is gone, found with `BlobStore::list_prefixes` (`ListObjectsV2` with the delimiter `/`) and `blob::garden_prefixes`; `orphan_candidates` also returns how many objects it listed (`Candidates`), for the sweep's log line; section 7 no longer says a stored key's segments are checked as ULIDs. v0.2.2: `DeleteQueue::queued_store` gives `pipeline` an `Arc<dyn BlobStore>` whose deletes go through the queue (`QueuedDeletes`), for the masks it deletes when a job's lease is lost after their puts. v0.2.1: the research notes are no longer named by a path outside the repository. v0.2: a delete's only deadline is the client's 120-second operation timeout per attempt (storage v1.2.3), no task timeout around it. v0.1: `S3BlobStore`, the object store over `RustFS` 1.0.1 with `aws-sdk-s3` 1.152, a `DeleteQueue` that runs every delete detached so it is never cancelled, an in-memory store for tests and the orphan sweep's listing side, run against the pinned `RustFS` image.
 
-Companion to the [backend architecture](README.md) and the [storage notes](../storage/README.md). The port it implements, `BlobStore`, and the key types `ObjectKey` and `ObjectPrefix` are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/blob` with the docgen tool: `cargo check -p blob`, `cargo clippy -p blob --all-targets` and `cargo test -p blob` (4 unit tests) pass on Rust 1.99.1, and the ignored integration test passes against `rustfs/rustfs:1.0.1` by digest.
+Companion to the [backend architecture](README.md) and the [storage notes](../storage/README.md). The port it implements, `BlobStore`, and the key types `ObjectKey` and `ObjectPrefix` are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/blob` with the docgen tool: `cargo check -p blob`, `cargo clippy -p blob --all-targets` and `cargo test -p blob` (6 unit tests) pass on Rust 1.99.1, and the ignored integration test passes against `rustfs/rustfs:1.0.1` by digest.
 
 ## Contents
 
@@ -37,7 +37,7 @@ Companion to the [backend architecture](README.md) and the [storage notes](../st
 | Topic | Storage 5 | Here | Why |
 |---|---|---|---|
 | Behaviour version | `BehaviorVersion::latest()` | `BehaviorVersion::v2026_01_12()` | `latest()` moves with the SDK; pinning keeps retry and timeout behaviour fixed across upgrades (research `http-s3.md` §9) |
-| The trait | "a small `ObjectStore` trait (`put`, `get_stream`, `delete_prefix`)" | The domain's `BlobStore` (`put`, `get`, `get_bytes`, `delete_keys`, `delete_prefix`, `list`) | The measurement stage needs whole depth maps, a removed shot is deleted by key, and the orphan sweep lists |
+| The trait | "a small `ObjectStore` trait (`put`, `get_stream`, `delete_prefix`)" | The domain's `BlobStore` (`put`, `get`, `get_bytes`, `delete_keys`, `delete_prefix`, `list`, `list_prefixes`) | The measurement stage needs whole depth maps, a removed shot is deleted by key, and the orphan sweep lists |
 | Features | default features (the skills' `versions.md` turns them off) | default features off, `default-https-client`, `rt-tokio`, `http-1x` | The default `rustls` feature is the legacy client: a second HTTP stack (`hyper` 0.14, `rustls` 0.21) |
 
 ---
@@ -70,8 +70,8 @@ crates/blob/
 │  ├─ error.rs     map_sdk_error: SdkError → BlobError, 412 by status or code
 │  ├─ delete.rs    DeleteQueue, DeleteJob, DeleteHandle, DeleteOutcome, QueuedDeletes: detached, never cancelled
 │  ├─ memory.rs    MemoryBlobStore, the in-memory fake with RustFS's rules
-│  └─ sweep.rs     orphan_candidates: the garden's objects older than an hour
-└─ tests/rustfs.rs ignored: put, 412, streamed get, 1005 keys listed and deleted against RustFS 1.0.1
+│  └─ sweep.rs     orphan_candidates: the garden's objects older than an hour; garden_prefixes
+└─ tests/rustfs.rs ignored: put, 412, streamed get, the delimiter listing, 1005 keys listed and deleted against RustFS 1.0.1
 ```
 
 ---
@@ -98,6 +98,7 @@ crates/blob/
 | `delete_keys` | `DeleteObjects`, ≤ 1000 keys a call | `quiet`, and `errors()` read on every response (a `200` can carry per-key failures) |
 | `delete_prefix` | `ListObjectsV2` (paginated), then `DeleteObjects` per page | A page is at most 1000 keys, so one page is one batch ✓ |
 | `list` | `ListObjectsV2`, every page | The orphan sweep |
+| `list_prefixes` | `ListObjectsV2` with `delimiter("/")`, every page | The orphan sweep's pass over deleted gardens: `CommonPrefixes` only, no object read. *Unverified* on `RustFS` 1.0.1 until the ignored test runs; the port's default body (used by the in-memory store) derives the prefixes from `list` |
 
 The SDK body is turned into the domain's stream without buffering. `ByteStream` isn't a `futures::Stream` without an unstable feature, so `try_unfold` drives its `try_next()`:
 
@@ -134,7 +135,7 @@ The SDK body is turned into the domain's stream without buffering. `ByteStream` 
 
 ## 7. Keys
 
-Keys are the domain's `ObjectKey` and `ObjectPrefix` ([storage 2](../storage/README.md#2-bucket-keys-and-access); [domain 9](domain.md#9-boundary-traits)): built only from typed ids, so every segment under `gardens/` is a 26-character ULID, never user input, and a key read back from a record goes through `ObjectKey::from_stored`, which refuses empty, `.` and `..` segments ✓ (`RustFS` rejects them with `400`). `blob` adds no key builder of its own; listed keys that don't parse are skipped.
+Keys are the domain's `ObjectKey` and `ObjectPrefix` ([storage 2](../storage/README.md#2-bucket-keys-and-access); [domain 9](domain.md#9-boundary-traits)): the builders take only typed ids, so every id segment under `gardens/` is a ULID, never user input. A key read back from a record or a listing goes through `ObjectKey::from_stored`, which checks only that it starts with `gardens/` or `knowledge/` and has no empty, `.` or `..` segment ✓ (`RustFS` rejects those with `400`), not that its segments are ULIDs; a listed prefix goes through `ObjectPrefix::from_listed`, the same check plus the trailing `/`, and `ObjectPrefix::garden_id` names a garden only for a whole `gardens/{ULID}/`. `blob` adds no key builder of its own; listed keys that don't parse are skipped.
 
 | Key | Built by |
 |---|---|
@@ -143,7 +144,7 @@ Keys are the domain's `ObjectKey` and `ObjectPrefix` ([storage 2](../storage/REA
 | `gardens/{garden}/scans/{scan}/depth/{image}.png`, `depth_confidence/{image}.png` | `ObjectKey::depth`, `depth_confidence` (never served) |
 | `gardens/{garden}/chat/{conversation}/{image}.webp` | `ObjectKey::chat_image` |
 | `knowledge/species/{species}/{hash}.webp` | `ObjectKey::species_photo` (written by the knowledge loader only; the API's key can't write there) |
-| prefixes | `ObjectPrefix::garden`, `scan`, `chat` |
+| prefixes | `ObjectPrefix::garden`, `scan`, `chat`; `gardens` (`gardens/`, for the sweep's delimiter listing) |
 
 ---
 
@@ -161,13 +162,13 @@ It follows `RustFS`'s rules, so a test of a handler or the cascade sees the same
 
 [Storage 4](../storage/README.md#4-writes-and-deletes): a crash between the put and the record leaves an object without a record, never the reverse. The daily sweep runs in three steps across three crates:
 
-1. `blob::orphan_candidates` lists the garden's objects older than an hour;
+1. `blob::orphan_candidates` lists the garden's objects and keeps those older than an hour (`ORPHAN_MIN_AGE`);
 2. the store's `DeletionRepo::unreferenced_keys` keeps those no record points to, counting every key field (`storage_key`, `depth_key`, `depth_confidence_key`, masks and chat images) ([store 17](store.md#17-deletion-and-cleanup));
 3. `DeleteQueue::submit(DeleteJob::Keys(..))` deletes them.
 
-@@items sweep.rs ORPHAN_MIN_AGE orphan_candidates@@
+@@items sweep.rs ORPHAN_MIN_AGE Candidates orphan_candidates garden_prefixes@@
 
-The `knowledge/` prefix is never swept: the loader owns it. The list of gardens comes from `WeatherCacheRepo::gardens_by_cell` in `api`.
+The gardens swept are chosen in `api` ([api 16](api.md#16-the-scheduler), `scheduler::orphans`): the live ones from `WeatherCacheRepo::gardens_by_cell`, then every garden `garden_prefixes` finds under `gardens/` that isn't live and has no record (`GardenRepo::existing_gardens`). That second pass catches objects that landed after their garden's cascade deleted its prefix, such as an upload racing the deletion; a garden still being deleted has its record and is left to its cascade. Both passes run the same three steps, so the hour applies to them too. Nothing outside `gardens/` is swept: the `knowledge/` prefix belongs to the loader, and a prefix under `gardens/` whose segment isn't a ULID is skipped.
 
 ---
 

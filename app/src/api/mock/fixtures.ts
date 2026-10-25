@@ -301,6 +301,24 @@ export interface PlanSpec {
   taskIds?: string[];
 }
 
+/**
+ * The farm records the demo garden's `era` Drive connector holds (the same ids as chat's, chat.ts), which a plan step
+ * can cite: synthetic, so the citation carries the record's text (EON decision 10).
+ */
+const ERA_DRIVE_ID = "conn_era_drive";
+export const FARM_SPRAY_LOG_ID = `${ERA_DRIVE_ID}.1.spray-log-2026`;
+function farmRecordFor(id: string, ts: string): S["FarmCitation"] | undefined {
+  if (id !== FARM_SPRAY_LOG_ID) return undefined;
+  return {
+    record_id: id,
+    system: "google_drive",
+    title: "Spray log 2026",
+    at: ts,
+    link: "http://era-drive:8080/file/spray-log-2026",
+    text: "Jul 14: east bed, copper on the tomatoes after the rain. Aug 2: east bed again, after leaf spots on Tomato 2. Wear gloves; keep the label with the log.",
+  };
+}
+
 export function makePlan(p: PlanSpec): S["ActionPlan"] {
   const plan: S["ActionPlan"] = {
     id: p.id,
@@ -320,6 +338,10 @@ export function makePlan(p: PlanSpec): S["ActionPlan"] {
     prompt_version: "mock-plan-1",
   };
   if (p.supersedes) plan.supersedes = p.supersedes;
+  // The farm records its steps cite, by id (a step lists ids; the plan carries the records).
+  const ids = [...new Set(p.steps.flatMap((s) => s.farm_citations ?? []))];
+  const records = ids.flatMap((id) => farmRecordFor(id, p.ts) ?? []);
+  if (records.length > 0) plan.farm_records = records;
   return plan;
 }
 
@@ -344,6 +366,7 @@ export function blightSteps(
         "Cut off the leaves with spots at the stem and bag them. Do not compost them. Wipe the pruners with alcohol between cuts.",
       targets: target,
       citations: cite,
+      farm_citations: [FARM_SPRAY_LOG_ID],
       plant_id: plant.id,
       when: { kind: "now" },
     },

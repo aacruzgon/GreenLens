@@ -397,8 +397,17 @@ mod deletion_repo {
         ) -> Result<Vec<(ConversationId, ObjectPrefix)>, StoreError> {
             self.deletion_repo.member_conversations(garden, user).await
         }
+        async fn account_leftovers(
+            &self,
+            user: UserId,
+        ) -> Result<Vec<AccountLeftover>, StoreError> {
+            self.deletion_repo.account_leftovers(user).await
+        }
         async fn delete_user_feedback(&self, user: UserId) -> Result<u32, StoreError> {
             self.deletion_repo.delete_user_feedback(user).await
+        }
+        async fn delete_user_rows(&self, user: UserId) -> Result<u32, StoreError> {
+            self.deletion_repo.delete_user_rows(user).await
         }
         async fn delete_user(&self, user: UserId) -> Result<(), StoreError> {
             self.deletion_repo.delete_user(user).await
@@ -839,6 +848,12 @@ mod garden_repo {
         ) -> Result<Vec<(GardenId, Coordinates)>, StoreError> {
             self.garden_repo.gardens_due_soil_profile(now, limit).await
         }
+        async fn existing_gardens(
+            &self,
+            gardens: &[GardenId],
+        ) -> Result<Vec<GardenId>, StoreError> {
+            self.garden_repo.existing_gardens(gardens).await
+        }
         async fn members(
             &self,
             member: Membership<Viewer>,
@@ -1260,8 +1275,9 @@ mod plan_repo {
             &self,
             garden: GardenId,
             task: NewTask,
+            until: LocalDate,
         ) -> Result<Option<Task>, StoreError> {
-            self.plan_repo.create_alert_task(garden, task).await
+            self.plan_repo.create_alert_task(garden, task, until).await
         }
         async fn active_triggers(
             &self,

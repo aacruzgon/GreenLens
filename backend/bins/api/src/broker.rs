@@ -60,12 +60,22 @@ impl JobBroker {
             tokio::pin!(notified);
             notified.as_mut().enable();
             let now = self.clock.now();
-            if let Some(job) = self
-                .jobs
-                .claim_job(worker, slots, claim_policy(caps, now), now)
-                .await?
-            {
-                return Ok(Some(job));
+            let policy = claim_policy(caps, now);
+            let fallback = policy.on_fallback;
+            if let Some(claimed) = self.jobs.claim_job(worker, slots, policy, now).await? {
+                // The attribution of every lease, which the rig-failure test times the
+                // fallback's takeover from.
+                tracing::info!(
+                    job_id = %claimed.job.job_id,
+                    scan_id = %claimed.job.scan_id,
+                    kind = claimed.job.spec.kind().as_str(),
+                    worker_id = %worker,
+                    attempt = claimed.job.attempt,
+                    fallback,
+                    max_runtime_s = claimed.job.max_runtime_s,
+                    "job leased"
+                );
+                return Ok(Some(claimed));
             }
             tokio::select! {
                 () = &mut notified => {}

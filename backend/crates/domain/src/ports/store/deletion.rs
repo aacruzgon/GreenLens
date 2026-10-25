@@ -118,6 +118,21 @@ pub struct AccountDeletionPlan {
     pub leave: Vec<GardenId>,
 }
 
+/// A garden that still holds a record of an account being deleted, found from the records
+/// themselves (the user's conversations and unshared chat memories) and from the memberships in
+/// gardens being deleted, never from the remaining memberships alone: a leave cut off after
+/// `remove_member` committed has no membership left, and `conversation.user` refuses
+/// `delete_user` while a conversation names the user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountLeftover {
+    /// The garden.
+    pub garden: GardenId,
+    /// The garden is being deleted: its own cascade deletes the user's records there.
+    pub deleting: bool,
+    /// The user's conversations in it, whose chat image prefixes go before their records.
+    pub conversations: Vec<ConversationId>,
+}
+
 /// An account deletion's marker and tombstone, `deleted_user:[auth_id]` ([database 4],
 /// deletion): written first, in the compare-and-set that starts the cascade, and kept until the
 /// account is gone at the auth provider plus [`crate::rules::limits::TOMBSTONE_KEEP`]. While it
@@ -195,8 +210,18 @@ pub trait DeletionRepo: Send + Sync {
         user: UserId,
     ) -> Result<Vec<(ConversationId, ObjectPrefix)>, StoreError>;
 
+    /// Account deletion, before step 4: every garden still holding the user's conversations or
+    /// unshared chat memories, and every garden being deleted that they are a member of
+    /// ([`AccountLeftover`]). Empty once the account's gardens are dealt with.
+    async fn account_leftovers(&self, user: UserId) -> Result<Vec<AccountLeftover>, StoreError>;
+
     /// Step 4: the user's scan feedback.
     async fn delete_user_feedback(&self, user: UserId) -> Result<u32, StoreError>;
+
+    /// After step 5: one batch (500 of each) of the rows keyed by the user, which hold no
+    /// reference and so outlive the `user` record: `usage_daily:[user, day]` and
+    /// `idempotency_key:[user, …]`. Returns how many it deleted; the caller repeats until 0.
+    async fn delete_user_rows(&self, user: UserId) -> Result<u32, StoreError>;
 
     /// Step 5: the `user` record (push tokens cascade; author links unset).
     async fn delete_user(&self, user: UserId) -> Result<(), StoreError>;

@@ -1,6 +1,6 @@
 # PDM Backend Flows
 
-> **Status:** Draft v0.2.20, 2026-10-23. v0.2.20: section 9 notes that a card is stored before the turn stores its assistant message. v0.2.19: the chat turn's `show_block` builds an answer block from the turn's own results and the store, with no tool events, and sends `answer_block` ([contracts 8, answer blocks](../architecture/contracts.md#answer-blocks)). v0.2.18: a species confirmed while the scan is `queued` also rewrites the run's queued `perception` job to name it, and a confirmation whose adopt a claim beat decides again on a new snapshot, so a claimed run without the species starts a species-change run. v0.2.17: a species confirmed while the scan is `queued` becomes its run's working species (`PlantRepo::adopt_confirmed_species`), so retrieve, the `vlm` job and the plan use it. v0.2.16: `species_suggested`'s best candidate becomes the scan's working species for its run, in the plant suggestion's transaction and only while that run is current, and a submitted run starts with the plant's confirmed species, so confirming the suggested species no longer re-runs the scan. v0.2.15: a perception completion puts masks when the job's own stages include segmentation, not when the run's `run_started` lists it. v0.2.14: a perception completion puts its masks before `complete_job` only when the run segments, and deletes them when the lease is gone after the puts; a question job's partial result covers its photos alone. v0.2.13: the shutdown's bound is DRAIN_SECONDS plus the inference thread's release: 61 ms on the 3070 with no job held, and with a batch abandoned at the drain bound also until ONNX Runtime ends the terminated run (*unverified*). v0.2.12: the worker's SIGTERM drain ends with the model released before `main` returns, the perception worker's inference thread joined after it has released its sessions, and a `stopped` log line. v0.2.11: start-up applies the migrations after the schema and checks the text embedder against `knowledge_meta`. v0.2.10: a guided job's `complete` sends no catch-up stage events, since its `guided` stage is shared by the run's checks. v0.2.9: `job_completed` reads the run's stage events (`EventRepo::run_stage_events`) and sends the stage events the stream missed before the job's findings, so a stage whose worker events were lost while `api` was down doesn't stay open (backend roadmap gap 9). v0.2.8: a chat turn reads whether the garden has farm records before it classifies the message, and the classifier is asked `Route { farm_records }`, so a question about the garden's own records is on topic when it has some (EON gap G10). v0.2.7: `complete` is in a route group of its own with a 60 s timeout, and without `CONNECTOR_KEY` an account cascade deletes the user's connectors, unrevoked, before the user. v0.2.6: the farm connector deletion has one path, `DeletionRunner::finish_connector`, which the owner's disconnect uses too; it revokes through `ConnectVendors` in a task of its own, keeps a token another live connector of the same Slack team or Google account holds, finishes a removed member's connectors before their objects, and leaves a former owner's connectors `deleting` while `CONNECTOR_KEY` is missing. v0.2.5: farm connectors go with their garden and with the owner who created them (demoted, removed, leaving, or deleting the account): the store marks them `deleting` in the transaction that changes the garden or the membership, and the deletion runner revokes each token after that commit and then deletes the records and the row, resumed at start while the mark remains (section 10, EON E3.6). v0.2.4: the farm sync's rounds decide turns and `synced_at`, never who is read: a round gives every chosen source a turn (a page asked, whatever follows), then the budget left goes to the passes in progress, and the round ends with the next sync 15 minutes later, `synced_at` set only when every source is caught up. The farm sync rotates the sources per run, each run starting after the last source the previous one read, with `synced_at` set only when every chosen source has finished its pass in the round, offers two older-item checks a run (`probe_limit`), as many on a page as its budget covers, and reads the garden's record count before each page; section 11 adds the farm connectors' `connectors` loop with the sync's sequence (pages from a saved cursor, only changed chunks embedded, the daily 7-day re-read, the stopping codes), the `beliefs` loop it lacked, and the cleanup of old Slack messages; section 13 seeds the demo garden's `era` connectors after resuming deletions. v0.2.3: the chat turn offers `search_farm_records` only to a garden with farm records (EON E5.2, gap G6). v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
+> **Status:** Draft v0.2.21, 2026-10-24. v0.2.21: the orphan sweep also sweeps prefixes under `gardens/` whose garden record is gone, skips a garden that fails and logs one line a run (section 11); a resumed deletion's objects go about an hour after the restart. Section 11's weather loop alerts once per spell (consecutive fired days), refuses a garden being deleted and ends each run with a `weather sweep` log line of counts. The account cascade leaves its shared gardens, then finishes what is left of the user from the records (`account_leftovers`: a leave cut off after `remove_member`, and gardens being deleted, whose cascade it waits for or runs), deletes the user's `usage_daily` and `idempotency_key` rows after the user, and every background run is retried in the process and resumed by a new `deletions` task every 15 minutes (sections 10–12). v0.2.20: section 9 notes that a card is stored before the turn stores its assistant message. v0.2.19: the chat turn's `show_block` builds an answer block from the turn's own results and the store, with no tool events, and sends `answer_block` ([contracts 8, answer blocks](../architecture/contracts.md#answer-blocks)). v0.2.18: a species confirmed while the scan is `queued` also rewrites the run's queued `perception` job to name it, and a confirmation whose adopt a claim beat decides again on a new snapshot, so a claimed run without the species starts a species-change run. v0.2.17: a species confirmed while the scan is `queued` becomes its run's working species (`PlantRepo::adopt_confirmed_species`), so retrieve, the `vlm` job and the plan use it. v0.2.16: `species_suggested`'s best candidate becomes the scan's working species for its run, in the plant suggestion's transaction and only while that run is current, and a submitted run starts with the plant's confirmed species, so confirming the suggested species no longer re-runs the scan. v0.2.15: a perception completion puts masks when the job's own stages include segmentation, not when the run's `run_started` lists it. v0.2.14: a perception completion puts its masks before `complete_job` only when the run segments, and deletes them when the lease is gone after the puts; a question job's partial result covers its photos alone. v0.2.13: the shutdown's bound is DRAIN_SECONDS plus the inference thread's release: 61 ms on the 3070 with no job held, and with a batch abandoned at the drain bound also until ONNX Runtime ends the terminated run (*unverified*). v0.2.12: the worker's SIGTERM drain ends with the model released before `main` returns, the perception worker's inference thread joined after it has released its sessions, and a `stopped` log line. v0.2.11: start-up applies the migrations after the schema and checks the text embedder against `knowledge_meta`. v0.2.10: a guided job's `complete` sends no catch-up stage events, since its `guided` stage is shared by the run's checks. v0.2.9: `job_completed` reads the run's stage events (`EventRepo::run_stage_events`) and sends the stage events the stream missed before the job's findings, so a stage whose worker events were lost while `api` was down doesn't stay open (backend roadmap gap 9). v0.2.8: a chat turn reads whether the garden has farm records before it classifies the message, and the classifier is asked `Route { farm_records }`, so a question about the garden's own records is on topic when it has some (EON gap G10). v0.2.7: `complete` is in a route group of its own with a 60 s timeout, and without `CONNECTOR_KEY` an account cascade deletes the user's connectors, unrevoked, before the user. v0.2.6: the farm connector deletion has one path, `DeletionRunner::finish_connector`, which the owner's disconnect uses too; it revokes through `ConnectVendors` in a task of its own, keeps a token another live connector of the same Slack team or Google account holds, finishes a removed member's connectors before their objects, and leaves a former owner's connectors `deleting` while `CONNECTOR_KEY` is missing. v0.2.5: farm connectors go with their garden and with the owner who created them (demoted, removed, leaving, or deleting the account): the store marks them `deleting` in the transaction that changes the garden or the membership, and the deletion runner revokes each token after that commit and then deletes the records and the row, resumed at start while the mark remains (section 10, EON E3.6). v0.2.4: the farm sync's rounds decide turns and `synced_at`, never who is read: a round gives every chosen source a turn (a page asked, whatever follows), then the budget left goes to the passes in progress, and the round ends with the next sync 15 minutes later, `synced_at` set only when every source is caught up. The farm sync rotates the sources per run, each run starting after the last source the previous one read, with `synced_at` set only when every chosen source has finished its pass in the round, offers two older-item checks a run (`probe_limit`), as many on a page as its budget covers, and reads the garden's record count before each page; section 11 adds the farm connectors' `connectors` loop with the sync's sequence (pages from a saved cursor, only changed chunks embedded, the daily 7-day re-read, the stopping codes), the `beliefs` loop it lacked, and the cleanup of old Slack messages; section 13 seeds the demo garden's `era` connectors after resuming deletions. v0.2.3: the chat turn offers `search_farm_records` only to a garden with farm records (EON E5.2, gap G6). v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
 
 Companion to the [backend architecture](README.md) and the server-side half of the [frontend flows](../frontend/flows.md). Every request, event and job here is defined in the [data contracts](../architecture/contracts.md). The system-level flows are in [architecture 8](../architecture/README.md#8-main-flows). This document shows how the crates work together at run time: which handler, entry point, repository method and adapter each arrow is.
 
@@ -1020,7 +1020,8 @@ sequenceDiagram
 
 - **Why objects first and never cancelled.** On RustFS 1.0.1 an interrupted `DeleteObjects` can leave objects that can never be listed or deleted. Every delete in `api` (cascades, a removed shot, an upload's depth maps, the orphan sweep) goes through one `blob::DeleteQueue` in `AppState`, which runs each job in a task it owns: dropping the cascade or the handle never stops it. The only time limit is the client's 120-second per-attempt operation timeout. At shutdown the queue is drained for `max(SHUTDOWN_DRAIN_S, 120 s)`, so a pending delete always gets one full attempt ([storage 4](../storage/README.md#4-writes-and-deletes), [api 17](api.md#17-deletion), [blob 6](blob.md#6-deletes-that-are-never-cancelled)).
 - **Why a running step can't write afterwards.** The synchronous part clears `pipeline_step` and question steps, and `commit_step` re-checks `deleting_at` on the plant and garden, so a step already running fails with `ClaimLost` ([database 4](../database/README.md#deletion-)).
-- **Resumable.** At start, `DeletionRunner::resume` runs every target still marked `deleting_at` from its first step; a garden's prefix is deleted again, and a plant's or scan's objects are left to the orphan sweep ([api 23](api.md#23-open-questions), question 5).
+- **Resumable.** At start, `DeletionRunner::resume` runs every target still marked `deleting_at` from its first step; a garden's prefix is deleted again, and a plant's or scan's objects are left to the orphan sweep, about an hour later ([api 23](api.md#23-open-questions), question 4).
+- **Retried in the process.** A background run (a target, an account) that fails is run again from the start after 10 s, 30 s, 1 min, 2 min and 6 min (`RETRY_WAITS`); after the last, the `deletions` task's `resume` takes it up within 15 minutes. Each run claims its target, account or connector while it runs and retries: a second run of the same one waits, and `resume` skips what is claimed.
 - **A missed step fails loudly** on `REFERENCE ON DELETE REJECT` instead of orphaning records.
 
 ### Farm connectors
@@ -1054,7 +1055,7 @@ sequenceDiagram
 ```
 
 - **Revoke before the delete, after the mark.** Revoking after the rows were gone would hold the only copy of the token in memory, and a crash would lose the revoke for good. With the mark committed first, a restart anywhere before the last batch leaves the row `deleting` with its token, and `DeletionRunner::resume` finishes it (`deleting_connectors(None)`: every such connector outside a garden being deleted; a garden being deleted finishes its own in its resumed cascade). The worst case is a second revoke of a token already revoked, which the vendor refuses and the log records.
-- **A removed member** (`Member` cascade, also the account cascade's leave step) has their connectors finished before their chat objects; a store error listing them is logged and the chat steps go on, since `resume` finishes the connectors. The account cascade marks the leaver's connectors in `transfer_ownership` (the leaver drops to editor) and `remove_member`, and finishes them before `delete_user`: `connector.created_by` rejects the user's deletion while one remains.
+- **A removed member** (`Member` cascade) has their connectors finished before their chat objects; a store error listing them is logged and the chat steps go on, since `resume` finishes the connectors. The account cascade marks the leaver's connectors in `transfer_ownership` (the leaver drops to editor) and `remove_member`, and finishes them before `delete_user` (`deleting_connectors_of_user`, in every garden): `connector.created_by` rejects the user's deletion while one remains.
 - **A demotion** starts `spawn_connectors_of` only when `change_role` says an owner was demoted (`RoleChange::demoted_owner`).
 - **Connectors off** (no `CONNECTOR_KEY`): nothing can be unsealed. A garden's cascade still deletes its connectors, unrevoked, and so does an account's, before `DELETE $user`; a demoted, removed or leaving owner's stay `deleting`, with a warning at each start, so their tokens are revoked once the key is configured.
 
@@ -1062,7 +1063,7 @@ sequenceDiagram
 
 ## 11. Scheduler loops
 
-Ten loops run on the process `TaskTracker` through `scheduler::every` (`connectors` only when connectors are on): `interval_at` with a first delay, `MissedTickBehavior::Delay`, and a `select!` on the shutdown token. A failed run is logged and the next tick tries again ([api 16](api.md#16-the-scheduler)).
+Eleven loops run on the process `TaskTracker` through `scheduler::every` (`connectors` only when connectors are on): `interval_at` with a first delay, `MissedTickBehavior::Delay`, and a `select!` on the shutdown token. A failed run is logged and the next tick tries again ([api 16](api.md#16-the-scheduler)).
 
 | Task | Every | What | Flow |
 |---|---|---|---|
@@ -1071,11 +1072,12 @@ Ten loops run on the process `TaskTracker` through `scheduler::every` (`connecto
 | `idle` | 60 s | `RateLimits::retain_recent`, `EventHub::sweep_idle`, `ScanWriters::sweep_idle` | [19](#19-writer-actor-broadcast-channel-and-plan-lock) |
 | `beliefs` | 10 s | `agent::beliefs::sync_pending`: queued erases, then unsynced shared memories, the only writer to Agent Memory | [api 16](api.md#16-the-scheduler) |
 | `cleanup` | 10 min | Expired idempotency keys, weather older than 2 h, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion, synced Slack messages older than 180 days (Drive documents stay) | [database 4](../database/README.md#cleanup-no-ttl) |
+| `deletions` | 15 min | `DeletionRunner::resume`: the cascades whose in-process retries ran out, skipping the runs in progress | [10](#10-deletion-cascades) |
 | `weather` | 1 h | Weather by cell, forecast alerts, plan triggers | below |
 | `soil` | 15 min | SoilGrids for due gardens (`pending`, or past `soil_retry_at`), 4 a run | below |
 | `connectors` | 1 min | `FarmSync::run_due`: at most 4 due farm connectors, side by side | below |
 | `receipts` | 15 min | `Notifier::check_receipts`, `IdentityRepo::forget_push_tokens` | below |
-| `orphans` | 24 h | Objects older than an hour that no record points to | below |
+| `orphans` | 24 h (first 1 h after start) | Objects older than an hour that no record points to, under live gardens and prefixes whose garden is gone | below |
 
 ### Weather, forecast alerts and plan triggers
 
@@ -1095,24 +1097,31 @@ sequenceDiagram
     Note over OM: batches of 50, a failed batch retried once, then cell by cell, a cell that still fails is skipped until the next run
     OM-->>Sched: Vec of CellResult
     Sched->>Store: WeatherCacheRepo::put each fetched cell
-    loop each garden of each fetched cell
-        Sched->>Sched: triggers::fired(weather, Thresholds)
-        Sched->>Store: create_alert_task(garden, NewTask alert_key garden trigger date)
-        alt created (None on a duplicate key)
-            Sched->>Push: members(garden), send PushPayload::Alert
-            Push->>Store: IdentityRepo::push_targets (ios and android)
-            Push->>Expo: Notifier::push (100 per request)
-            Expo-->>Push: PushReport (unregistered)
-            Push->>Store: forget_push_tokens(unregistered)
+    loop each garden of each cell with weather
+        Sched->>Sched: triggers::fired(weather, Thresholds), then triggers::spells
+        loop each spell (one trigger, consecutive days from..until)
+            Sched->>Store: create_alert_task(garden, NewTask alert_key garden trigger from, until)
+            Note over Store: same key, or the spell's task seen to from - 1 or later: spell_until moves on, None
+            alt created (a new spell)
+                Sched->>Push: members(garden), send PushPayload::Alert
+                Push->>Store: IdentityRepo::push_targets (ios and android)
+                Push->>Expo: Notifier::push (100 per request)
+                Expo-->>Push: PushReport (unregistered)
+                Push->>Store: forget_push_tokens(unregistered)
+            end
         end
     end
     Sched->>Store: PlanRepo::active_triggers(gardens)
-    loop each rule whose trigger fired before its until
-        Sched->>Store: create_alert_task (alert_key plan, step, date), no push
+    loop each spell of each rule's trigger, days up to its until
+        Sched->>Store: create_alert_task (alert_key plan, step, from; until), no push
     end
+    Note over Sched: info "weather sweep" cells cached fetched spells created suppressed plan_spells plan_created
 ```
 
-- **Dedupe.** The unique `alert_key` index makes a duplicate insert fail, which `create_alert_task` answers `None`, so overlapping runs or a run repeated after a crash create each task once and push once ([database 4](../database/README.md#alert-dedupe-)). A dead plant also gets `None`.
+- **One alert per spell.** The consecutive days on which a trigger fires for a garden are one spell, and it alerts once, when first seen. Each run groups the fired days of the 3-day horizon into spells (`triggers::spells`; the overlapping starts of a long humid stretch, and an after-rain or dry-soil day that fires again tomorrow, are one spell too). The spell's task stores its key without the date (`task.spell`, `<garden>:<trigger>` or `plan:<plan>:<step>`) and its last fired day seen (`task.spell_until`). `create_alert_task` treats a spell whose first day is at most `spell_until + 1` as the same spell: it moves `spell_until` on and creates nothing, whatever the task's state, so later runs, a forecast that shifts by a day as the past drops out, a frost whose coldest hour moves across midnight, a restart, and a user's dismissal never bring it back. A fired day after a day without the trigger starts a new spell, a new task and a new push ([database 4](../database/README.md#alert-dedupe-)). A forecast alert's `due` and `trigger.date` are the spell's first day.
+- **Dedupe.** The same transaction finds an existing task by its `alert_key` too, so a task stored before spells takes its spell on, and the unique `alert_key` index still refuses a racing run's second insert, which `create_alert_task` answers `None`: overlapping runs or a run repeated after a crash create each task once and push once. A dead plant or a garden being deleted (`deleting_at` set, checked in the same transaction, so a run racing the cascade adds nothing after its task step) also gets `None`.
+- **The log line.** Each run ends with one `info` line, `weather sweep`, with the counts `cells`, `cached`, `fetched` (cells), `spells` (forecast spells over every garden), `created` (alerts created and pushed), `suppressed` (spells already alerted, or refused), `plan_spells` and `plan_created`.
+- **A frost already past.** The cache keeps each forecast day's minimum, not its hours, so a frost on today whose cold hours are already over still counts on a run that first sees it; within a spell it changes nothing.
 - **Local dates.** Open-Meteo answers in the cell's time zone, so the forecast's first day is the garden's local today ([integrations 7](integrations.md#7-open-meteo-weather)).
 
 ### Soil profiles
@@ -1206,15 +1215,20 @@ sequenceDiagram
     R->>Expo: Notifier::check_receipts (tickets 15 min or older, at most 1,000 ids)
     Expo-->>R: tokens with DeviceNotRegistered
     R->>Store: IdentityRepo::forget_push_tokens
-    O->>Store: gardens_by_cell (every garden)
-    loop each garden
-        O->>Blob: list ObjectPrefix::garden, keep last_modified older than 1 h
+    O->>Store: gardens_by_cell (every live garden)
+    O->>Blob: list_prefixes gardens/ (delimiter /): every garden with objects
+    O->>Store: GardenRepo::existing_gardens (those not live)
+    Note over O: gone gardens: no record, so not being deleted either
+    loop each live or gone garden
+        O->>Blob: orphan_candidates: list ObjectPrefix::garden, keep last_modified older than 1 h
         O->>Store: DeletionRepo::unreferenced_keys (every key field counts)
         O->>Blob: DeleteQueue::submit Keys, await the outcome
+        Note over O: a failing garden is logged and skipped
     end
+    Note over O: info "orphan sweep finished" with the counts
 ```
 
-Pending tickets live only in the `ExpoPush` adapter's memory: a restart loses at most 15 minutes of receipts ([integrations 12](integrations.md#12-expo-push)). The orphan sweep's three sides are [blob 9](blob.md#9-the-orphan-sweep), `DeletionRepo::unreferenced_keys` ([store 17](store.md#17-deletion-and-cleanup)) and `scheduler::orphans`.
+Pending tickets live only in the `ExpoPush` adapter's memory: a restart loses at most 15 minutes of receipts ([integrations 12](integrations.md#12-expo-push)). The orphan sweep's three sides are [blob 9](blob.md#9-the-orphan-sweep), `DeletionRepo::unreferenced_keys` ([store 17](store.md#17-deletion-and-cleanup)) and `scheduler::orphans` ([api 16](api.md#16-the-scheduler)), which picks the gardens: the live ones, then those with a prefix but no record, whose objects landed after their cascade deleted the prefix.
 
 **Memory summaries are not a scheduler loop.** Conversation summaries run after a turn's stream closes (`summarise_if_due`, every 20 messages, [agent 14](agent.md#14-memory)), and the pipeline's memory after a first or species-change plan (`remember_scan`, [pipeline 8](pipeline.md#8-plan)).
 
@@ -1283,11 +1297,18 @@ sequenceDiagram
     end
     loop each shared garden
         Runner->>Store: check_membership_of Viewer, remove_member (marks the user's connectors there deleting)
-        Runner->>Store: the user's connectors there, revoked and deleted (finish_connector, flow 10)
-        Runner->>Blob: chat prefixes
-        Runner->>Store: delete_records DeletionTarget::Member
     end
-    Runner->>Store: delete_user_feedback, delete_user (push tokens cascade, author links unset)
+    Runner->>Store: account_leftovers: gardens with the user's conversations or unshared chat memories, and gardens being deleted they belong to
+    loop each leftover garden
+        alt being deleted
+            Runner->>Runner: once no other run holds it, the garden's own cascade (flow 10)
+        else left
+            Runner->>Blob: the user's chat prefixes there
+            Runner->>Store: delete_records DeletionTarget::Member
+        end
+    end
+    Runner->>Store: delete_user_feedback, the user's deleting connectors (finish_connector, flow 10), delete_user (push tokens cascade, author links unset)
+    Runner->>Store: delete_user_rows until 0 (usage_daily, idempotency_key)
     loop until it succeeds or shutdown, back-off 1 s doubling to ADMIN_BACKOFF_MAX
         Runner->>Clerk: AuthAdmin::delete_account(auth_id) (404 counts as done)
     end
@@ -1295,6 +1316,9 @@ sequenceDiagram
 ```
 
 `authz::check_membership_of` reads a role for a `UserId` that a verified webhook or the session named, since the webhook has no `CurrentUser` ([api 17](api.md#17-deletion)).
+
+- **From the records, not the memberships.** The chats in the gardens the user leaves are deleted after every leave, from `account_leftovers`, which reads the user's conversations and unshared chat memories themselves. A leave cut off after `remove_member` committed (a `RustFS` outage, a restart) has no membership left, and `conversation.user` refuses `delete_user` while a conversation names the user; the next attempt finds the conversation and finishes it. A garden being deleted (the user's own, whose cascade a restart cut off, or another owner's) is in the leftovers through the membership: the account run waits for the run that holds it, or runs it, so one `resume` finishes both.
+- **What stays.** Only the tombstone. The user's scans, tasks, maps, invites and shared memories in gardens that live on stay with the garden, their author links unset.
 
 - **The tombstone** (`deleted_user:[auth_id]`, written by `start_account_deletion` before anything else) does three jobs ([api 17](api.md#17-deletion), [database 4](../database/README.md#deletion-)): its compare-and-set makes a second cascade for the same account a no-op; while it exists, `upsert_user` refuses the auth id, so the deleted account's still-valid session token gets `401` in `AuthUser` and never creates a new user; and `DeletionRunner::resume` lists `unfinished_account_deletions` at start, so the record steps and the Clerk retry survive a restart. `finish_account_deletion` records Clerk's answer, and the `cleanup` task deletes the tombstone 24 h later (`TOMBSTONE_KEEP`).
 

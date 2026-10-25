@@ -619,6 +619,61 @@ async fn job_claim_slots_requeue_and_fallback_hold() {
     assert_eq!(taken.job.max_runtime_s, 240, "doubled on the fallback");
 }
 
+/// Each claim sets the claimer's runtime from the kind's base ([contracts 5]): a fallback claim
+/// after a requeue doubles it once (240 s, not 480 s), and a GPU claim after that gets 120 s.
+#[tokio::test]
+async fn the_fallback_doubles_max_runtime_once_from_the_base() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    set_status(&store, f.scan, "queued").await;
+    let job: JobId = f.ids.id();
+    store
+        .enqueue_job(perception_job(&f, job, None))
+        .await
+        .unwrap();
+    let fb = "fallback-1".parse().unwrap();
+    let gpu = "rig-3070".parse().unwrap();
+
+    let first = t0().plus(Duration::from_secs(16));
+    let taken = store
+        .claim_job(&fb, 4, claim_policy(&[Capability::Fallback], first), first)
+        .await
+        .unwrap()
+        .expect("eligible for the fallback 15 s after queued_at");
+    assert_eq!(taken.job.max_runtime_s, 240, "doubled on the fallback");
+
+    let requeue_at = first.plus(Duration::from_secs(150));
+    assert_eq!(store.requeue_stale(requeue_at).await.unwrap().len(), 1);
+    let again = requeue_at.plus(Duration::from_secs(16));
+    let retaken = store
+        .claim_job(&fb, 4, claim_policy(&[Capability::Fallback], again), again)
+        .await
+        .unwrap()
+        .expect("claimed again by the fallback");
+    assert_eq!(retaken.job.job_id, job);
+    assert_eq!(
+        retaken.job.max_runtime_s, 240,
+        "doubled once, from the base"
+    );
+    let requeue_at = again.plus(Duration::from_secs(150));
+    assert_eq!(store.requeue_stale(requeue_at).await.unwrap().len(), 1);
+    let on_gpu = store
+        .claim_job(
+            &gpu,
+            1,
+            claim_policy(&[Capability::Perception], requeue_at),
+            requeue_at,
+        )
+        .await
+        .unwrap()
+        .expect("claimed by the perception worker");
+    assert_eq!(on_gpu.job.job_id, job);
+    assert_eq!(
+        on_gpu.job.max_runtime_s, 120,
+        "the base runtime on a GPU worker"
+    );
+}
+
 /// [database 4] steps between jobs: the claim, the busy flag, the hand-over to `score`, the
 /// sweep's re-claim and a slow original's lost commit.
 #[tokio::test]

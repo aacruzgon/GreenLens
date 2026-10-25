@@ -398,9 +398,15 @@ DEFINE FIELD OVERWRITE source        ON task TYPE "plan" | "forecast_alert" | "c
 DEFINE FIELD OVERWRITE trigger       ON task TYPE option<object>;
 DEFINE FIELD OVERWRITE trigger.kind  ON task TYPE "frost" | "heat" | "humid_stretch" | "heavy_rain" | "after_rain" | "dry_soil";
 DEFINE FIELD OVERWRITE trigger.date  ON task TYPE string ASSERT fn::is_local_date($value);
--- forecast alerts: "<garden_id>:<trigger>:<date>"; plan triggers: "plan:<plan_id>:<step_id>:<date>".
+-- forecast alerts: "<garden_id>:<trigger>:<date>"; plan triggers: "plan:<plan_id>:<step_id>:<date>",
+-- the date being the first day of the alert's spell.
 -- A UNIQUE index skips records without the field, so other tasks don't collide (verified on 3.3.4).
 DEFINE FIELD OVERWRITE alert_key     ON task TYPE option<string>;
+-- One alert per spell (architecture 8.3): the alert key without its date ("<garden_id>:<trigger>",
+-- "plan:<plan_id>:<step_id>") and the last day the spell was seen firing. A sweep whose run of
+-- fired days starts by spell_until + 1 extends spell_until instead of creating a task.
+DEFINE FIELD OVERWRITE spell         ON task TYPE option<string>;
+DEFINE FIELD OVERWRITE spell_until   ON task TYPE option<string> ASSERT fn::is_local_date($value);
 DEFINE FIELD OVERWRITE created_by    ON task TYPE option<record<user>> REFERENCE ON DELETE UNSET;
 DEFINE FIELD OVERWRITE done_at       ON task TYPE option<datetime>;
 DEFINE FIELD OVERWRITE dismissed_at  ON task TYPE option<datetime>;
@@ -409,6 +415,7 @@ DEFINE FIELD OVERWRITE dismissed_reason ON task TYPE option<"user" | "plan_super
 DEFINE FIELD OVERWRITE state         ON task VALUE IF done_at != NONE { "done" } ELSE IF dismissed_at != NONE { "dismissed" } ELSE { "open" };
 DEFINE FIELD OVERWRITE created_at    ON task TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS task_alert  ON task FIELDS alert_key UNIQUE;
+DEFINE INDEX IF NOT EXISTS task_spell  ON task FIELDS spell, spell_until;
 DEFINE INDEX IF NOT EXISTS task_garden ON task FIELDS garden, state, due;
 DEFINE INDEX IF NOT EXISTS task_plan   ON task FIELDS plan;
 DEFINE INDEX IF NOT EXISTS task_plant  ON task FIELDS plant;

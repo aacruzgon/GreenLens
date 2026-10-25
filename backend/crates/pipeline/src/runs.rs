@@ -390,6 +390,44 @@ mod tests {
         assert!(labels_loaded(&both, "a", "b"));
     }
 
+    /// The rig is down (no perception worker heartbeats) and the fallback is the only worker
+    /// that counts: its heartbeat's label lists decide, as a perception worker's would.
+    #[test]
+    fn a_fallback_alone_keeps_new_runs_going() {
+        let fallback_only = [
+            worker(vec![Capability::Vlm], "", ""),
+            worker(
+                vec![Capability::Fallback],
+                "129f0395e8d89bd5,2a8e5c1d7f3b9e04",
+                "disease-head-v1d-2026-10-16",
+            ),
+        ];
+        assert!(labels_loaded(
+            &fallback_only,
+            "129f0395e8d89bd5",
+            "disease-head-v1d-2026-10-16"
+        ));
+        assert!(
+            !labels_loaded(
+                &fallback_only,
+                "ffffffffffffffff",
+                "disease-head-v1d-2026-10-16"
+            ),
+            "a version it didn't load is still refused"
+        );
+        // A fallback whose heartbeat names no label keys (before this was fixed) blocks every
+        // run once the perception worker is silent.
+        let silent = [LiveWorker {
+            caps: vec![Capability::Fallback],
+            versions: BTreeMap::from([("vlm_server".to_owned(), "anthropic".to_owned())]),
+        }];
+        assert!(!labels_loaded(
+            &silent,
+            "129f0395e8d89bd5",
+            "disease-head-v1d-2026-10-16"
+        ));
+    }
+
     #[test]
     fn heartbeat_label_lists_are_split_on_commas() {
         let two_sets = [worker(vec![Capability::Perception], "old,a", "b, c")];

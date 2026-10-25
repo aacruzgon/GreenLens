@@ -1,6 +1,6 @@
 # PDM Backend: `domain` contract types
 
-> **Status:** Draft v0.3.9, 2026-10-24. v0.3.9: `IndicatorAnswerRaw.reason` is at most 100 characters, above the prompt's 60 ([#183](https://github.com/aacruzgon/GreenLens/issues/183)). v0.3.8: `DamageRaw.trace`, the animal or the trace it left, written before the pattern ([contracts 6](../architecture/contracts.md#findings-call); vision dev-roadmap P11). v0.3.7: answer blocks ([contracts 8](../architecture/contracts.md#answer-blocks)): `AnswerBlock` (`call_id` and a `BlockBody` tagged by `kind`), `AnswerBlockKind`, `BlockPlant`, `FrostPlant`, the `answer_block` event (`AnswerBlockEvent`), `Message.blocks` (omitted when empty) and `ToolName::ShowBlock`; `Lookalike` derives `ToSchema`, since a `candidates` block carries it. v0.3.6: `SpeciesSeed.frost`, a species' frost tenderness (`tender` or `hardy`), top level and absent when the sources don't say (backend S5 work 9). v0.3.5: `PlanStepDraft.farm_citations`, the farm records a plan-writer step cites, optional and omitted when empty, strings that validation parses so a bad id refuses the step and not the answer (EON E5.4). v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
+> **Status:** Draft v0.3.10, 2026-10-24. v0.3.10: `AlertKey::spell` and `AlertKey::date`, the alert's spell and its first day. v0.3.9: `IndicatorAnswerRaw.reason` is at most 100 characters, above the prompt's 60 ([#183](https://github.com/aacruzgon/GreenLens/issues/183)). v0.3.8: `DamageRaw.trace`, the animal or the trace it left, written before the pattern ([contracts 6](../architecture/contracts.md#findings-call); vision dev-roadmap P11). v0.3.7: answer blocks ([contracts 8](../architecture/contracts.md#answer-blocks)): `AnswerBlock` (`call_id` and a `BlockBody` tagged by `kind`), `AnswerBlockKind`, `BlockPlant`, `FrostPlant`, the `answer_block` event (`AnswerBlockEvent`), `Message.blocks` (omitted when empty) and `ToolName::ShowBlock`; `Lookalike` derives `ToSchema`, since a `candidates` block carries it. v0.3.6: `SpeciesSeed.frost`, a species' frost tenderness (`tender` or `hardy`), top level and absent when the sources don't say (backend S5 work 9). v0.3.5: `PlanStepDraft.farm_citations`, the farm records a plan-writer step cites, optional and omitted when empty, strings that validation parses so a bad id refuses the step and not the answer (EON E5.4). v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
 
 Companion to the [backend architecture](README.md) and to the [`domain` crate](domain.md). Sections 1–10 follow [contracts.md](../architecture/contracts.md) 1–10, so "contracts 7" and "domain-types 7" describe the same shapes. Every listing is copied from the compiled source of `crates/domain` (`cargo check`, `cargo test` and `cargo clippy --all-targets` pass on Rust 1.99.1 with serde 1.0.229, utoipa 6.0.0, schemars 1.2.3, chrono 0.4.45 and ulid 3.0.0); the module paths are in [the map](#11-typescript-to-rust-map).
 
@@ -4468,6 +4468,10 @@ pub enum TaskState {
 /// `<garden_id>:<trigger>:<date>` for forecast alerts and
 /// `plan:<plan_id>:<plan_step_id>:<date>` for plan triggers. A second insert with the same key
 /// fails, which makes the scheduler's dedupe race-free ([database 4], alert dedupe).
+///
+/// The date is the first day of the alert's spell: the consecutive days on which the rule
+/// fires alert once ([architecture 8.3]). The key without its date, [`spell`](Self::spell),
+/// is stored as `task.spell` beside how far the spell has been seen (`task.spell_until`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AlertKey {
     /// A forecast alert.
@@ -4491,7 +4495,7 @@ pub enum AlertKey {
 }
 ```
 
-`AlertKey` never leaves the server; its `Display` is the stored `task.alert_key`.
+`AlertKey` never leaves the server; its `Display` is the stored `task.alert_key`, and `spell()`, the key without its date, the stored `task.spell`.
 
 ---
 
@@ -6103,7 +6107,8 @@ pub enum Platform {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PushTokenRequest {
-    /// The Expo push token.
+    /// The Expo push token (`ExponentPushToken[…]` or `ExpoPushToken[…]`) for `ios` and
+    /// `android`; for `web`, any printable string of at most 255 bytes, stored and never sent.
     pub token: PushToken,
     /// Its platform.
     pub platform: Platform,

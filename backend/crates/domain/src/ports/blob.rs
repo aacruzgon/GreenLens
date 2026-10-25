@@ -13,8 +13,10 @@ use crate::{
     wire::Timestamp,
 };
 
-/// An object key, built only from typed ids, so every segment under `gardens/` is a
-/// 26-character ULID and never user input ([storage 2]).
+/// An object key. The builders take only typed ids, so every id segment under `gardens/` is a
+/// ULID and never user input ([storage 2]); a key read back from a record or a listing goes
+/// through [`from_stored`](Self::from_stored), which checks its root and its segments, not that
+/// they are ULIDs.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ObjectKey(String);
 
@@ -83,6 +85,30 @@ impl fmt::Display for ObjectKey {
 pub struct ObjectPrefix(String);
 
 impl ObjectPrefix {
+    /// `gardens/`, the parent of every garden's prefix: the orphan sweep lists the prefixes
+    /// under it to find gardens whose record is gone.
+    pub fn gardens() -> Self {
+        Self("gardens/".to_owned())
+    }
+
+    /// A prefix read back from a listing (`CommonPrefixes`): it ends in `/`, and what precedes
+    /// the `/` passes [`ObjectKey::from_stored`].
+    pub fn from_listed(prefix: &str) -> Option<Self> {
+        let body = prefix.strip_suffix('/')?;
+        ObjectKey::from_stored(body).map(|_| Self(prefix.to_owned()))
+    }
+
+    /// The garden whose whole prefix this is (`gardens/{garden}/`, the id a valid ULID), or
+    /// `None` for any other prefix.
+    pub fn garden_id(&self) -> Option<GardenId> {
+        self.0
+            .strip_prefix("gardens/")?
+            .strip_suffix('/')
+            .filter(|id| !id.contains('/'))?
+            .parse()
+            .ok()
+    }
+
     /// Everything of a garden: deleting a garden is one prefix delete.
     pub fn garden(garden: GardenId) -> Self {
         Self(format!("gardens/{garden}/"))
@@ -201,6 +227,28 @@ pub trait BlobStore: Send + Sync {
 
     /// `ListObjectsV2`, every page, for the daily orphan sweep.
     async fn list(&self, prefix: &ObjectPrefix) -> Result<Vec<ObjectInfo>, BlobError>;
+
+    /// `ListObjectsV2` with the delimiter `/`, every page: the prefixes one level below
+    /// `prefix` (its `CommonPrefixes`), in key order, for the orphan sweep's pass over deleted
+    /// gardens.
+    ///
+    /// The default body derives them from [`list`](Self::list), reading every object; the S3
+    /// store overrides it.
+    async fn list_prefixes(&self, prefix: &ObjectPrefix) -> Result<Vec<ObjectPrefix>, BlobError> {
+        let mut children = std::collections::BTreeSet::new();
+        for object in self.list(prefix).await? {
+            let Some(rest) = object.key.as_str().strip_prefix(prefix.as_str()) else {
+                continue;
+            };
+            if let Some((child, _)) = rest.split_once('/') {
+                children.insert(format!("{}{child}/", prefix.as_str()));
+            }
+        }
+        Ok(children
+            .iter()
+            .filter_map(|p| ObjectPrefix::from_listed(p))
+            .collect())
+    }
 }
 
 #[cfg(test)]
@@ -221,5 +269,25 @@ mod tests {
         assert!(ObjectKey::from_stored("gardens//scans/x").is_none());
         assert!(ObjectKey::from_stored("gardens/../x").is_none());
         assert!(ObjectKey::from_stored("other/x").is_none());
+    }
+
+    #[test]
+    fn only_a_whole_garden_prefix_names_a_garden() {
+        let g: GardenId = "01JAX3K9T6R2B8V0QZ4M7D1E5G".parse().unwrap();
+        let s: ScanId = "01JAX3K9T6R2B8V0QZ4M7D1E5S".parse().unwrap();
+        assert_eq!(ObjectPrefix::garden(g).garden_id(), Some(g));
+        let listed = ObjectPrefix::from_listed("gardens/01JAX3K9T6R2B8V0QZ4M7D1E5G/").unwrap();
+        assert_eq!(listed, ObjectPrefix::garden(g));
+        assert_eq!(ObjectPrefix::scan(g, s).garden_id(), None);
+        assert_eq!(ObjectPrefix::gardens().garden_id(), None);
+        for other in ["gardens/not-a-ulid/", "knowledge/species/"] {
+            assert_eq!(ObjectPrefix::from_listed(other).unwrap().garden_id(), None);
+        }
+        assert!(
+            ObjectPrefix::from_listed("gardens/x").is_none(),
+            "no trailing slash"
+        );
+        assert!(ObjectPrefix::from_listed("gardens/../").is_none());
+        assert!(ObjectPrefix::from_listed("other/").is_none());
     }
 }

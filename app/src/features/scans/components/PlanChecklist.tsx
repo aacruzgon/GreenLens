@@ -4,6 +4,7 @@
 import { Pressable, View } from "react-native";
 
 import type { FarmCitation } from "@/domain/types";
+import { SYSTEM_WORD } from "@/features/chat";
 import { TaskRow } from "@/features/tasks";
 import { Banner, CiteNumber, LineIcon, Text, space, useTheme, type LineIconName } from "@/ui";
 
@@ -23,10 +24,11 @@ export interface PlanChecklistProps {
   separator: string;
   onCheck: (step: StepView) => void;
   onOpenSteps: (start?: number) => void;
-  onOpenFarmRecord: (url: string) => void;
+  /** A farm record tapped: the screen opens its link or its text (EON decision 10). */
+  onOpenFarmRecord: (record: FarmCitation) => void;
+  /** The record is Era's synthetic demo data: its text opens in a sheet, so it reads as demo, not as a link out. */
+  isDemoRecord?: (record: FarmCitation) => boolean;
 }
-
-const SYSTEM_WORD: Record<FarmCitation["system"], string> = { slack: "Slack", google_drive: "Google Drive" };
 
 function stepIcon(s: StepView): LineIconName {
   if (s.isChemical) return "flask";
@@ -64,6 +66,7 @@ export function PlanChecklist({
   onCheck,
   onOpenSteps,
   onOpenFarmRecord,
+  isDemoRecord,
 }: PlanChecklistProps) {
   const { colors } = useTheme();
   return (
@@ -110,12 +113,15 @@ export function PlanChecklist({
                   </Text>
                 </View>
               ) : null}
-              {s.farmRecords.map((r) => (
+              {s.farmRecords.map((r) => {
+                const demo = isDemoRecord?.(r) ?? false;
+                return (
                 <Pressable
                   key={r.record_id}
-                  accessibilityRole="link"
-                  accessibilityHint={`Opens in ${SYSTEM_WORD[r.system]}`}
-                  onPress={() => onOpenFarmRecord(r.link)}
+                  accessibilityRole={demo ? "button" : "link"}
+                  accessibilityLabel={`${r.title}, ${SYSTEM_WORD[r.system]}${r.author ? `, ${r.author}` : ""}${demo ? ", demo data" : ""}`}
+                  accessibilityHint={demo ? "Opens the record's text" : `Opens in ${SYSTEM_WORD[r.system]}`}
+                  onPress={() => onOpenFarmRecord(r)}
                   hitSlop={8}
                   style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 6, opacity: pressed ? 0.6 : 1 })}
                 >
@@ -123,9 +129,11 @@ export function PlanChecklist({
                   <Text variant="footnote" color="accent" style={{ flexShrink: 1 }}>
                     {r.title} · {SYSTEM_WORD[r.system]}
                     {r.author ? ` · ${r.author}` : ""}
+                    {demo ? " · Demo" : ""}
                   </Text>
                 </Pressable>
-              ))}
+                );
+              })}
             </View>
           </View>
         ))}

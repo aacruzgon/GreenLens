@@ -1,8 +1,8 @@
-import type { FarmCitationWithText } from "@/domain/proposed";
+import type { FarmCitation } from "@/domain/types";
 
 import { connectorIdOf, isVendorRecord, openFarmCitation } from "./farm";
 
-const citation = (record_id: string): FarmCitationWithText => ({
+const citation = (record_id: string): FarmCitation => ({
   record_id,
   system: "slack",
   title: "#field-reports",

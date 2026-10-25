@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useAskAbout } from "@/features/chat";
+import { FarmRecordSheet, useAskAbout } from "@/features/chat";
 import { Banner, Button, CitationList, EmptyState, ErrorState, Skeleton, Text, TopEdge, gutter, space, useHeroScroll } from "@/ui";
 
 import { DiagnosisHero, heroHeightFor } from "../components/DiagnosisHero";
@@ -124,6 +124,7 @@ export function ScanResultScreen() {
               onCheck={plan.check}
               onOpenSteps={d.actions.stepByStep}
               onOpenFarmRecord={d.actions.openFarmRecord}
+              isDemoRecord={d.isDemoRecord}
             />
           ) : null}
 
@@ -211,6 +212,7 @@ export function ScanResultScreen() {
           asking={chat.opening}
         />
       ) : null}
+      {d.farmSheet ? <FarmRecordSheet citation={d.farmSheet.record} vendor={d.farmSheet.vendor} timeZone={d.timeZone} onClose={d.actions.closeFarmRecord} /> : null}
     </View>
   );
 }

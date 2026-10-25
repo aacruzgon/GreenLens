@@ -67,8 +67,11 @@ IF $j.question != NONE AND $j.kind = 'verify' {
     /// The claim ([database 4] ✓): counts the worker's leased jobs against `slots`, then
     /// leases the oldest eligible queued job of its kinds, re-checking `status = 'queued'`. The
     /// fallback's filter holds a photo answer's segmentation job while a perception worker is
-    /// alive. Added to the documented statement: the fallback's `max_runtime` is doubled at
-    /// claim ([contracts 5]), and a run's first job moves the scan from `queued` to
+    /// alive. Added to the documented statement: `max_runtime` is set at claim from
+    /// `$runtimes`, the claimer's runtime per kind (`JobKind::max_runtime`: doubled on the
+    /// fallback, [contracts 5]), so it doubles once from the kind's base however often the job
+    /// is requeued and claimed again, and a GPU worker that claims it after the fallback gets
+    /// the base runtime back; and a run's first job moves the scan from `queued` to
     /// `analysing` in the same transaction. Statements: 0 `BEGIN`, 1 `LET $held`,
     /// 2 `LET $perception_alive`, 3 `LET $claimed`, 4 `LET $job`, 5 `LET $started`,
     /// 6 the result, 7 `COMMIT`.
@@ -82,7 +85,7 @@ LET $claimed = IF $held < $slots {
           ORDER BY queued_at LIMIT 1)
   SET status = 'leased', worker = $worker, lease_token = rand::ulid(),
       claimed_at = $now, lease_until = $now + 2m,
-      max_runtime = IF $on_fallback { max_runtime * 2 } ELSE { max_runtime }
+      max_runtime = $runtimes[kind]
   WHERE status = 'queued'
   RETURN AFTER)
 } ELSE { [] };
@@ -470,13 +473,22 @@ impl JobRepo for SurrealStore {
     ) -> Result<Option<ClaimedJob>, StoreError> {
         const WHAT: &str = "claim job";
         let kinds: Vec<JobKindRow> = policy.kinds.iter().copied().map(Into::into).collect();
+        let runtimes: BTreeMap<String, surrealdb::types::Duration> = JobKind::ALL
+            .iter()
+            .map(|k| {
+                (
+                    k.as_str().to_owned(),
+                    k.max_runtime(policy.on_fallback).into(),
+                )
+            })
+            .collect();
         let mut results = run_tx(&self.db, sql::CLAIM_JOB, |q| {
             q.bind(("worker", worker.as_str()))
                 .bind(("slots", i64::from(slots)))
                 .bind(("kinds", kinds.clone()))
                 .bind(("eligible_before", dt(policy.eligible_before)))
                 .bind(("hold_question", policy.hold_question_segmentation))
-                .bind(("on_fallback", policy.on_fallback))
+                .bind(("runtimes", runtimes.clone()))
                 .bind(("now", dt(now)))
         })
         .await
