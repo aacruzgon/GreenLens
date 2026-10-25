@@ -993,31 +993,38 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     </div>
     <div class="pipe rise">
       <div class="diagram">
-        <svg viewBox="0 0 1100 470" role="img" aria-label="Architecture: the iPhone app talks to the Rust API with a Clerk token and receives SSE events; the API stores records in SurrealDB and photos in RustFS, calls Claude, mirrors shared memories to Agent Memory and syncs Slack and Drive; GPU workers on the rig pull jobs from the API.">
+        <svg viewBox="0 0 1100 470" role="img" aria-label="Architecture: the iPhone app calls the Rust API with a Clerk token and receives SSE events. The API keeps records in SurrealDB and photos in RustFS, checks tokens against Clerk, calls Claude, mirrors shared memories to Agent Memory and syncs Slack and Drive. GPU workers on the rig pull jobs from the API.">
           <rect class="zone" x="10" y="20" width="200" height="430" rx="22"/><text class="zl" x="30" y="46">IPHONE</text>
           <rect class="zone" x="250" y="20" width="560" height="430" rx="22"/><text class="zl" x="270" y="46">CONTROL PLANE</text>
           <rect class="zone" x="850" y="20" width="240" height="430" rx="22"/><text class="zl" x="870" y="46">GPU RIG</text>
-          <path class="edge" d="M190 235 H300"/><path class="flow" d="M190 228 H300"/><path class="flow info" d="M300 244 H190"/>
-          <text class="lbl" x="200" y="216">REST · Clerk JWT</text><text class="lbl" x="214" y="266">SSE events</text>
-          <path class="edge" d="M500 235 C 560 235, 560 110, 610 110"/><path class="flow" d="M500 235 C 560 235, 560 110, 610 110"/>
-          <path class="edge" d="M500 235 H610"/><path class="flow" d="M500 235 H610"/>
-          <path class="edge" d="M500 235 C 560 235, 560 360, 610 360"/><path class="flow" d="M500 235 C 560 235, 560 360, 610 360"/>
-          <path class="edge" d="M400 290 V340"/><path class="flow" d="M400 290 V340"/>
-          <path class="edge" d="M400 180 V140"/><path class="flow" d="M400 180 V140"/>
-          <path class="edge" d="M300 380 H190"/><path class="flow" d="M300 380 H190"/>
-          <path class="edge" d="M880 170 C 840 170, 830 200, 500 215"/><path class="flow slow" d="M880 170 C 840 170, 830 200, 500 215"/>
-          <path class="edge" d="M880 330 C 840 330, 830 270, 500 255"/><path class="flow slow" d="M880 330 C 840 330, 830 270, 500 255"/>
-          <text class="lbl" x="676" y="184">claim · heartbeat · complete</text>
-          <g class="node key"><rect x="30" y="185" width="160" height="100" rx="18"/><text class="t1" x="48" y="222">GreenLens</text><text class="t2" x="48" y="244">Expo SDK 57</text><text class="t2" x="48" y="262">Swift LiDAR module</text></g>
-          <g class="node key"><rect x="300" y="180" width="200" height="110" rx="18"/><text class="t1" x="320" y="216">API</text><text class="t2" x="320" y="238">Rust · axum · tokio</text><text class="t2" x="320" y="256">agent core · scheduler</text><text class="t2" x="320" y="274">pipeline · fusion</text></g>
-          <g class="node"><rect x="300" y="70" width="200" height="70" rx="16"/><text class="t1" x="320" y="100">Clerk</text><text class="t2" x="320" y="122">sign-in · JWKS check</text></g>
-          <g class="node"><rect x="300" y="340" width="200" height="80" rx="16"/><text class="t1" x="320" y="372">SurrealDB 3.3.4</text><text class="t2" x="320" y="394">51 tables · vectors · jobs</text></g>
-          <g class="node"><rect x="610" y="75" width="180" height="70" rx="16"/><text class="t1" x="628" y="105">Claude</text><text class="t2" x="628" y="127">chat · plan · fallback</text></g>
-          <g class="node"><rect x="610" y="200" width="180" height="70" rx="16"/><text class="t1" x="628" y="230">Agent Memory</text><text class="t2" x="628" y="252">shared memories</text></g>
-          <g class="node"><rect x="610" y="325" width="180" height="80" rx="16"/><text class="t1" x="628" y="356">Slack · Drive</text><text class="t2" x="628" y="378">farm connectors</text><text class="t2" x="628" y="394">tested on Era by Eon</text></g>
-          <g class="node gpu"><rect x="880" y="120" width="190" height="100" rx="18"/><text class="t1" x="898" y="154">Perception</text><text class="t2" x="898" y="176">RTX 3070 · ort · CUDA</text><text class="t2" x="898" y="194">BioCLIP 2 · RF-DETR · SAM 2.1</text></g>
-          <g class="node gpu"><rect x="880" y="280" width="190" height="100" rx="18"/><text class="t1" x="898" y="314">VLM</text><text class="t2" x="898" y="336">RTX 5070 Ti · vLLM</text><text class="t2" x="898" y="354">Qwen3.5-9B · findings</text></g>
-          <g class="node"><rect x="30" y="345" width="160" height="70" rx="16"/><text class="t1" x="48" y="375">RustFS 1.0.1</text><text class="t2" x="48" y="397">photos · signed URLs</text></g>
+
+          <!-- App ↔ API -->
+          <path class="edge" d="M190 192 H300"/><path class="flow" d="M190 192 H300"/>
+          <path class="edge" d="M300 236 H190"/><path class="flow info" d="M300 236 H190"/>
+          <text class="lbl" x="204" y="182">REST + JWT</text><text class="lbl" x="204" y="256">SSE events</text>
+          <!-- API ↔ its stores -->
+          <path class="edge" d="M400 270 V298"/><path class="flow" d="M400 270 V298"/>
+          <path class="edge" d="M300 258 C 268 258, 268 402, 300 402"/><path class="flow" d="M300 258 C 268 258, 268 402, 300 402"/>
+          <!-- API → the services -->
+          <path class="edge" d="M500 152 C 555 152, 555 82, 610 82"/><path class="flow" d="M500 152 C 555 152, 555 82, 610 82"/>
+          <path class="edge" d="M500 176 C 555 176, 555 156, 610 156"/><path class="flow" d="M500 176 C 555 176, 555 156, 610 156"/>
+          <path class="edge" d="M500 252 C 555 252, 555 294, 610 294"/><path class="flow" d="M500 252 C 555 252, 555 294, 610 294"/>
+          <path class="edge" d="M500 264 C 555 264, 555 375, 610 375"/><path class="flow" d="M500 264 C 555 264, 555 375, 610 375"/>
+          <!-- Workers pull from the API through their own channel -->
+          <path class="edge" d="M880 152 C 835 152, 830 210, 790 210 H500"/><path class="flow slow" d="M880 152 C 835 152, 830 210, 790 210 H500"/>
+          <path class="edge" d="M880 340 C 835 340, 830 240, 790 240 H500"/><path class="flow slow" d="M880 340 C 835 340, 830 240, 790 240 H500"/>
+          <text class="lbl" x="606" y="229">claim · heartbeat · complete</text>
+
+          <g class="node key"><rect x="30" y="164" width="160" height="100" rx="18"/><text class="t1" x="48" y="201">GreenLens</text><text class="t2" x="48" y="223">Expo SDK 57</text><text class="t2" x="48" y="241">Swift LiDAR module</text></g>
+          <g class="node key"><rect x="300" y="140" width="200" height="130" rx="18"/><text class="t1" x="320" y="176">API</text><text class="t2" x="320" y="200">Rust · axum · tokio</text><text class="t2" x="320" y="218">agent core</text><text class="t2" x="320" y="236">pipeline · fusion</text><text class="t2" x="320" y="254">scheduler</text></g>
+          <g class="node"><rect x="300" y="298" width="200" height="60" rx="16"/><text class="t1" x="320" y="324">SurrealDB 3.3.4</text><text class="t2" x="320" y="344">51 tables · vectors</text></g>
+          <g class="node"><rect x="300" y="374" width="200" height="60" rx="16"/><text class="t1" x="320" y="400">RustFS 1.0.1</text><text class="t2" x="320" y="420">photos · signed URLs</text></g>
+          <g class="node"><rect x="610" y="50" width="180" height="64" rx="16"/><text class="t1" x="628" y="77">Clerk</text><text class="t2" x="628" y="98">sign-in · JWKS keys</text></g>
+          <g class="node"><rect x="610" y="124" width="180" height="64" rx="16"/><text class="t1" x="628" y="151">Claude</text><text class="t2" x="628" y="172">chat · plan writer</text></g>
+          <g class="node"><rect x="610" y="262" width="180" height="64" rx="16"/><text class="t1" x="628" y="289">Agent Memory</text><text class="t2" x="628" y="310">shared memories</text></g>
+          <g class="node"><rect x="610" y="336" width="180" height="78" rx="16"/><text class="t1" x="628" y="363">Slack · Drive</text><text class="t2" x="628" y="383">farm connectors</text><text class="t2" x="628" y="400">tested on Era by Eon</text></g>
+          <g class="node gpu"><rect x="880" y="95" width="190" height="115" rx="18"/><text class="t1" x="898" y="127">Perception</text><text class="t2" x="898" y="150">RTX 3070 · ort · CUDA</text><text class="t2" x="898" y="168">BioCLIP 2 · RF-DETR</text><text class="t2" x="898" y="186">SAM 2.1 · disease head</text></g>
+          <g class="node gpu"><rect x="880" y="290" width="190" height="100" rx="18"/><text class="t1" x="898" y="322">VLM</text><text class="t2" x="898" y="345">RTX 5070 Ti · vLLM</text><text class="t2" x="898" y="363">Qwen3.5-9B · findings</text></g>
         </svg>
       </div>
       <div class="phases" id="phases">
