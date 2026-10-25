@@ -177,7 +177,7 @@ pub struct Config {
     pub bind: SocketAddr,
     /// `API_PUBLIC_BASE`: the origin prefixed to every signed image URL.
     pub public_base: String,
-    /// `API_WEB_ORIGINS`: the web build's origins, for CORS and Clerk's `azp`.
+    /// `API_WEB_ORIGINS`: origins allowed by CORS and as Clerk's `azp`; empty for the native app (no web build).
     pub web_origins: Vec<String>,
     /// `API_URL_SIGNING_KEY`: at least 32 bytes, the HMAC key of signed URLs ([storage 3]).
     pub url_signing_key: SecretString,

@@ -62,8 +62,8 @@ impl MakeRequestId for MakeReqId {
     }
 }
 
-/// CORS for the web build ([frontend 17]): the configured origins only, exactly the four request
-/// headers, and `x-request-id` and `retry-after` readable by the app.
+/// CORS for a browser client ([frontend 17]; none while the web build is dropped): the configured
+/// origins only, exactly the four request headers, and `x-request-id` and `retry-after` readable.
 pub fn cors(origins: &[String]) -> CorsLayer {
     let origins: Vec<HeaderValue> = origins
         .iter()

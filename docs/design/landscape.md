@@ -1,6 +1,6 @@
 # PDM Design Landscape
 
-> **Status:** Draft v0.2, 2026-10-17. v0.2: folds in the PR #43 audit: the honest-diagnosis gap and the Agrio row no longer suggest confidence words on the diagnosis. v0.1: first review of 12 plant and garden apps and 3 apps from other categories, with the patterns PDM should match, the gaps it can own, ideas to borrow and the looks to avoid.
+> **Status:** Draft v0.2.1, 2026-10-25. v0.2.1: row 14 no longer suggests marking beds on the web build, which is dropped (Oct 25). v0.2: folds in the PR #43 audit: the honest-diagnosis gap and the Agrio row no longer suggest confidence words on the diagnosis. v0.1: first review of 12 plant and garden apps and 3 apps from other categories, with the patterns PDM should match, the gaps it can own, ideas to borrow and the looks to avoid.
 
 This document reviews the design of products PDM will be compared with, so the app's look and flows are chosen with the category in view. It covers concrete products only. It is a companion to [design.md](design.md) (PDM's own design) and [philosophies.md](philosophies.md) (design philosophies in general), in the same folder, and to the [screens](../frontend/screens.md).
 
@@ -240,7 +240,7 @@ Weather apps know the forecast; plant apps know the plant; none joins them. Seed
 | 11 | Depth rings during capture, measurements on the pot | Greg | LiDAR capture feedback |
 | 12 | "Disease occurred nearby" with a "Rising" tag | Plantix | Shared-garden alerts when a member's scan finds a disease |
 | 13 | One-value tiles (frost "Semi-Tolerant") and a calendar bar with a "Today" marker | Planter | Species card and forecast strip |
-| 14 | Drawing on a photo to remember where things are | Gardenize | Marking beds before the LiDAR map exists, or on the web build |
+| 14 | Drawing on a photo to remember where things are | Gardenize | Marking beds before the LiDAR map exists |
 | 15 | A calm two-colour palette with real, unstaged photos | Planta, Gardenize | Overall tone (see [design.md](design.md)) |
 | 16 | A real before-and-after from the plant's own history | PictureThis's split image, used honestly | Comparing two scans of the same plant, labelled with dates |
 

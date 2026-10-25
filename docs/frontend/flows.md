@@ -1,6 +1,6 @@
 # PDM Frontend Flows
 
-> **Status:** Draft v0.4.6, 2026-10-22. v0.4.6: picture answers by `Question.indicator_id` (section 6). v0.4.5: a question photo and a guided check are sent with Send, after the user sees the photo, and the jar test's task is due 6 hours after Start (sections 6 and 8). v0.4.4: "Forgot password?" resets the password with an email code, then continues like a sign-in (section 1). v0.4.3: a capture slot's delete can fail: after two retries the shot goes back to `stored` (section 14). v0.4.2: the second factor is a code by text, not TOTP (section 1).
+> **Status:** Draft v0.4.7, 2026-10-25. v0.4.7: the web build is marked dropped (Oct 25) where flows 1, 3, 4 and 12 describe browsers. v0.4.6: picture answers by `Question.indicator_id` (section 6). v0.4.5: a question photo and a guided check are sent with Send, after the user sees the photo, and the jar test's task is due 6 hours after Start (sections 6 and 8). v0.4.4: "Forgot password?" resets the password with an email code, then continues like a sign-in (section 1). v0.4.3: a capture slot's delete can fail: after two retries the shot goes back to `stored` (section 14). v0.4.2: the second factor is a code by text, not TOTP (section 1).
 > v0.4 applies the third audit and contracts v0.8.2: a failed scan supersedes its question first, and a guided check that finishes after a failure is kept for a Retry.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Species and capture:** the species card shows each photo's credit, and discarding a capture also deletes its jar-test task.
@@ -87,7 +87,7 @@ Companion to the [frontend architecture](README.md) and the [screens](screens.md
 ```
 
 - **Google and Apple** use `useSSO` in a browser session on native builds and a redirect in browsers, and return to the app; the rest is the same.
-- **In an embedded web view** (`platform/browser` reports `in_app`: Instagram, Facebook, LinkedIn), the sign-in screen offers email and password only, with "For Google or Apple sign-in, open this page in Safari or Chrome" and **Copy link**. Google refuses OAuth in embedded web views. Links opened from Slack or Gmail usually land in the system's in-app view, where every method works ([README 13](README.md#phone-browsers-and-in-app-browsers)).
+- **In an embedded web view** (web build, dropped on Oct 25; `platform/browser` reports `in_app`: Instagram, Facebook, LinkedIn), the sign-in screen offers email and password only, with "For Google or Apple sign-in, open this page in Safari or Chrome" and **Copy link**. Google refuses OAuth in embedded web views. Links opened from Slack or Gmail usually land in the system's in-app view, where every method works ([README 13](README.md#phone-browsers-and-in-app-browsers)).
 - **Forgot password?** on sign-in, or **Reset password** when sign-up finds the email taken, opens `(auth)/reset-password`: `signIn.create({ identifier })`, `resetPasswordEmailCode.sendCode()`, then the code and a new password (`verifyCode`, then `submitPassword` with `signOutOfOtherSessions`). The new password moves the sign-in on like a password sign-in would: the code by text, the new-device email code, or straight in. Each step runs only at its own status, so a retry starts where the last try stopped: a refused new password keeps the checked code, so only the password is sent again; once the password has changed, **Continue** only moves the sign-in on; and a sign-in dropped while the screen is open (`needs_identifier`) starts again at the email ([Clerk's forgot-password flow](https://clerk.com/docs/guides/development/custom-flows/authentication/forgot-password)).
 - The active garden is checked against `GET /gardens`. A persisted ID that is no longer in the list (the user was removed, or the garden was deleted) falls back to the first garden, with a notice when a `garden_deleted` push was received.
 
@@ -125,7 +125,7 @@ Companion to the [frontend architecture](README.md) and the [screens](screens.md
   │ POST /gardens/{id}/invites ──▶│                               │
   │   key=B { role }              │                               │
   │◀── 201 Invite { code } ───────│                               │
-  │ share sheet: pdm://invite/<code>  (web: https://<web origin>/invite/<code>)
+  │ share sheet: pdm://invite/<code>  (a web build, dropped on Oct 25, would add https://<web origin>/invite/<code>)
   │──────────────────────────────────────────────────────────────▶│ opens link
   │                               │                               │ invite/[code] (outside the guards)
   │                               │                               │ signed out? ─▶ sign-in, then back here
@@ -178,7 +178,7 @@ Companion to the [frontend architecture](README.md) and the [screens](screens.md
 - **Re-encoding.** A picked photo refused with `413` or `415` is re-encoded once and sent as a new action with a new key (`key=D2`), because the first answer is stored under the old key (contracts 1). A LiDAR shot is never re-encoded: it must be the module's file, unchanged (contracts 3).
 - **Replacing** a stored shot: `DELETE /scans/{id}/images/{image_id}`, then the new shot uploads with a new key.
 - **Depth problems never fail the upload.** `depth: { stored: false, problem }` keeps the photo and shows a small "no depth for this shot" note (contracts 3).
-- **In a phone browser** the shutter is **Take photo**, which opens the phone's own camera through `launchCameraAsync`, called directly inside the press handler. The slot's instructions are shown before the camera opens. **Choose from library** sits beside it. On a desktop it is a file picker. HEIC files are converted to JPEG before the first attempt (contracts open question 8).
+- **In a phone browser** (web build, dropped on Oct 25) the shutter is **Take photo**, which opens the phone's own camera through `launchCameraAsync`, called directly inside the press handler. The slot's instructions are shown before the camera opens. **Choose from library** sits beside it. On a desktop it is a file picker. HEIC files are converted to JPEG before the first attempt (contracts open question 8).
 - **The app closes mid-capture:** the draft (scan ID, slots, the exact files, keys) is persisted, and the plant page offers **Continue scan** for a `pending` scan with a draft.
 - **Discard** asks first, saying that a jar-test task started on this scan goes too, then `DELETE /scans/{id}` (`204`) and drops the draft. The server deletes that task with the scan; the app invalidates `qk.tasks`, `qk.plants` and `qk.timeline`. A `409` means the scan was submitted meanwhile (from another device), and the app opens it instead.
 - **`409 invalid_state` on submit with `hint: "new_scan"`** (a failed scan that can't be resubmitted) offers a new scan instead.
@@ -465,7 +465,7 @@ Late work is a late answer, a late photo for a question, or any guided soil chec
 | `alert` | `/tasks?source=forecast_alert`, in `garden_id` | |
 | `garden_deleted` | The garden home of the next garden, or onboarding | A notice: "<garden_name> was deleted"; invalidates `qk.gardens()` |
 
-- Expo Go and the web build have no push. The alert inbox (the tasks screen filtered to `source=forecast_alert`) shows the same alerts in every build (architecture 8.3).
+- Expo Go has no push (nor would a web build, dropped on Oct 25). The alert inbox (the tasks screen filtered to `source=forecast_alert`) shows the same alerts in every build (architecture 8.3).
 - Invite links (`pdm://invite/<code>`, or the web URL) open `invite/[code]` (flow 3).
 
 ---

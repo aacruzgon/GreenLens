@@ -1,6 +1,6 @@
 # PDM Design Philosophies
 
-> **Status:** Draft v0.2, 2026-10-17. v0.2: folds in the PR #43 audit: capture's tinted Analyse sits below the preview, unmeasured plants are a fixed marker, three r181, and a hollow square for dead. v0.1: surveys ten visual design philosophies against PDM's screens, outdoor use and honesty rules, lists the tells of generic design, sets out what Apple's iOS 26 chrome owns and what PDM owns, and specifies three directions to mock on top of it (Herbarium, Seed Packet, Instrument) with contrast-checked palettes, glass-tint checks, type, motion and 3D garden styles.
+> **Status:** Draft v0.2.1, 2026-10-25. v0.2.1: the web build is marked dropped (Oct 25) in the targets table, the ownership table, the web chrome rule and open question 5. v0.2: folds in the PR #43 audit: capture's tinted Analyse sits below the preview, unmeasured plants are a fixed marker, three r181, and a hollow square for dead. v0.1: surveys ten visual design philosophies against PDM's screens, outdoor use and honesty rules, lists the tells of generic design, sets out what Apple's iOS 26 chrome owns and what PDM owns, and specifies three directions to mock on top of it (Herbarium, Seed Packet, Instrument) with contrast-checked palettes, glass-tint checks, type, motion and 3D garden styles.
 
 This is research for choosing PDM's visual direction. It surveys design philosophies that could fit the app, says what each would look like here and what it would cost to build in Expo, separates what Apple's system chrome owns from what is ours, and ends with three directions to mock, each a layer on top of Apple's design language. It is a companion to [design.md](design.md), which holds the design decisions, and to [screens](../frontend/screens.md), which holds the layouts and wording. The stack and pins are in [frontend §3–4](../frontend/README.md#3-stack-and-version-pins).
 
@@ -35,7 +35,7 @@ This is research for choosing PDM's visual direction. It surveys design philosop
 | Honest uncertainty | No confidence % on a diagnosis. "Not sure yet: early blight or Septoria leaf spot" must look as considered as a firm answer, not like an error ([screens §6](../frontend/screens.md#6-wording-for-uncertain-results)) |
 | Status as words plus colour | Every health colour sits beside its word. Green and red of equal lightness look alike to about 1 in 12 men |
 | Dynamic Type, light and dark, reduced motion | Layouts reflow at the largest sizes; every motion has a still fallback |
-| Three targets | iOS 26 renders native tabs as Liquid Glass; Android renders Material tabs; the web build (the judges' link) renders whatever we draw. A style that depends on one platform's material breaks on the other two |
+| Three targets | iOS 26 renders native tabs as Liquid Glass; Android renders Material tabs; the web build (dropped on Oct 25; it was to be the judges' link) renders whatever we draw. A style that depends on one platform's material breaks on the other two |
 | 2-minute demo video | The style has to read at video resolution, on a laptop, in four screens and one 3D view |
 
 ## 3. The philosophies
@@ -251,7 +251,7 @@ Avoid all of these. Each is something a judge has seen a hundred times this year
 
 Expo renders native iOS 26 components, so the app's chrome is Apple's whatever direction we pick. Native tabs are the floating Liquid Glass tab bar; the navigation bar, its glass buttons, sheets, menus, alerts and SF Symbols are system components. The directions in §7 are therefore not alternatives to the HIG (§3.3) but a layer on top of it: they differ only in what is ours. Sources: [HIG, Materials](https://developer.apple.com/design/human-interface-guidelines/materials), [HIG, Color › Liquid Glass color](https://developer.apple.com/design/human-interface-guidelines/color#Liquid-Glass-color), [HIG, Tab bars](https://developer.apple.com/design/human-interface-guidelines/tab-bars), [Expo Router native tabs](https://docs.expo.dev/router/advanced/native-tabs/), [Expo Router stack toolbar](https://docs.expo.dev/router/advanced/stack-toolbar/).
 
-| Element | Owner | iOS 26 | Android | Web build |
+| Element | Owner | iOS 26 | Android | Web build (dropped Oct 25) |
 |---|---|---|---|---|
 | Tab bar | Apple | `NativeTabs` (`expo-router/unstable-native-tabs` on SDK 57), Liquid Glass, SF Symbols through `sf` | Material tab bar, Material Symbols through `md`; no glass | Native tabs fall back to "a basic implementation, loosely based on iPad design"; we replace it with headless tabs from `expo-router/ui` in `_layout.web.tsx` |
 | Navigation bar, titles, toolbar buttons | Apple | Native stack, SF Pro titles, glass buttons through `Stack.Toolbar` (SDK 55+) | Material top bar, `Stack.Toolbar` (SDK 56+) | `Stack.Toolbar` doesn't render; we draw the header |
@@ -304,7 +304,7 @@ With the same glass tab bar, nav bar and sheets, a screenshot of each direction 
 ### Android and the web
 
 - **Android** gets Material chrome from the same Expo components (the Expo page doesn't name the Material version; Material 3 is expected, *unverified*): the Material tab bar, top app bar and dialogs, Roboto in the chrome, Material Symbols. No glass and no blur. `accent` becomes the selected tab's colour. The content layer is identical to iOS: same tokens, same font files, same overlays, same 3D scene.
-- **The web build** has no native chrome. We draw the header and tab bar ourselves as opaque `surface` with a 1 px `border` edge, in `system-ui` (SF Pro on Apple devices, Segoe UI on Windows, Roboto on Android). No imitation of glass; a CSS `backdrop-filter` copy looks cheap next to the real thing and costs contrast. The content layer is again identical. Since the judges open the web build, each mock must be judged on it too, not only on the iPhone.
+- **The web build** (dropped on Oct 25: the app ships on the iPhone only; kept as the design if one returns) has no native chrome. We draw the header and tab bar ourselves as opaque `surface` with a 1 px `border` edge, in `system-ui` (SF Pro on Apple devices, Segoe UI on Windows, Roboto on Android). No imitation of glass; a CSS `backdrop-filter` copy looks cheap next to the real thing and costs contrast. The content layer is again identical. The judges were to open the web build, so each mock was to be judged on it too; with the web build dropped, the iPhone is the only target.
 
 ## 7. Three directions to mock
 
@@ -431,7 +431,7 @@ Hex values for each role. Checked with the script: every text pair below passes 
 2. **Blend after choosing.** The likely outcome is one direction's structure with another's detail, for example Instrument's comparison table for "Not sure yet" inside Herbarium. Decide in [design.md](design.md).
 3. **Fraunces instances.** Which SOFT and opsz values Google's static Fraunces files use was not checked. Cut our own instances if Seed Packet wins.
 4. **Tint over darkened glass.** Check on the iPhone whether native tabs and toolbar buttons keep a tint readable when the glass adapts to dark content in light mode (§6). Until then, no tint over photos.
-5. **3D on the web build.** R3F on the web is standard, but the same scene shared with `expo-gl` native has not been run in this project. Do it on day 1 of the 3D work.
+5. **3D on the web build** (dropped on Oct 25 with the web build). R3F on the web is standard, but the same scene shared with `expo-gl` native has not been run in this project. Do it on day 1 of the 3D work.
 6. **Unverified exemplars.** Aesop, Muji, the Biodiversity Heritage Library, iNaturalist's main site, Merlin, The Light Phone and the Material 3 pages could not be opened from here. None of the recommendations depends on them.
 
 ## 10. Sources

@@ -1,6 +1,6 @@
 //! The signed image routes ([contracts 3], images and masks; [contracts 8], chat images;
 //! [contracts 9], species photos; [storage 3]). No `Authorization`: the signature is the
-//! authorisation, so plain `<img>` tags work in the web build. A bad or expired signature is
+//! authorisation, so plain `<img>` tags work in any client. A bad or expired signature is
 //! `403 invalid_signature`; a valid one for a record that no longer exists is `404`.
 
 use axum::{extract::State, response::Response};
