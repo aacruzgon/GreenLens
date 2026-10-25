@@ -600,28 +600,71 @@ services:
 Caddy fronts `api` in every case. What sits in front of Caddy is a compose profile, chosen per host with `COMPOSE_PROFILES` in `.env.compose`. The rig uses `tailscale` (decided 2026-10-16, [architecture 12](../architecture/README.md#hosting-the-control-plane)): it needs no domain and no open port, and anyone can reach the URL without joining the tailnet, so teammates test against it from their own phones and laptops.
 
 ```caddyfile
+# Caddy fronts api in every ingress case (docs/infra/README.md section 5).
+# CADDY_SITE is ":80" behind an ingress profile and "api.<domain>" on a VM (Caddy then gets a
+# Let's Encrypt certificate, stored in the caddy-data volume).
+# The filter both loggers below use. Credentials never reach the log (rust-tracing's rule for api): a
+# signed image URL's sig (a 15-minute credential), the X-Lease-Token and Authorization headers, the
+# invite code and the push token (path segments), the OAuth code and state (a one-time code and a
+# signed state), and the Location header (the 302 to the app repeats the OAuth code and state). Paths:
+# backend/bins/api. Caddy already redacts Authorization, Cookie and Set-Cookie by default; the line
+# below keeps it redacted if that default changes.
+(redact) {
+	format filter {
+		request>headers>X-Lease-Token delete
+		request>headers>Authorization replace REDACTED
+		resp_headers>Location delete
+		request>uri multi_regexp {
+			regexp ^(/invites/)[^/?]+(/accept) ${1}REDACTED${2}
+			regexp ^(/me/push-tokens/)[^/?]+ ${1}REDACTED
+			regexp ^(/connectors/oauth/callback)\?.* ${1}?REDACTED
+			regexp ([?&]sig)=[^&]* ${1}=REDACTED
+		}
+		wrap json
+	}
+}
+
 {
 	servers {
 		trusted_proxies static private_ranges   # the ingress sidecar connects from the compose network
 	}
+	# A failed proxy (api restarting, a 502 or a timeout) logs the whole request to http.log.error,
+	# which the site's access log below doesn't cover, so it gets its own filtered logger.
+	log default {
+		exclude http.log.error
+	}
+	log proxy_errors {
+		output stdout
+		import redact
+		include http.log.error
+	}
 }
 
 {$CADDY_SITE} {
+	# /status lists worker ids, GPU names and the queue: operators read it on the host-only site below,
+	# and the public site answers 404 (docs/infra/README.md section 5).
+	@status path /status /status/*
+	respond @status 404
 	reverse_proxy api:8080
 	log {
 		output stdout
-		# A signed image URL's sig is a 15-minute credential: never logged (rust-tracing's rule for api).
-		format filter {
-			request>uri query {
-				replace sig REDACTED
-			}
-			wrap json
-		}
+		import redact
+	}
+}
+
+# The operators' site: /status alone, published only on the host's loopback (CADDY_OPS, default
+# 127.0.0.1:8082). No ingress sidecar forwards to this port; anything else here is 404.
+:8082 {
+	handle /status {
+		reverse_proxy api:8080
+	}
+	handle {
+		respond 404
 	}
 }
 ```
 
-✓ On `caddy:2.11.7-alpine` (2026-10-17), `caddy validate` accepts it, and a request for `…?exp=…&sig=…` is logged with `sig=REDACTED`. Caddy already leaves `Authorization` out of its logs unless `log_credentials` is on (*unverified*).
+This is [infra/caddy/Caddyfile](../../infra/caddy/Caddyfile) as committed. ✓ On `caddy:2.11.7-alpine` (2026-10-17), `caddy validate` accepted the first version, and a request for `…?exp=…&sig=…` is logged with `sig=REDACTED`; the log filter and the `/status` sites were checked again since (backend roadmap S7, and `/status` below). Caddy already leaves `Authorization` out of its logs unless `log_credentials` is on (*unverified*).
 
 | | `tailscale` (the rig) | `cloudflare` | none (a cloud VM) |
 |---|---|---|---|

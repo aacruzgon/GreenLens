@@ -1477,6 +1477,16 @@ class S6:
         need(a.photo, "needs --photo")
         u = self.main
         dead = a.dead_worker or DEFAULT_DEAD_WORKER[a.kill_at]
+        # The takeover is timed from /status, which the public URL hides (infra 5): fail now, not
+        # after a scan, when --status-url doesn't answer.
+        try:
+            req = urllib.request.Request(a.status_url.rstrip("/") + "/status",
+                                         headers={"User-Agent": smoke.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                json.loads(r.read())
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            need(False, f"{a.status_url}/status doesn't answer ({e}); run on the control-plane host "
+                        "or tunnel to its 127.0.0.1:8082 (infra 5)")
         g = self.new_garden(u, "rig-failure")
         poller = StatusPoller(a.status_url)
         poller.start()

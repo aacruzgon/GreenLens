@@ -737,13 +737,19 @@ class Harness:
         self.fill(rec, stream.events, scan)
 
     def status_snapshot(self) -> list[str] | None:
+        url = (self.args.status_url or self.args.base_url).rstrip("/") + "/status"
         try:
-            base = self.args.status_url or self.args.base_url
-            with urllib.request.urlopen(base.rstrip("/") + "/status", timeout=10) as r:
+            with urllib.request.urlopen(url, timeout=10) as r:
                 st = json.loads(r.read())
             return sorted(f"{w['worker_id']}:{','.join(w.get('caps', []))}" for w in st.get("workers", [])
                           if w.get("healthy"))
-        except (urllib.error.URLError, OSError, ValueError):
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            # The public URL answers 404 to /status (infra 5): say so once rather than leave every
+            # case's workers_at_submit null without a word.
+            if not getattr(self, "_status_warned", False):
+                self._status_warned = True
+                print(f"warning: {url}: {e}; workers_at_submit stays null. On the control-plane host, "
+                      "pass --status-url http://127.0.0.1:8082 (infra 5)", file=sys.stderr)
             return None
 
     def fill(self, rec: dict, events: list[dict], scan: dict) -> None:
