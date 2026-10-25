@@ -145,9 +145,22 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 }
 
 /* ——— Partners strip ——— */
-.strip { border-block: 1px solid var(--line); }
-.strip .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px 32px; padding-block: 26px; align-items: center; }
-.strip a { text-decoration: none; font: 600 clamp(17px, 1.8vw, 22px)/1 var(--display); letter-spacing: -0.02em; color: var(--ink-2); transition: color .2s; }
+/* A marquee: four copies of the names, the track sliding half its width so the loop is seamless;
+   it fades at both edges and stops while hovered or focused. */
+.strip { border-block: 1px solid var(--line); overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+.strip .track { display: flex; width: max-content; animation: marquee 40s linear infinite; }
+.strip:hover .track, .strip:focus-within .track { animation-play-state: paused; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+.strip .set { display: flex; flex: none; align-items: center; padding-block: 28px; }
+.strip a { position: relative; padding-inline: 40px; white-space: nowrap; text-decoration: none; font: 600 clamp(19px, 2vw, 26px)/1 var(--display); letter-spacing: -0.02em; color: var(--ink-2); transition: color .2s; }
+.strip a::after { content: ""; position: absolute; right: -3px; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: var(--leaf); opacity: .55; }
+@media (prefers-reduced-motion: reduce) {
+  .strip { -webkit-mask-image: none; mask-image: none; }
+  .strip .track { width: auto; animation: none !important; justify-content: center; }
+  .strip .set { flex-wrap: wrap; justify-content: center; row-gap: 16px; }
+  .strip .set ~ .set { display: none; }
+}
 .strip a:hover { color: var(--ink); }
 .strip small { font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; margin-left: 6px; opacity: .8; }
 
@@ -630,8 +643,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 </header>
 
 <div class="strip" role="group" aria-label="Built with">
-  <div class="wrap">
-    <a href="#ch-chat">Anthropic<small>Claude</small></a><a href="#ch-signin">Clerk<small>auth</small></a><a href="#ch-live">SurrealDB<small>3.3.4</small></a><a href="#ch-farm">Agent Memory<small>SurrealDB</small></a><a href="#ch-farm">Era<small>by Eon</small></a><a href="#ch-home">Expo<small>SDK 57</small></a>
+  <div class="track">
+    <div class="set"><a href="#ch-chat">Anthropic<small>Claude</small></a><a href="#ch-signin">Clerk<small>auth</small></a><a href="#ch-live">SurrealDB<small>3.3.4</small></a><a href="#ch-farm">Agent Memory<small>SurrealDB</small></a><a href="#ch-farm">Era<small>by Eon</small></a><a href="#ch-home">Expo<small>SDK 57</small></a></div>
+    <div class="set" aria-hidden="true"><a tabindex="-1" href="#ch-chat">Anthropic<small>Claude</small></a><a tabindex="-1" href="#ch-signin">Clerk<small>auth</small></a><a tabindex="-1" href="#ch-live">SurrealDB<small>3.3.4</small></a><a tabindex="-1" href="#ch-farm">Agent Memory<small>SurrealDB</small></a><a tabindex="-1" href="#ch-farm">Era<small>by Eon</small></a><a tabindex="-1" href="#ch-home">Expo<small>SDK 57</small></a></div>
+    <div class="set" aria-hidden="true"><a tabindex="-1" href="#ch-chat">Anthropic<small>Claude</small></a><a tabindex="-1" href="#ch-signin">Clerk<small>auth</small></a><a tabindex="-1" href="#ch-live">SurrealDB<small>3.3.4</small></a><a tabindex="-1" href="#ch-farm">Agent Memory<small>SurrealDB</small></a><a tabindex="-1" href="#ch-farm">Era<small>by Eon</small></a><a tabindex="-1" href="#ch-home">Expo<small>SDK 57</small></a></div>
+    <div class="set" aria-hidden="true"><a tabindex="-1" href="#ch-chat">Anthropic<small>Claude</small></a><a tabindex="-1" href="#ch-signin">Clerk<small>auth</small></a><a tabindex="-1" href="#ch-live">SurrealDB<small>3.3.4</small></a><a tabindex="-1" href="#ch-farm">Agent Memory<small>SurrealDB</small></a><a tabindex="-1" href="#ch-farm">Era<small>by Eon</small></a><a tabindex="-1" href="#ch-home">Expo<small>SDK 57</small></a></div>
   </div>
 </div>
 
@@ -1154,7 +1170,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         if (e.target === storyEl) storyOn = e.isIntersecting;
       });
     });
-    [heroEl, storyEl, $(".pipe")].forEach(function (el) { pio2.observe(el); });
+    [heroEl, $(".strip"), storyEl, $(".pipe")].forEach(function (el) { pio2.observe(el); });
   }
 
   /* ——— Hero: one live analysis, looped. ——— */
