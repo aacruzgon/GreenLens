@@ -1,0 +1,121 @@
+# The RX 9070 XT's host: the VLM sidecar vllm-amd and its worker vlm-worker-amd.
+# DRAFT: nothing here has run. The AMD day-1 check (dev-roadmap P7, architecture open decision 19)
+# decides between this vLLM ROCm sidecar and llama.cpp on Vulkan; its owner corrects this file from it.
+# See docs/infra/README.md section 4 and docs/vision/vlm.md section 4.
+#
+# Same checkpoint, revision and flags as vllm-nv in rig.compose.yml, since a scan's jobs can land on
+# either card; keep the two command blocks in step. The differences: the image, the devices (only
+# /dev/kfd and this card's render node, never all of /dev/dri), and this card's own slots.
+#
+# Settings: infra/.env, copied from infra/.env.example. Set VLM_API_KEY, AMD_RENDER_NODE,
+# HOST_RENDER_GID and HOST_VIDEO_GID, and VLM_MAX_NUM_SEQS and VLM_GPU_MEM_UTIL for this card (1 slot
+# until its own benchmark says otherwise, and 0.85 with the desktop on the card, ✓ ran 2026-10-25;
+# the example file's 2 and 0.78 are the 5070 Ti's). AMD_RENDER_NODE is /dev/dri/renderDNNN, never
+# a /dev/dri/by-path name: Compose splits a devices entry on ':' (infra/.env.example).
+# The worker's token is in ${PDM_ENV}/.env.rig-9070xt-vlm-1, and the same token is in api's
+# WORKER_TOKENS on the control plane.
+#
+# As in rig.compose.yml, vllm-amd starts on its own (`up -d vllm-amd`, for the day-1 check and
+# benchmarks): the worker's image defaults to worker:unset and its token file is optional, so only
+# the worker fails, at the image pull, until WORKER_IMAGE is set.
+#
+# If llama.cpp wins the day-1 check: replace vllm-amd with ghcr.io/ggml-org/llama.cpp:server-vulkan
+# at a pinned build and digest (port 8080 inside, -np equal to VLM_SLOTS, --image-max-tokens at least
+# VLM_MAX_PIXELS / 32^2), and set the worker's VLM_ADAPTER=llamacpp, VLM_SERVER=llama.cpp-vulkan@<build>,
+# VLM_QUANT=gguf_q8_0 and VLM_BASE_URL to port 8080. Both cards then serve the same GGUF (vlm.md 4).
+
+x-logging: &logging
+  driver: json-file
+  # The live file up to 10 MB, plus four rotated files gzipped (compress): from about 12 MB per container.
+  options: { max-size: "10m", max-file: "5", compress: "true" }
+x-hardened: &hardened
+  read_only: true
+  tmpfs: ["/tmp:size=512m"]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  vllm-amd:
+    image: vllm/vllm-openai-rocm@sha256:749f6f3f944f12af49966ac523c1f8573e4b229594b541954bd5f879b4496b1f   # v0.31.0
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        eval "set -- $${VLM_EXTRA_ARGS:-}"
+        exec vllm serve "$${VLM_MODEL}" \
+          --revision "$${VLM_REVISION}" \
+          --served-model-name vlm \
+          --max-model-len "$${VLM_MAX_MODEL_LEN}" \
+          --max-num-seqs "$${VLM_MAX_NUM_SEQS}" \
+          --max-num-batched-tokens 8192 \
+          --gpu-memory-utilization "$${VLM_GPU_MEM_UTIL}" \
+          --kv-cache-dtype "$${VLM_KV_CACHE_DTYPE}" \
+          --enable-prefix-caching \
+          --limit-mm-per-prompt '{"image":{"count":4,"width":1152,"height":864},"video":0}' \
+          --mm-processor-kwargs "{\"size\":{\"longest_edge\":$${VLM_MAX_PIXELS},\"shortest_edge\":65536}}" \
+          --structured-outputs-config.backend xgrammar \
+          --structured-outputs-config.disable_any_whitespace true \
+          --generation-config vllm \
+          --api-key "$${VLM_API_KEY}" \
+          "$$@"
+    environment:
+      VLM_MODEL: ${VLM_MODEL:-cyankiwi/Qwen3.5-9B-AWQ-4bit}
+      VLM_REVISION: ${VLM_REVISION:-156edc4bbeb8d1910ee7be9196bafaf1bc052156}
+      VLM_MAX_NUM_SEQS: ${VLM_MAX_NUM_SEQS:-1}
+      VLM_GPU_MEM_UTIL: ${VLM_GPU_MEM_UTIL:-0.85}
+      VLM_MAX_MODEL_LEN: ${VLM_MAX_MODEL_LEN:-16384}
+      VLM_KV_CACHE_DTYPE: ${VLM_KV_CACHE_DTYPE:-auto}
+      VLM_MAX_PIXELS: ${VLM_MAX_PIXELS:-1003520}
+      VLM_EXTRA_ARGS: >-
+        ${VLM_EXTRA_ARGS---default-chat-template-kwargs '{"enable_thinking": false}'}
+      VLM_API_KEY: ${VLM_API_KEY:?set VLM_API_KEY in infra/.env}
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
+      FLASH_ATTENTION_TRITON_AMD_ENABLE: "TRUE"   # no HSA_OVERRIDE_GFX_VERSION: gfx1201 is supported
+    devices:
+      - /dev/kfd
+      - ${AMD_RENDER_NODE:?set AMD_RENDER_NODE in infra/.env}
+    group_add:
+      - "${HOST_RENDER_GID:?set HOST_RENDER_GID in infra/.env}"
+      - "${HOST_VIDEO_GID:?set HOST_VIDEO_GID in infra/.env}"
+    security_opt: [seccomp=unconfined]
+    cap_add: [SYS_PTRACE]
+    ipc: host
+    volumes:
+      - ${HF_HOME_HOST:-${HOME}/.cache/huggingface}:/root/.cache/huggingface
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 900s   # model load and graph capture; slower on ROCm (unverified)
+    stop_grace_period: 30s
+    restart: "no"
+    logging: *logging
+
+  vlm-worker-amd:
+    image: ${WORKER_IMAGE:-worker:unset}   # ghcr.io/aacruzgon/greenlens/worker@sha256:…
+    restart: unless-stopped
+    <<: *hardened
+    command: ["--caps", "vlm"]
+    env_file:                       # WORKER_TOKEN; also in api's WORKER_TOKENS
+      - path: ${PDM_ENV:-/srv/pdm/env}/.env.rig-9070xt-vlm-1
+        required: false
+    environment:
+      WORKER_ID: rig-9070xt-vlm-1
+      API_BASE_URL: ${API_BASE_URL:-https://pdm-cp.tailb3ce07.ts.net}   # the control plane's public URL
+      VLM_BASE_URL: http://vllm-amd:8000
+      VLM_API_KEY: ${VLM_API_KEY:?set VLM_API_KEY in infra/.env}
+      VLM_ADAPTER: vllm
+      VLM_SERVED_NAME: vlm
+      VLM_MODEL: ${VLM_MODEL:-cyankiwi/Qwen3.5-9B-AWQ-4bit}@${VLM_REVISION:-156edc4bbeb8d1910ee7be9196bafaf1bc052156}
+      VLM_QUANT: ${VLM_QUANT:-awq_w4a16}
+      VLM_SERVER: vllm-rocm@v0.31.0
+      VLM_BOX_FORMAT: norm1000
+      VLM_CELL_PX: "32"
+      VLM_MAX_PIXELS: ${VLM_MAX_PIXELS:-1003520}
+      VLM_SLOTS: ${VLM_MAX_NUM_SEQS:-1}   # always the sidecar's --max-num-seqs
+    # Claims only once vLLM's /health answers, so no job waits on a model still loading.
+    depends_on: { vllm-amd: { condition: service_healthy } }
+    stop_grace_period: 30s          # DRAIN_SECONDS (20) + 10 s, worker 12
+    logging: *logging
