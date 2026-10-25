@@ -152,6 +152,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .chapters { display: grid; }
 .chapter { min-height: 96vh; display: grid; align-content: center; gap: 16px; padding-block: 40px; opacity: .3; transition: opacity .6s var(--ease); scroll-margin-top: 80px; }
 .chapter.on { opacity: 1; }
+.chapter:first-child { align-content: start; padding-top: 0; }
 .chapter .when { font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--leaf); }
 .chapter h3 { font-size: clamp(34px, 4vw, 52px); }
 .chapter > p { color: var(--ink-2); max-width: 32em; }
@@ -552,13 +553,6 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 @media (max-width: 1000px) { .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tech { grid-column: span 1; } .tech.rest { grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .bento { grid-template-columns: minmax(0, 1fr); } .tech.rest { grid-column: span 1; grid-template-columns: minmax(0, 1fr); } }
 
-/* ——— Status ——— */
-.status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.status > div { border-radius: 26px; padding: 24px; background: var(--surface); box-shadow: var(--shadow); display: grid; gap: 12px; align-content: start; }
-.status h3 { font-size: 24px; display: flex; gap: 10px; align-items: center; }
-.status ul { margin: 0; padding: 0 0 0 18px; display: grid; gap: 8px; font-size: 15px; color: var(--ink-2); }
-@media (max-width: 860px) { .status { grid-template-columns: minmax(0, 1fr); } }
-
 /* ——— Footer ——— */
 .foot { background: var(--wash); }
 .foot .wrap { padding-block: 72px 48px; display: grid; gap: 40px; }
@@ -597,7 +591,6 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       <li><a href="#story">The app</a></li>
       <li><a href="#how">How it works</a></li>
       <li><a href="#built">Built with</a></li>
-      <li><a href="#status">Status</a></li>
       <li><a href="https://github.com/aacruzgon/GreenLens#readme">README</a></li>
     </ul>
   </div>
@@ -1092,37 +1085,6 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         <div><b>The GPU rig</b><span>RTX 3070 for perception, RTX 5070 Ti for the VLM. Species in the top 3 for 93% of test photos.</span></div>
         <div><b>Python ML</b><span>Training, ONNX export and evaluation in <code>ml/</code>, on 267 labelled cases with leakage checks.</span></div>
       </article>
-    </div>
-  </div>
-</section>
-
-<!-- ——— Status ——— -->
-<section class="sec" id="status" style="padding-top: 0">
-  <div class="wrap">
-    <div class="sec-head rise">
-      <p class="eyebrow">Where it stands · Oct 24</p>
-      <h2>What runs today.</h2>
-      <p class="lede">Built in ten days. The screens above use the app's demo data. Here is what runs on real hardware, what runs on demo data, and what's still waiting.</p>
-    </div>
-    <div class="status">
-      <div class="rise"><h3><span class="st healthy"></span>Live</h3><ul>
-        <li>The API on the control plane since Oct 20, with Clerk sign-in on an iPhone.</li>
-        <li>Real perception on the RTX 3070 and Qwen3.5-9B on the RTX 5070 Ti, serving real scans.</li>
-        <li>A full scan on the rig on Oct 24, ending in a cited 8-step plan from Claude.</li>
-        <li>Chat, its tools and Agent Memory on the control plane; Era's connectors seeded; the era CI job green.</li>
-        <li>Live weather and soil data for Toronto.</li>
-      </ul></div>
-      <div class="rise"><h3><span class="st watch"></span>On demo data</h3><ul>
-        <li>Chat's answer blocks in the app.</li>
-        <li>Insights and the 3D garden's history.</li>
-        <li>The connectors screen. Farm records are Era's synthetic Maple Row Farm.</li>
-      </ul></div>
-      <div class="rise"><h3><span class="st sick" style="color:var(--ink-2)"></span>Waiting</h3><ul>
-        <li>The LiDAR check on the iPhone, and spot sizes measured from depth.</li>
-        <li>The RX 9070 XT as a second VLM worker.</li>
-        <li>Push notifications and the web build.</li>
-        <li>An end-to-end accuracy measure for diagnoses.</li>
-      </ul></div>
     </div>
   </div>
 </section>
