@@ -1,29 +1,31 @@
-//! The worker's pre-processing on image files, written out as `.npy` arrays for J1's parity
-//! check (vision dev-roadmap, gap G8): `python -m ml.training.eval.preprocess_parity run`
-//! compares every array with `ml/pdm_vision/preprocess.py`.
+//! The upload's and the worker's pre-processing on image files, written out as `.npy` arrays for
+//! J1's parity check (vision dev-roadmap, gap G8): `python -m ml.training.eval.preprocess_parity
+//! run` compares every array with `ml/pdm_vision/preprocess.py`.
 //!
 //! ```text
 //! cd backend
-//! echo '{"manifest": "/x/ml/models/manifest.cpu.toml", "out": "/x/dump",
-//!        "photos": [{"id": "p0", "path": "/x/a.jpg"}],
+//! echo '{"manifest": "/x/ml/models/manifest.toml", "upload_manifest": "/models/manifest.toml",
+//!        "out": "/x/dump", "photos": [{"id": "p0", "path": "/x/a.jpg"}],
 //!        "crops": [{"id": "c0", "photo": "p0", "bbox": [0.1, 0.2, 0.3, 0.4]}]}' | tr -d '\n' \
-//!   | cargo run -q --release -p vision --example preprocess_dump
+//!   | ORT_DYLIB_PATH=/x/libonnxruntime.so cargo run -q --release -p vision --example preprocess_dump
 //! ```
 //!
-//! Reads one JSON job per line on stdin. For each photo it runs the steps of the upload that
-//! change pixels, as `UploadProcessor::process` runs them on a photo with no face and no depth
-//! (decode with the EXIF orientation applied, resize to the stored long side, lossy `WebP` at
-//! `UploadConfig::webp_quality`), then the worker's (`decode_stored`, then
-//! `preprocess::to_tensor` with the `bioclip`, `leaf_detector` and `sam_encoder` recipes of the
-//! manifest). For each crop it grows the normalised `[x, y, w, h]` box by the disease heads'
-//! `crop_grow` and cuts it from the stored photo as the disease stage does (`perception.rs`,
-//! `classify`), then makes `BioCLIP`'s tensor of it.
+//! Reads one JSON job per line on stdin. Each photo goes through `UploadProcessor::process` as a
+//! `whole_plant` shot with no depth (the quality gate, `YuNet` and the face blur on the CPU, the
+//! resize to the stored long side, lossy `WebP`), loaded from `upload_manifest`, a directory
+//! fetched with `python3 -m ml.models.fetch --for api`. The worker's side then runs on the stored
+//! `WebP`: `decode_stored`, then `preprocess::to_tensor` with the `bioclip`, `leaf_detector` and
+//! `sam_encoder` recipes of `manifest`. For each crop it grows the normalised `[x, y, w, h]` box by
+//! `PerceptionConfig`'s `crop_grow` and cuts it from the stored photo with `classify`'s arithmetic
+//! (see [`leaf_rect`]), then makes `BioCLIP`'s tensor of it.
 //!
-//! Writes into `out`: `<photo>.decoded.npy`, `<photo>.resized.npy` and `<photo>.stored.npy`
-//! (`u8`, `[h, w, 3]`: after decoding, after the resize, after the `WebP` round trip),
-//! `<photo>.<recipe>.npy` (`f32`, `[3, side, side]`), `<crop>.crop.npy` (`u8`) and
-//! `<crop>.bioclip.npy` (`f32`), and `index.json` with the sizes, rectangles and settings used.
-//! Prints one JSON line per job: `{"index": path}` or `{"error": message}`.
+//! Writes into `out`: `<photo>.decoded.npy` and `<photo>.resized.npy` (`u8`, `[h, w, 3]`: the
+//! upload's decode and resize, without the face blur), `<photo>.webp.npy` (the resized photo
+//! through the same `WebP`, still without the blur), `<photo>.stored.npy` (what `process` stored,
+//! decoded as the worker does), `<photo>.<recipe>.npy` (`f32`, `[3, side, side]`),
+//! `<crop>.crop.npy` (`u8`) and `<crop>.bioclip.npy` (`f32`), and `index.json` with the sizes,
+//! rectangles, settings and whether the face blur changed the stored photo. Prints one JSON line
+//! per job: `{"index": path}` or `{"error": message}`.
 //!
 //! A diagnostic beside them, which the worker doesn't run: the same resizes as two single-axis
 //! passes, horizontal first, the order Pillow uses (`*.hfirst.npy`, see [`resize_h_first`]).
@@ -33,14 +35,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use domain::scan::ImageKind;
 use image::RgbImage;
 use ndarray::Array3;
 use serde::Deserialize;
 use vision::{
-    imaging::{self, DecodeLimits, ImageView, PixelRect},
+    imaging::{self, ImageView, PixelRect},
     manifest::{Manifest, ModelInput, ResizeRule},
-    perception::preprocess,
-    upload::UploadConfig,
+    perception::{BatchCaps, PerceptionConfig, preprocess},
+    runtime::{OrtEp, OrtRuntime, RuntimeConfig},
+    upload::{UploadConfig, UploadInput, UploadProcessor},
 };
 
 /// The recipes the worker runs on a stored photo, by manifest entry.
@@ -48,7 +52,10 @@ const RECIPES: [&str; 3] = ["bioclip", "leaf_detector", "sam_encoder"];
 
 #[derive(Deserialize)]
 struct Job {
+    /// The recipes and `crop_grow`: the repository's manifest.
     manifest: PathBuf,
+    /// `YuNet` for the upload: the manifest of a directory `fetch --for api` filled.
+    upload_manifest: PathBuf,
     out: PathBuf,
     photos: Vec<Photo>,
     #[serde(default)]
@@ -110,25 +117,10 @@ fn recipe<'m>(manifest: &'m Manifest, name: &str) -> Result<&'m ModelInput, Stri
         .ok_or_else(|| format!("{name} has no [model.input]"))
 }
 
-/// The disease heads' `crop_grow`, as `PerceptionConfig` reads it (0 with no head).
-fn crop_grow(manifest: &Manifest) -> Result<f64, String> {
-    let mut grow = None;
-    for head in manifest.entries_with_prefix("disease_head") {
-        let g = head
-            .config
-            .get("crop_grow")
-            .and_then(toml::Value::as_float)
-            .ok_or_else(|| format!("{} has no crop_grow", head.name))?;
-        if grow.is_some_and(|known: f64| known.to_bits() != g.to_bits()) {
-            return Err("the disease heads disagree on crop_grow".to_owned());
-        }
-        grow = Some(g);
-    }
-    Ok(grow.unwrap_or(0.0))
-}
-
 /// The disease stage's crop of one leaf box: the box grown by `grow` of its size on each side,
-/// rounded outwards and clamped (`perception.rs`, `classify`).
+/// rounded outwards and clamped. A copy of the arithmetic inside `classify` (`perception.rs`), which
+/// isn't a function of its own; `ml/tests/test_preprocess_parity.py` checks `pp.crop_box` against
+/// the rectangles it gives.
 fn leaf_rect(bbox: [f64; 4], grow: f64, size: (u32, u32)) -> ([f64; 4], PixelRect) {
     let [bx, by, bw, bh] = bbox;
     let grown = [
@@ -189,55 +181,105 @@ fn tensor_h_first(image: ImageView<'_>, input: &ModelInput) -> Result<Array3<f32
     preprocess::to_tensor(ImageView::from(&square), &normalise).map_err(|e| e.to_string())
 }
 
+/// One photo through the upload and the worker's recipes: its `index.json` row and the stored
+/// photo.
+fn one_photo(
+    processor: &UploadProcessor,
+    upload: &UploadConfig,
+    recipes: &[(&str, &ModelInput)],
+    out: &Path,
+    photo: &Photo,
+) -> Result<(serde_json::Value, RgbImage), String> {
+    let at = |e: &dyn std::fmt::Display| format!("{}: {e}", photo.path.display());
+    let bytes = std::fs::read(&photo.path).map_err(|e| at(&e))?;
+    let processed = processor
+        .process(UploadInput {
+            kind: ImageKind::WholePlant,
+            file: &bytes,
+            depth: None,
+        })
+        .map_err(|e| at(&e))?;
+    let stored = imaging::decode_stored(&processed.image.webp).map_err(|e| at(&e))?;
+
+    // The same steps without the face blur, to tell the layers apart.
+    let upright = imaging::decode_upload(&bytes, upload.limits)
+        .map_err(|e| at(&e))?
+        .image;
+    let (w, h) = upright.dimensions();
+    let resized = imaging::resize_long_side(
+        ImageView::from(&upright),
+        stored.width().max(stored.height()),
+    )
+    .map_err(|e| at(&e))?;
+    if resized.dimensions() != stored.dimensions() {
+        return Err(at(&"the resize without the blur has another size"));
+    }
+    let webp = imaging::decode_stored(&imaging::encode_webp(
+        ImageView::from(&resized),
+        upload.webp_quality,
+    ))
+    .map_err(|e| at(&e))?;
+
+    let base = |what: &str| out.join(format!("{}.{what}.npy", photo.id));
+    save_image(&base("decoded"), &upright)?;
+    save_image(&base("resized"), &resized)?;
+    save_image(&base("webp"), &webp)?;
+    save_image(&base("stored"), &stored)?;
+    let (rw, rh) = resized.dimensions();
+    save_image(
+        &base("resized.hfirst"),
+        &resize_h_first(ImageView::from(&upright), rw, rh)?,
+    )?;
+    for &(name, input) in recipes {
+        let t =
+            preprocess::to_tensor(ImageView::from(&stored), input).map_err(|e| e.to_string())?;
+        save_tensor(&base(name), &t)?;
+        let diagnostic = tensor_h_first(ImageView::from(&stored), input)?;
+        save_tensor(&base(&format!("{name}.hfirst")), &diagnostic)?;
+    }
+    let row = serde_json::json!({
+        "id": photo.id,
+        "path": photo.path,
+        "decoded": [w, h],
+        "stored": stored.dimensions(),
+        "webp_bytes": processed.image.webp.len(),
+        "blurred": webp.as_raw() != stored.as_raw(),
+        "quality": {
+            "blur_score": processed.quality.blur_score,
+            "exposure": processed.quality.exposure,
+        },
+    });
+    Ok((row, stored))
+}
+
 fn one(job: &Job) -> Result<PathBuf, String> {
     let manifest = Manifest::load(&job.manifest).map_err(|e| e.to_string())?;
     let recipes: Vec<(&str, &ModelInput)> = RECIPES
         .iter()
         .map(|&name| recipe(&manifest, name).map(|r| (name, r)))
         .collect::<Result<_, _>>()?;
-    let grow = crop_grow(&manifest)?;
+    let grow = PerceptionConfig::from_manifest(&manifest, BatchCaps::default())
+        .map_err(|e| e.to_string())?
+        .crop_grow;
     let upload = UploadConfig::default();
+    let runtime = OrtRuntime::init(&RuntimeConfig {
+        ep: OrtEp::Cpu,
+        device_id: 0,
+        dylib_path: std::env::var_os("ORT_DYLIB_PATH").map(PathBuf::from),
+        intra_threads: 4,
+        name: "preprocess-dump",
+    })
+    .map_err(|e| format!("ONNX Runtime: {e}"))?;
+    let upload_manifest = Manifest::load(&job.upload_manifest).map_err(|e| e.to_string())?;
+    let processor = UploadProcessor::load(&runtime, &upload_manifest, upload)
+        .map_err(|e| format!("the upload's face detector: {e}"))?;
     std::fs::create_dir_all(&job.out).map_err(|e| e.to_string())?;
 
     let mut photos = Vec::new();
     let mut stored_by_id = std::collections::HashMap::new();
     for photo in &job.photos {
-        let bytes =
-            std::fs::read(&photo.path).map_err(|e| format!("{}: {e}", photo.path.display()))?;
-        let decoded = imaging::decode_upload(&bytes, DecodeLimits::default())
-            .map_err(|e| format!("{}: {e}", photo.path.display()))?;
-        let upright = decoded.image;
-        let (w, h) = upright.dimensions();
-        let target =
-            domain::rules::uploads::stored_long_side(w.max(h), false, upload.default_long_side);
-        let resized = imaging::resize_long_side(ImageView::from(&upright), target)
-            .map_err(|e| e.to_string())?;
-        let webp = imaging::encode_webp(ImageView::from(&resized), upload.webp_quality);
-        let stored = imaging::decode_stored(&webp).map_err(|e| e.to_string())?;
-
-        let base = |what: &str| job.out.join(format!("{}.{what}.npy", photo.id));
-        save_image(&base("decoded"), &upright)?;
-        save_image(&base("resized"), &resized)?;
-        save_image(&base("stored"), &stored)?;
-        let (rw, rh) = resized.dimensions();
-        save_image(
-            &base("resized.hfirst"),
-            &resize_h_first(ImageView::from(&upright), rw, rh)?,
-        )?;
-        for &(name, input) in &recipes {
-            let t = preprocess::to_tensor(ImageView::from(&stored), input)
-                .map_err(|e| e.to_string())?;
-            save_tensor(&base(name), &t)?;
-            let diagnostic = tensor_h_first(ImageView::from(&stored), input)?;
-            save_tensor(&base(&format!("{name}.hfirst")), &diagnostic)?;
-        }
-        photos.push(serde_json::json!({
-            "id": photo.id,
-            "path": photo.path,
-            "decoded": [w, h],
-            "stored": stored.dimensions(),
-            "webp_bytes": webp.len(),
-        }));
+        let (row, stored) = one_photo(&processor, &upload, &recipes, &job.out, photo)?;
+        photos.push(row);
         stored_by_id.insert(photo.id.as_str(), stored);
     }
 
@@ -269,6 +311,9 @@ fn one(job: &Job) -> Result<PathBuf, String> {
 
     let index = serde_json::json!({
         "manifest": job.manifest,
+        "upload_manifest": job.upload_manifest,
+        "face_model": processor.face_model_version(),
+        "upload_kind": "whole_plant",
         "recipes": recipes.iter().map(|(name, r)| serde_json::json!({
             "name": name,
             "side": r.side(),
