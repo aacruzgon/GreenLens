@@ -332,8 +332,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .modebar span.sel { color: var(--cam-yellow); background: rgba(255,255,255,.14); }
 .modebar span.stored::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #fff; }
 .shutrow { position: absolute; left: 0; right: 0; bottom: 74px; height: 100px; display: grid; grid-template-columns: 1fr 100px 1fr; align-items: center; padding: 0 34px; }
-.thumb { width: 52px; height: 52px; border-radius: 14px; background: url("img/tomato-blight.jpg") 75% 65% / 300% auto; border: 2px solid rgba(255,255,255,.9); opacity: 0; transform: scale(.6); transition: .6s var(--spring); }
-.thumb.on { opacity: 1; transform: none; }
+/* The last shot: the whole plant is already taken; the close-up replaces it when the shutter fires. */
+.thumb { width: 52px; height: 52px; border-radius: 14px; background: url("img/tomato.jpg") 50% 40% / cover; border: 2px solid rgba(255,255,255,.9); }
+.thumb.on { background: url("img/tomato-blight.jpg") 75% 65% / 300% auto; animation: pop .6s var(--spring); }
+@keyframes pop { from { transform: scale(.6); opacity: .4; } }
 .shutter { position: relative; width: 84px; height: 84px; margin: 0 auto; }
 .shutter svg { position: absolute; inset: 0; width: 84px; height: 84px; }
 .shutter .core { position: absolute; inset: 11px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease); }
@@ -345,12 +347,13 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 8; }
 .flash.go { animation: flash .45s ease-out; }
 @keyframes flash { 0% { opacity: .85; } 100% { opacity: 0; } }
-.live .slide { position: absolute; inset: 0; transition: transform .42s var(--ease); }
-.live .slide.up { transform: translateY(-100px); }
-.live .photo { top: 0; bottom: 0; height: auto; background-position: 42% 0; background-size: auto 844px; }
+/* The photo fills the screen and stays put: drawn 1039 pt tall from the bottom, the lesion sits between the
+   cards and the question, so nothing has to slide and no black edge shows. */
+.live .slide { position: absolute; inset: 0; }
+.live .photo { top: 0; bottom: auto; height: 844px; background-position: 46.2% 100%; background-size: auto 1039px; }
 .live .photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(0,0,0,.42), rgba(0,0,0,.04) 32%, rgba(0,0,0,.04) 64%, rgba(0,0,0,.5)); }
-/* The lesion (448, 295 of 900 × 602) on a photo 844 pt tall at 42%. */
-.live .hot { --x: 260px; --y: 416px; }
+/* The lesion (448, 295 of 900 × 602) on that photo. */
+.live .hot { --x: 235px; --y: 316px; }
 .live .species { position: absolute; left: 28px; top: 262px; opacity: 0; transform: translateY(6px); transition: .6s var(--spring); }
 .live .species.on { opacity: 1; transform: none; }
 .live .species.on.hide { opacity: 0; }
@@ -1385,7 +1388,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     live: async function (alive) {
       var card = $("#liveCard"), hot = $("#liveHot"), sp = $("#liveSpecies"), q = $("#liveQ"), ring = $("#liveRing"), see = $("#liveSee"), yes = $("#ansYes"), un = $("#liveU"), slide = $("#liveSlide");
       var stage = $("#liveStage"), time = $("#liveTime"), next = $("#liveNext"), seg = $$("#liveSeg i");
-      [card, hot, sp, q, see, un].forEach(function (e) { e.classList.remove("on"); }); slide.classList.remove("up"); sp.classList.remove("hide"); ring.classList.remove("off"); yes.classList.remove("pick");
+      [card, hot, sp, q, see, un].forEach(function (e) { e.classList.remove("on"); }); sp.classList.remove("hide"); ring.classList.remove("off"); yes.classList.remove("pick");
       function set(i, t) {
         stage.textContent = PHASES[i][0]; next.textContent = nextOf(i); time.textContent = t + " s";
         seg.forEach(function (s, j) { s.className = j < i ? "done" : j === i ? "run" : ""; });
@@ -1399,14 +1402,14 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         }
         return t;
       }
-      if (reduce) { card.classList.add("on"); hot.classList.add("on"); sp.classList.add("on"); set(5, 18); q.classList.add("on"); un.classList.add("on"); slide.classList.add("up"); sp.classList.add("hide"); return; }
+      if (reduce) { card.classList.add("on"); hot.classList.add("on"); sp.classList.add("on"); set(5, 18); q.classList.add("on"); un.classList.add("on"); sp.classList.add("hide"); return; }
       await wait(350); if (!alive()) return; card.classList.add("on");
       var t = await run(0, 6, 0); if (t < 0) return;
       // Two problems look alike: one question, with picture answers, while the stage waits.
       stage.textContent = "Waiting for your answer"; next.textContent = "Next: weighing the evidence";
-      un.classList.add("on"); q.classList.add("on"); slide.classList.add("up"); sp.classList.add("hide");
+      un.classList.add("on"); q.classList.add("on"); sp.classList.add("hide");
       await wait(3200); if (!alive()) return; tapAt(yes); yes.classList.add("pick");
-      await wait(900); if (!alive()) return; q.classList.remove("on"); un.classList.remove("on"); slide.classList.remove("up"); sp.classList.remove("hide");
+      await wait(900); if (!alive()) return; q.classList.remove("on"); un.classList.remove("on"); sp.classList.remove("hide");
       t = await run(6, 8, t); if (t < 0) return;
       seg.forEach(function (s) { s.className = "done"; });
       stage.textContent = "Plan ready"; next.textContent = "See the diagnosis and plan";
