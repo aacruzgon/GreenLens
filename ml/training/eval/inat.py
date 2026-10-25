@@ -1,6 +1,7 @@
 """Licensed iNaturalist photos for the evaluation set (evaluation.md §2, "Where the photos come from").
 
     python -m ml.training.eval.inat fetch [--per-target 20] [--only TAXON] [--count]
+    python -m ml.training.eval.inat refetch
     python -m ml.training.eval.inat add --labeller NAME
 
 The team's own photos are the core of the evaluation set. Licensed photos fill the groups we can't
@@ -213,20 +214,21 @@ def candidate(obs: dict, target: dict) -> dict:
     }
 
 
-def strip(data: bytes) -> bytes:
+def strip(data: bytes, keep_icc: bool = True) -> bytes:
     """The photo re-encoded as JPEG with its EXIF orientation applied and no metadata (no location),
-    keeping only its colour profile."""
+    keeping only its colour profile. M10's 107 cases were encoded before the profile was kept
+    (b047a4a6), so their manifest SHA-256s are of the `keep_icc=False` encoding; only `refetch` uses it."""
     from PIL import Image, ImageOps
 
     with Image.open(io.BytesIO(data)) as im:
-        icc = im.info.get("icc_profile")   # kept: a Display P3 photo's colours depend on it
+        icc = im.info.get("icc_profile") if keep_icc else None   # kept: a Display P3 photo's colours depend on it
         out = ImageOps.exif_transpose(im).convert("RGB")
     buf = io.BytesIO()
     out.save(buf, "JPEG", quality=95, **({"icc_profile": icc} if icc else {}))
     return buf.getvalue()
 
 
-def download(photo: dict, photos: Path) -> bool:
+def download(photo: dict, photos: Path, keep_icc: bool = True) -> bool:
     """Whether the photo is on disk; a failed download is reported and skipped, so one photo
     that's gone from iNaturalist doesn't block every rerun."""
     dest = photos / photo["file"]
@@ -237,7 +239,7 @@ def download(photo: dict, photos: Path) -> bool:
             data = r.read()
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix(".partial")
-        tmp.write_bytes(strip(data))
+        tmp.write_bytes(strip(data, keep_icc))
         tmp.rename(dest)
         return True
     except Exception as e:  # network errors, a 404, a file PIL can't read
@@ -455,6 +457,64 @@ def fetch(args) -> int:
     return 0
 
 
+def manifest_files(manifest: Path, prefix: str, photos: Path) -> dict[str, str]:
+    """The dev cases' image files under `prefix` (e.g. "inat/") that aren't under `photos` or have
+    another SHA-256, with the manifest's, for `refetch`: the harness reads dev only, and the test split
+    is not touched."""
+    out = {}
+    for line in manifest.read_text().splitlines():
+        if line.strip() and (c := json.loads(line))["split"] == "dev":
+            for im in c["images"]:
+                f = photos / im["file"]
+                if im["file"].startswith(prefix) and not (f.is_file() and sha256(f) == im["sha256"]):
+                    out[im["file"]] = im["sha256"]
+    return out
+
+
+def refetch(args) -> int:
+    """Downloads again the photos of cases already in the manifest and not on disk, with no new
+    search and no review: the observation's photos by id from the API, at the original size, re-encoded
+    as `fetch` does. Each is checked against the manifest's SHA-256, and a photo that differs is encoded
+    again as before `strip` kept the colour profile; one that still differs is left in place (the
+    harness refuses it) and listed."""
+    want = manifest_files(args.manifest, "inat/", args.photos)
+    for f in want:
+        (args.photos / f).unlink(missing_ok=True)   # one of another SHA-256 is downloaded again
+    by_obs: dict[int, dict[int, str]] = {}
+    for f in want:
+        obs, photo = Path(f).stem.split("-")
+        by_obs.setdefault(int(obs), {})[int(photo)] = f
+    urls: dict[str, str] = {}
+    ids = sorted(by_obs)
+    for i in range(0, len(ids), 100):
+        chunk = ids[i : i + 100]
+        res = api("observations/" + ",".join(map(str, chunk)), per_page=len(chunk))
+        for obs in res["results"]:
+            for p in obs.get("photos") or []:
+                if f := by_obs.get(obs["id"], {}).get(p["id"]):
+                    try:
+                        urls[f] = original_url(p["url"])
+                    except ValueError as e:
+                        print(f"{f}: {e}", file=sys.stderr)
+    todo = [{"id": f, "file": f, "url": urls[f]} for f in want if f in urls]
+    with ThreadPoolExecutor(4) as pool:
+        ok = list(pool.map(lambda p: download(p, args.photos), todo))
+    got = [p["file"] for p, k in zip(todo, ok) if k]
+    for f in [f for f in got if sha256(args.photos / f) != want[f]]:   # encoded before the profile was kept?
+        (args.photos / f).unlink()
+        download(next(p for p in todo if p["file"] == f), args.photos, keep_icc=False)
+    differ = [f for f in got if (args.photos / f).is_file() and sha256(args.photos / f) != want[f]]
+    got = [f for f in got if (args.photos / f).is_file()]
+    print(f"{len(want)} inat photos of the manifest's missing: {len(got)} downloaded, "
+          f"{len(want) - len(got)} not (gone from iNaturalist or failed), {len(differ)} with another SHA-256")
+    for f in differ:
+        print(f"SHA-256 differs from the manifest's: {f}", file=sys.stderr)
+    for f in want:
+        if f not in got:
+            print(f"not fetched: {f}", file=sys.stderr)
+    return 1 if differ or len(got) < len(want) else 0
+
+
 def add(args) -> int:
     inat = args.photos / "inat"
     cands = {c["obs"]: c for c in json.loads((inat / "candidates.json").read_text())}
@@ -495,12 +555,15 @@ def main(argv=None) -> int:
     f.add_argument("--since", default=EARLIEST.isoformat(), help=f"observed on or after (not before {EARLIEST})")
     f.add_argument("--count", action="store_true", help="only print how many observations match")
     f.add_argument("--photos", type=Path, default=PHOTOS)
+    r = sub.add_parser("refetch", help="download again the photos of cases already in the manifest")
+    r.add_argument("--photos", type=Path, default=PHOTOS)
+    r.add_argument("--manifest", type=Path, default=MANIFEST)
     a = sub.add_parser("add", help="append the kept observations to manifest.jsonl")
     a.add_argument("--labeller", required=True, help="your GitHub login")
     a.add_argument("--photos", type=Path, default=PHOTOS)
     a.add_argument("--manifest", type=Path, default=MANIFEST)
     args = ap.parse_args(argv)
-    return fetch(args) if args.command == "fetch" else add(args)
+    return {"fetch": fetch, "refetch": refetch, "add": add}[args.command](args)
 
 
 if __name__ == "__main__":
