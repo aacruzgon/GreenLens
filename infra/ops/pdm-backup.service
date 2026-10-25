@@ -14,4 +14,6 @@ SupplementaryGroups=docker
 Environment=BACKUP_IMAGES=1
 # backup.sh is copied to /srv/pdm/bin so that a branch switch in the compose checkout can't change it.
 ExecStart=/srv/pdm/bin/backup.sh
+# A oneshot has no start timeout by default; a hung export or copy would block every later night.
+TimeoutStartSec=1h
 # A failure shows in `systemctl status pdm-backup` and `journalctl -u pdm-backup`.

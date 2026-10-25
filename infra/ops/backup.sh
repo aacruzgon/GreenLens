@@ -8,9 +8,11 @@
 #    Written to a temporary file, checked (`gzip -t`, non-empty, holds DEFINE TABLE), then renamed.
 #    Only then are the older surreal-* exports beyond the newest $BACKUP_KEEP removed. The manual
 #    pre-* exports are never touched.
-# 2. With BACKUP_IMAGES=1, a mirror of the pdm-images bucket in $BACKUP_DIR/images, from
-#    rclone/rclone with the read-only PDMBACKUP01 key. It sits on the same disk as RustFS, so it
-#    guards against a damaged RustFS volume, not against losing the disk.
+# 2. With BACKUP_IMAGES=1, a copy of the pdm-images bucket in $BACKUP_DIR/images, from
+#    rclone/rclone with the read-only PDMBACKUP01 key. `rclone copy --immutable` only adds: an object
+#    gone from the bucket stays in the copy, and an object whose bytes changed fails the run instead
+#    of overwriting the good copy. It sits on the same disk as RustFS, so it guards against a damaged
+#    RustFS volume or a bad delete, not against losing the disk.
 # Exits non-zero, with a message on stderr (the journal, under systemd), on any failure.
 # Credentials: $PDM_ENV/.env.backup (SURREAL_ROOT_PASS; RUSTFS_ACCESS_KEY and RUSTFS_SECRET_KEY
 # of PDMBACKUP01, needed only with BACKUP_IMAGES=1). Values are never printed.
@@ -41,12 +43,21 @@ command -v docker >/dev/null || die "docker not found"
 command -v gzip >/dev/null || die "gzip not found"
 [ -r "$PDM_ENV/.env.backup" ] || die "cannot read $PDM_ENV/.env.backup"
 
-# The file holds KEY=value lines and is trusted: it is mode 0600 in a 0700 directory.
-set -a
-# shellcheck disable=SC1091
-. "$PDM_ENV/.env.backup"
-set +a
-[ -n "${SURREAL_ROOT_PASS:-}" ] || die "SURREAL_ROOT_PASS is not set in $PDM_ENV/.env.backup"
+# env_value KEY: the last KEY=value line of .env.backup, read without running the file, the way
+# infra/bootstrap/lib.sh reads it (kept here so the installed copy stands alone): matching quotes
+# around the value are removed, and an unquoted value loses a trailing ` # comment`. Empty if absent.
+env_value() {
+  local value
+  value=$(sed -n "s/^$1=//p" "$PDM_ENV/.env.backup" | tail -n 1)
+  case $value in
+    \"*\") value=${value#\"}; value=${value%\"} ;;
+    \'*\') value=${value#\'}; value=${value%\'} ;;
+    *) value=${value%% #*} ;;
+  esac
+  printf '%s' "$value"
+}
+SURREAL_ROOT_PASS=$(env_value SURREAL_ROOT_PASS)
+[ -n "$SURREAL_ROOT_PASS" ] || die "SURREAL_ROOT_PASS is not set in $PDM_ENV/.env.backup"
 
 mkdir -p "$BACKUP_DIR"
 exec 9>"$BACKUP_DIR/.backup.lock"
@@ -91,10 +102,12 @@ if [ "${#exports[@]}" -gt "$BACKUP_KEEP" ]; then
 fi
 
 if [ "$BACKUP_IMAGES" = 1 ]; then
-  if [ -z "${RUSTFS_ACCESS_KEY:-}" ] || [ -z "${RUSTFS_SECRET_KEY:-}" ]; then
+  RUSTFS_ACCESS_KEY=$(env_value RUSTFS_ACCESS_KEY)
+  RUSTFS_SECRET_KEY=$(env_value RUSTFS_SECRET_KEY)
+  if [ -z "$RUSTFS_ACCESS_KEY" ] || [ -z "$RUSTFS_SECRET_KEY" ]; then
     die "RUSTFS_ACCESS_KEY and RUSTFS_SECRET_KEY are needed for BACKUP_IMAGES=1"
   fi
-  say "mirroring pdm-images to $BACKUP_DIR/images"
+  say "copying pdm-images to $BACKUP_DIR/images"
   mkdir -p "$BACKUP_DIR/images"
   # The remote is configured through the environment; -e NAME passes the name, not the value.
   RCLONE_CONFIG_RUSTFS_TYPE=s3 RCLONE_CONFIG_RUSTFS_PROVIDER=Other \
@@ -107,8 +120,8 @@ if [ "$BACKUP_IMAGES" = 1 ]; then
     -e RCLONE_CONFIG_RUSTFS_REGION -e RCLONE_CONFIG_RUSTFS_FORCE_PATH_STYLE \
     -e RCLONE_CONFIG_RUSTFS_ACCESS_KEY_ID -e RCLONE_CONFIG_RUSTFS_SECRET_ACCESS_KEY \
     -v "$BACKUP_DIR/images:/dest" "$RCLONE_IMAGE" \
-    sync rustfs:pdm-images /dest --stats-one-line \
-    || die "rclone sync of pdm-images failed"
+    copy --immutable rustfs:pdm-images /dest --stats-one-line \
+    || die "rclone copy of pdm-images failed"
 fi
 
 say "done"
