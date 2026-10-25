@@ -45,8 +45,10 @@ Choices (evaluation 9 states them):
   and their first question, diagnosis or failure, the part that holds a GPU. A scan waiting on a
   question or on the plan writer doesn't count, up to `--max-open` scans in all.
 - **Resuming.** A case with a line in the JSONL is skipped (a line with `outcome: error` is retried
-  unless `--keep-errors`). A scan submitted but not finished is in `<out>.state.json` and is
-  followed again from seq 1 on the next run instead of making a new scan. The state file also keeps
+  unless `--keep-errors`). A submitted scan stays in `<out>.state.json` until its case has a
+  result, so after a kill or a case's error (a timeout, a broken stream) the retry follows that
+  scan again from seq 1, with the uploads it recorded, instead of making a new scan. A failed scan
+  ends its case at any run. The state file also keeps
   the garden, so a rerun of one run name stays in one garden.
 - **Nothing is deleted.** The garden, plants and scans stay; the state file names the garden.
 
@@ -531,7 +533,10 @@ class Harness:
         with self.write_lock:
             with self.out.open("a") as f:
                 f.write(json.dumps(record, separators=(",", ":")) + "\n")
-            self.state.setdefault("inflight", {}).pop(record["case_id"], None)
+            # An error keeps the case's scan in flight, so the retry follows that scan again rather than
+            # start (and pay for) another; a scan that was never submitted is replaced in _run_case.
+            if record.get("outcome") != "error":
+                self.state.setdefault("inflight", {}).pop(record["case_id"], None)
             self.save_state()
 
     def setup(self) -> None:
@@ -606,12 +611,18 @@ class Harness:
             u = self.users.user(inflight["user"])
             u.member = True
             sid = inflight["scan_id"]
-            scan = u.call("GET", f"/scans/{sid}")
+            try:
+                scan = u.call("GET", f"/scans/{sid}")
+            except ApiError as e:
+                if e.status != 404:
+                    raise
+                scan = {"status": "gone"}
             rec["plant_id"] = scan.get("plant_id")
-            if scan["status"] == "pending":
-                sid = None                      # never submitted: start again with a new scan
+            if scan["status"] in ("pending", "gone"):
+                sid = None                      # never submitted, or deleted: start again with a new scan
             else:
                 rec["resumed"] = True
+                rec["uploads"] = inflight.get("uploads", [])
                 info(f"{case['case_id']}: following scan {sid} again ({scan['status']})")
         if sid is None:
             u, sid = self._new_scan(case, rec)
@@ -638,7 +649,7 @@ class Harness:
                 return
         rec["user"], rec["scan_id"] = u.index, sid
         with self.write_lock:
-            self.state["inflight"][case["case_id"]] = {"scan_id": sid, "user": u.index}
+            self.state["inflight"][case["case_id"]] = {"scan_id": sid, "user": u.index, "uploads": rec["uploads"]}
             members = sorted({x.index for x in self.users.users if x.member})
             self.state["members"] = members
             self.save_state()
@@ -689,7 +700,9 @@ class Harness:
                 t = d["type"]
                 if t == "run_started":
                     target[0] = max(target[0], d.get("run") or 1)
-                if t in ("question", "diagnosis", "failed") and (d.get("run") or 1) >= target[0]:
+                # A failed scan ends the case at any run: it doesn't follow a species change (contracts,
+                # POST /plants/{id}/species), so an answer that lands after the failure starts no run.
+                if t == "failed" or (t in ("question", "diagnosis") and (d.get("run") or 1) >= target[0]):
                     release()
                 if t == "species_suggested":
                     confirm_species(d)
@@ -713,7 +726,8 @@ class Harness:
 
             stream.hooks.append(hook)
             def ended(s):
-                return any(e["type"] in ("plan_ready", "plan_superseded", "failed") and (e.get("run") or 1) >= target[0]
+                return any(e["type"] == "failed" or (e["type"] in ("plan_ready", "plan_superseded")
+                                                    and (e.get("run") or 1) >= target[0])
                            for e in s.events)
 
             stream.follow(ended, a.case_timeout, "plan_ready")

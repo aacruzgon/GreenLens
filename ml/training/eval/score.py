@@ -53,6 +53,7 @@ SEED = ROOT / "ml/knowledge/seed"
 Z = 1.959963984540054
 MARGINS = range(1, 7)
 PRECISION_TARGET = 0.90
+MIN_CONFIRMED = 10      # a margin is proposed only on at least this many `confirmed` scans
 
 
 # --- small statistics (as score_test_split's, without numpy) ----------------------------------------
@@ -92,6 +93,10 @@ def pct(values: list[float], q: float) -> float | None:
         return None
     pos = (len(xs) - 1) * q
     lo, hi = math.floor(pos), math.ceil(pos)
+    if lo == hi:
+        return xs[lo] if math.isinf(xs[lo]) else round(xs[lo], 1)
+    if math.isinf(xs[hi]):              # an unfinished scan, counted as slower than any finished one
+        return math.inf
     return round(xs[lo] + (xs[hi] - xs[lo]) * (pos - lo), 1)
 
 
@@ -296,9 +301,17 @@ def metrics(rows: list[dict]) -> dict:
                    "continued": sum(1 for r in xs if (r["awaiting_answer_s"] or 0) > 300)}
     m["time"] = t
     gpu = t.get("rig_vlm")
+    # A case that timed out or stopped short has no diagnosis, so its path is unknown and its time is at least the
+    # harness's timeout. Leaving it out would drop exactly the slowest scans, so for the verdict each one counts as
+    # a GPU scan slower than any finished one: T16 is met only if the p95 stays under 90 s even then.
+    unfinished = [r["case_id"] for r in rows if r["outcome"] not in ("planned", "failed", "rejected")]
+    gpu_times = [r["machine_s"] for r in done if r["vlm_path"] == "rig_vlm" and r["machine_s"] is not None]
+    worst = pct(gpu_times + [math.inf] * len(unfinished), 0.95) if gpu_times else None
     m["T16_wall_time_gpu_p95"] = {"p95": gpu["machine_p95"] if gpu else None, "n": gpu["n"] if gpu else 0, "target_s": 90,
+                                  "unfinished": len(unfinished), "unfinished_cases": unfinished,
                                   "verdict": ("not measured" if not gpu or gpu["machine_p95"] is None else
-                                              "met" if gpu["machine_p95"] <= 90 else "missed")}
+                                              "missed" if gpu["machine_p95"] > 90 else
+                                              "met" if worst is not None and worst <= 90 else "undecided")}
     m["workers"] = {"vlm_path": dict(Counter(r["vlm_path"] for r in done)),
                     "at_submit": dict(Counter(",".join(r["workers_at_submit"] or ["?"]) for r in ran)),
                     "model_versions": dict(Counter(json.dumps(r["model_versions"], sort_keys=True) for r in done))}
@@ -318,12 +331,15 @@ def margin_sweep(done: list[dict]) -> dict:
     for mg in MARGINS:
         conf = [r for r in done if status_at(r, mg) == "confirmed"]
         k = sum(1 for r in conf if r["primary"] in r["truth_problems"])
-        sweep.append({"margin": mg, "precision": rate(k, len(conf)),
+        sweep.append({"margin": mg, "precision": rate(k, len(conf), PRECISION_TARGET, True),
                       "coverage": rate(sum(1 for r in sick if status_at(r, mg) == "confirmed"), len(sick)),
                       "healthy_confirmed": rate(sum(1 for r in healthy if status_at(r, mg) == "confirmed"), len(healthy))})
     consistent = [mg for mg in MARGINS if all(status_at(r, mg) == r["status"] for r in done
                                                if r["status"] in ("confirmed", "uncertain"))]
-    chosen = next((s["margin"] for s in sweep if s["precision"]["n"] and s["precision"]["rate"] >= PRECISION_TARGET), None)
+    # Evaluation 5's rule is the point estimate (90% or more); a floor on n keeps 1 of 1 from proposing a margin,
+    # and the report gives the interval's verdict beside it.
+    chosen = next((s["margin"] for s in sweep if s["precision"]["n"] >= MIN_CONFIRMED
+                   and s["precision"]["rate"] >= PRECISION_TARGET), None)
     weights = None
     if chosen:
         near = [r for r in done if r["status"] != "healthy" and not r["open_question"] and r["top_score"] is not None
@@ -332,7 +348,9 @@ def margin_sweep(done: list[dict]) -> dict:
                    "uncertain_at_lead": rate(sum(1 for r in near if r["primary"] in r["truth_problems"]), len(near),
                                              cases=[r["case_id"] for r in near])}
     leads = Counter(r["lead"] for r in done if r["lead"] is not None and r["status"] != "healthy")
-    return {"sweep": sweep, "consistent_with_live": consistent, "proposed": chosen, "weights": weights,
+    proposed_verdict = next((s["precision"]["verdict"] for s in sweep if s["margin"] == chosen), None)
+    return {"sweep": sweep, "consistent_with_live": consistent, "proposed": chosen, "proposed_verdict": proposed_verdict,
+            "min_confirmed": MIN_CONFIRMED, "weights": weights,
             "leads": {str(k): v for k, v in sorted(leads.items())},
             "cases_with_scores": sum(1 for r in done if r["scores"])}
 
@@ -411,7 +429,9 @@ def markdown(rep: dict) -> str:
     row("T15", "`label_only` species `confirmed` with another crop's disease", m["T15_label_only_wrong_crop"])
     t16 = m["T16_wall_time_gpu_p95"]
     out.append(f"| T16 | Wall time from submit to `diagnosed`, p95, GPU path, without time waiting on the user | 90 s or less | "
-               f"{t16['p95'] if t16['p95'] is not None else 'not measured'} s on {t16['n']} scans | {t16['verdict']} |")
+               f"{t16['p95'] if t16['p95'] is not None else 'not measured'} s on {t16['n']} scans"
+               + (f", {t16['unfinished']} unfinished counted as slower" if t16.get("unfinished") else "")
+               + f" | {t16['verdict']} |")
     fb = m["time"].get("fallback")
     out.append(f"| | Same on the fallback worker | Report | "
                f"{(str(fb['machine_p95']) + ' s on ' + str(fb['n']) + ' scans') if fb else 'not measured (0 scans)'} | report |")
@@ -425,6 +445,9 @@ def markdown(rep: dict) -> str:
                f"**Wrong suggestion:** {listed(m['species_top1'].get('cases'))}. "
                f"**Wrong primary:** {listed(m['problem_top1'].get('cases'))}.")
     out.append(f"- **Photos refused:** {listed(m['upload'].get('cases'))}.")
+    if t16.get("unfinished"):
+        out.append(f"- **Unfinished** (timed out or stopped short; counted as slower than any finished scan in T16): "
+                   f"{listed(t16['unfinished_cases'])}.")
     q = m["questions"]
     out.append(f"- **Questions.** {q['asked']} asked on {q['scans_with_question']} scans ({q['by_kind']}); answers {q['answers']}; "
                f"{q['open_at_end']} scans ended with a question open (continued after 10 minutes).")
@@ -452,8 +475,12 @@ def markdown(rep: dict) -> str:
         out.append(f"| {s['margin']}{mark} | {k_of_n(s['precision'])} | {k_of_n(s['coverage'])} | {k_of_n(s['healthy_confirmed'])} |")
     out.append("")
     out.append(f"Leads of the top candidate over the second (not healthy): {mg['leads'] or 'none'}. "
-               + (f"Proposed margin: **{mg['proposed']}**, the smallest whose precision is 90% or more."
-                  if mg["proposed"] else "No margin reaches 90% precision with a `confirmed` case."))
+               + (f"Proposed margin: **{mg['proposed']}**, the smallest whose precision is 90% or more on at least "
+                  f"{mg['min_confirmed']} `confirmed` scans (evaluation 5); its 95% interval "
+                  + ("clears 90%." if mg.get("proposed_verdict") == "met" else
+                     "doesn't clear 90% yet, so the margin rests on the point estimate.")
+                  if mg["proposed"] else f"No margin reaches 90% precision on at least {mg.get('min_confirmed', 1)} "
+                  "`confirmed` scans."))
     if mg.get("weights"):
         wt = mg["weights"]
         out.append(f"Indicator weights (open question 4): at margin {wt['margin']}, scans left `uncertain` with a lead of "
@@ -509,6 +536,9 @@ def main(argv=None) -> int:
         for r in records:
             if r["case_id"] in changed:
                 r["truth"] = manifest[r["case_id"]]["truth"]
+    policies = {json.dumps(r.get("policy"), sort_keys=True) for r in records}
+    if len(policies) > 1:
+        raise SystemExit("the runs answered with different policies; score each policy on its own: " + "; ".join(sorted(policies)))
     kb = knowledge()
     rows = [case_row(r, kb) for r in records]
     first = records[0]

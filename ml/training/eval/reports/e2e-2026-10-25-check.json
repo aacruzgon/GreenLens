@@ -638,6 +638,8 @@
    "p95": 20.7,
    "n": 4,
    "target_s": 90,
+   "unfinished": 0,
+   "unfinished_cases": [],
    "verdict": "met"
   },
   "workers": {
@@ -673,7 +675,10 @@
       "interval": [
        0.0,
        0.6576197724933469
-      ]
+      ],
+      "target": 0.9,
+      "at_least": true,
+      "verdict": "missed"
      },
      "coverage": {
       "k": 2,
@@ -703,7 +708,10 @@
       "interval": [
        0.0,
        0.6576197724933469
-      ]
+      ],
+      "target": 0.9,
+      "at_least": true,
+      "verdict": "missed"
      },
      "coverage": {
       "k": 2,
@@ -733,7 +741,10 @@
       "interval": [
        0.0,
        0.7934506856227626
-      ]
+      ],
+      "target": 0.9,
+      "at_least": true,
+      "verdict": "missed"
      },
      "coverage": {
       "k": 1,
@@ -763,7 +774,10 @@
       "interval": [
        0.0,
        0.7934506856227626
-      ]
+      ],
+      "target": 0.9,
+      "at_least": true,
+      "verdict": "missed"
      },
      "coverage": {
       "k": 1,
@@ -790,7 +804,10 @@
       "k": 0,
       "n": 0,
       "rate": null,
-      "interval": null
+      "interval": null,
+      "target": 0.9,
+      "at_least": true,
+      "verdict": "not measured"
      },
      "coverage": {
       "k": 0,
@@ -817,7 +834,10 @@
       "k": 0,
       "n": 0,
       "rate": null,
-      "interval": null
+      "interval": null,
+      "target": 0.9,
+      "at_least": true,
+      "verdict": "not measured"
      },
      "coverage": {
       "k": 0,
@@ -844,6 +864,8 @@
     2
    ],
    "proposed": null,
+   "proposed_verdict": null,
+   "min_confirmed": 10,
    "weights": null,
    "leads": {
     "2": 1,
@@ -854,6 +876,6 @@
  },
  "rebuilt": {
   "command": "python3 ml/training/eval/score.py --rebuild ml/training/eval/reports/e2e-2026-10-25-check.json",
-  "at": "2026-10-25T17:42:58+00:00"
+  "at": "2026-10-25T19:55:26+00:00"
  }
 }
