@@ -41,7 +41,7 @@ lists, heads and (orphans only, under gardens/) puts objects with --rustfs-env's
 --api-log-cmd prints api's log. Neither a key, a token nor a signed URL is ever printed.
 
 usage (from backend/; on the control-plane host):
-    python3 tools/smoke/s6.py [--base-url URL] [--env-file /srv/pdm/env/.env.api]
+    python3 tools/smoke/s6.py [--base-url URL] [--status-url URL] [--env-file /srv/pdm/env/.env.api]
         [--email s6-…+clerk_test@example.com] [--phone-suffix N] [--only tokens,prune,...]
         [--phase seed|check|fresh] [--state s6-state.json] [--photo PLANT.jpg --leaf-photo LEAF.jpg]
         [--db-check [--db-env FILE] [--db-url URL]] [--rustfs-check [--rustfs-env FILE] [--rustfs-url URL]]
@@ -558,7 +558,7 @@ class User:
 
 
 class StatusPoller(threading.Thread):
-    """GET /status (no sign-in) every 0.5 s, kept as (epoch, status) samples."""
+    """GET /status (no sign-in; the public URL hides it) every 0.5 s, kept as (epoch, status) samples."""
 
     def __init__(self, base):
         super().__init__(daemon=True)
@@ -1478,7 +1478,7 @@ class S6:
         u = self.main
         dead = a.dead_worker or DEFAULT_DEAD_WORKER[a.kill_at]
         g = self.new_garden(u, "rig-failure")
-        poller = StatusPoller(a.base_url)
+        poller = StatusPoller(a.status_url)
         poller.start()
         data = {"garden_id": g, "dead_worker": dead, "kill_at": a.kill_at}
         self.fixture["rig-failure"] = data
@@ -1724,6 +1724,8 @@ def main():
     ap = argparse.ArgumentParser(description="S6 live checks: push tokens and pruning, forecast "
                                  "alerts, deletion cascades, the orphan sweep, the rig failure.")
     ap.add_argument("--base-url", default=DEFAULT_BASE)
+    ap.add_argument("--status-url", default="http://127.0.0.1:8082",
+                    help="where /status answers: Caddy's host-only site on the control plane (infra 5)")
     ap.add_argument("--env-file", default="/srv/pdm/env/.env.api",
                     help="holds CLERK_SECRET_KEY (sk_test_) of the Clerk development instance the "
                          "api trusts (the environment wins); also RUSTFS_BUCKET")

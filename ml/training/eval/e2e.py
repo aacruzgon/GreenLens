@@ -738,7 +738,8 @@ class Harness:
 
     def status_snapshot(self) -> list[str] | None:
         try:
-            with urllib.request.urlopen(self.args.base_url.rstrip("/") + "/status", timeout=10) as r:
+            base = self.args.status_url or self.args.base_url
+            with urllib.request.urlopen(base.rstrip("/") + "/status", timeout=10) as r:
                 st = json.loads(r.read())
             return sorted(f"{w['worker_id']}:{','.join(w.get('caps', []))}" for w in st.get("workers", [])
                           if w.get("healthy"))
@@ -1151,6 +1152,8 @@ def main(argv=None) -> int:
                    help="holds HF_TOKEN, if the environment doesn't")
 
     r.add_argument("--base-url", default="https://pdm-cp.tailb3ce07.ts.net")
+    r.add_argument("--status-url", help="where /status answers, for workers_at_submit; the public URL hides it, "
+                   "so on the control-plane host http://127.0.0.1:8082 (infra 5). Default: --base-url")
     r.add_argument("--env-file", default="/srv/pdm/env/.env.api",
                    help="holds CLERK_SECRET_KEY (sk_test_) of the Clerk instance the API trusts")
     r.add_argument("--run-name", help="the garden's name and the JSONL's stem; default j5-<today>")

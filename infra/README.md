@@ -57,7 +57,8 @@ curl http://127.0.0.1:8000/metrics    # KV cache usage and preemption counters
 The worker checks at start that the server serves `vlm` and exits if not, then logs `worker starting` with `slots=2` and heartbeats every 10 s. Its heartbeats reaching `api` is P6's check ([dev-roadmap](../docs/vision/dev-roadmap.md#phase-2-oct-1819-real-models-the-day-2-benchmark)):
 
 ```bash
-curl -s https://pdm-cp.tailb3ce07.ts.net/status | jq '.workers[] | select(.worker_id == "rig-5070ti-vlm-1")'   # "healthy": true
+# on the control-plane host: the public URL answers 404 to /status (docs/infra 5)
+curl -s http://127.0.0.1:8082/status | jq '.workers[] | select(.worker_id == "rig-5070ti-vlm-1")'   # "healthy": true
 ```
 
 The port is bound to `127.0.0.1` only. `vllm-nv` does not restart by itself; `vlm-worker-nv` does (`unless-stopped`).
