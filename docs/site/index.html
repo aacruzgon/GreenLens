@@ -1,0 +1,1389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GreenLens</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="GreenLens: photograph a plant and get a diagnosis and a plan you can talk through. Built for Build North 2026.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Urbanist:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a glasshouse showroom. One specimen per frame on a calm sage ground; photos dissolve into it,
+   and a sticky iPhone walks through one scan while each technology is tethered to the moment it powers. */
+:root {
+  --ground: #F6F7F2; --wash: #E3EBDC; --surface: #FFFFFF; --surface-2: #EEF1E8; --line: #D9DFD2;
+  --ink: #18211C; --ink-2: #56625A; --leaf: #2F6B47; --leaf-ink: #FFFFFF; --leaf-soft: #E1EEE4;
+  --healthy: #26704A; --watch: #8A5300; --sick: #B3261E; --info: #285D86; --info-soft: #E1ECF5;
+  --clay: #B8643C;
+  --shadow: 0 1px 1px rgba(20,33,28,.04), 0 18px 40px -18px rgba(20,33,28,.22);
+  --display: "Urbanist", "SF Pro Display", system-ui, sans-serif;
+  --body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* The app's motion: the iOS sheet curve, and its enter spring (stiffness 170, damping 26) as linear(). */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --spring: linear(0, 0.0592, 0.1849, 0.3278, 0.4636, 0.5819, 0.6798, 0.7582, 0.8193, 0.8662, 0.9017, 0.9282, 0.9479, 0.9623, 0.9729, 0.9806, 0.9861, 0.9901, 0.993, 0.995, 0.9965, 0.9975, 0.9982, 0.9988, 1);
+  --cam-yellow: #FFD60A;
+}
+@supports not (transition-timing-function: linear(0, 1)) { :root { --spring: cubic-bezier(0.22, 1, 0.36, 1); } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #0F1412; --wash: #18231D; --surface: #18201C; --surface-2: #212A25; --line: #2F3A34;
+  --ink: #E7EDE9; --ink-2: #A2AEA6; --leaf: #7CC59A; --leaf-ink: #0D1A12; --leaf-soft: #1F3328;
+  --healthy: #79D19D; --watch: #F2BE5C; --sick: #F2948B; --info: #8EC1EA; --info-soft: #1B2B38;
+  --clay: #D98A62; --shadow: 0 0 0 1px #2F3A34; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --ground: #0F1412; --wash: #18231D; --surface: #18201C; --surface-2: #212A25; --line: #2F3A34;
+  --ink: #E7EDE9; --ink-2: #A2AEA6; --leaf: #7CC59A; --leaf-ink: #0D1A12; --leaf-soft: #1F3328;
+  --healthy: #79D19D; --watch: #F2BE5C; --sick: #F2948B; --info: #8EC1EA; --info-soft: #1B2B38;
+  --clay: #D98A62; --shadow: 0 0 0 1px #2F3A34; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 17px/1.55 var(--body); overflow-x: hidden; }
+img { max-width: 100%; display: block; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--leaf); outline-offset: 3px; border-radius: 6px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -0.03em; text-wrap: balance; margin: 0; line-height: 1.02; }
+p { margin: 0; text-wrap: pretty; }
+.wrap { max-width: 1200px; margin: 0 auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.eyebrow { font: 500 12px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+.lede { font-size: clamp(18px, 1.6vw, 21px); color: var(--ink-2); max-width: 36em; }
+.sec { padding-block: clamp(72px, 10vw, 140px); }
+.sec-head { display: grid; gap: 18px; max-width: 760px; margin-bottom: clamp(36px, 5vw, 64px); }
+.sec-head h2 { font-size: clamp(40px, 5.4vw, 72px); }
+
+/* Status is a word, a colour and a shape (design 6). */
+.st { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: .86em; }
+.st::before { content: ""; width: 9px; height: 9px; background: currentColor; flex: none; }
+.st.healthy { color: var(--healthy); } .st.healthy::before { border-radius: 50%; }
+.st.watch { color: var(--watch); } .st.watch::before { clip-path: polygon(50% 0, 100% 100%, 0 100%); width: 10px; }
+.st.sick { color: var(--sick); } .st.sick::before { transform: rotate(45deg) scale(.82); }
+
+/* ——— Nav, with a reading bar driven by the page's scroll ——— */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--ground); }
+.nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: color-mix(in oklab, var(--ground) 82%, transparent); backdrop-filter: saturate(1.4) blur(18px); -webkit-backdrop-filter: saturate(1.4) blur(18px); border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent); }
+.nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 16px; }
+.mark { display: inline-flex; align-items: center; gap: 10px; font: 700 21px/1 var(--display); letter-spacing: -0.03em; text-decoration: none; }
+.mark svg { width: 28px; height: 28px; }
+.nav ul { display: flex; gap: 26px; list-style: none; margin: 0; padding: 0; font-size: 15px; scroll-target-group: auto; }
+.nav ul a { text-decoration: none; color: var(--ink-2); transition: color .2s; }
+.nav ul a:hover, .nav ul a:target-current { color: var(--ink); }
+.readbar { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--leaf); transform-origin: 0 50%; transform: scaleX(0); }
+@supports (animation-timeline: scroll()) { .readbar { animation: read linear both; animation-timeline: scroll(root); } }
+@keyframes read { to { transform: scaleX(1); } }
+@media (max-width: 760px) { .nav ul { display: none; } }
+
+/* ——— Pills ——— */
+.pill { display: inline-flex; align-items: center; gap: 12px; padding: 7px 22px 7px 7px; border-radius: 999px; font: 600 16px/1 var(--body); text-decoration: none; border: 0; cursor: pointer; transition: transform .5s var(--spring), box-shadow .35s var(--ease); }
+.pill:hover { transform: translateY(-2px); }
+.pill .disc { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.pill.go { background: var(--leaf); color: var(--leaf-ink); box-shadow: 0 14px 30px -14px color-mix(in oklab, var(--leaf) 80%, transparent); }
+.pill.go .disc { background: var(--leaf-ink); color: var(--leaf); }
+.pill.soft { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); padding: 16px 24px; }
+.pill svg { width: 18px; height: 18px; }
+
+/* ——— Hero: one live analysis on a real leaf ——— */
+.hero { position: relative; background: var(--wash); overflow: hidden; }
+.hero-photo { position: absolute; inset: 0 0 0 34%; background: url("img/tomato-blight.jpg") 62% 50% / cover no-repeat;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 34%), linear-gradient(to top, transparent 0, #000 30%);
+  mask-image: linear-gradient(to right, transparent 0, #000 34%), linear-gradient(to top, transparent 0, #000 30%);
+  -webkit-mask-composite: source-in; mask-composite: intersect; transform-origin: 80% 60%; animation: drift 24s var(--ease) infinite alternate; }
+@keyframes drift { from { transform: scale(1.04); } to { transform: scale(1.1) translate(-1%, -1%); } }
+.hero-layer { position: absolute; inset: 0; }
+@supports (animation-timeline: view()) {
+  .hero-layer { animation: heroOut linear both; animation-timeline: view(); animation-range: exit 0% exit 100%; }
+  .hero-copy { animation: copyOut linear both; animation-timeline: view(); animation-range: exit -20% exit 80%; }
+}
+@keyframes heroOut { to { transform: translateY(14%) scale(1.04); filter: blur(6px) saturate(.7); opacity: .55; } }
+@keyframes copyOut { to { transform: translateY(-60px); opacity: .2; } }
+.hero .wrap { position: relative; min-height: min(820px, 92vh); display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 6fr); align-items: end; padding-block: 120px 72px; }
+.hero-copy { display: grid; gap: 26px; position: relative; z-index: 2; }
+.hero h1 { font-size: clamp(56px, 8.6vw, 128px); line-height: .92; }
+.hero h1 em { font-style: normal; color: var(--leaf); }
+.hero .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; font: 500 12.5px/1.3 var(--mono); color: var(--ink-2); letter-spacing: .04em; }
+.hero-scene { position: absolute; inset: 0; pointer-events: none; }
+/* The hotspot: a soft oval on the lesion, a white dot that settles in 520 ms and then breathes. */
+.hot { position: absolute; left: var(--x); top: var(--y); width: 0; height: 0; }
+.hot .oval { position: absolute; left: -46px; top: -34px; width: 92px; height: 68px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.85); background: rgba(255,255,255,.08); opacity: 0; transform: scale(1.5); transition: opacity .52s var(--ease), transform .52s var(--ease); }
+.hot .dot { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); opacity: 0; transform: scale(2.2); transition: opacity .52s var(--ease), transform .52s var(--ease); }
+.hot .dot::after { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 2px solid rgba(255,255,255,.7); opacity: 0; }
+.hot.on .oval, .hot.on .dot { opacity: 1; transform: none; }
+.hot.on .dot::after { animation: breathe 2.6s ease-in-out .6s infinite; }
+@keyframes breathe { 0%, 100% { opacity: 0; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.25); } }
+.chip { position: absolute; white-space: nowrap; background: rgba(16,20,18,.92); color: #fff; font: 600 13px/1 var(--body); padding: 9px 13px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 10px 24px -10px rgba(0,0,0,.6); }
+.chip i { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.hot .chip { left: 50%; top: 46px; transform: translate(-50%, 8px); opacity: 0; transition: opacity .42s var(--ease) .2s, transform .42s var(--ease) .2s; }
+.hot.on .chip { opacity: 1; transform: translate(-50%, 0); }
+.stagecard { position: absolute; right: max(20px, 4vw); top: 96px; width: min(360px, 42vw); background: rgba(16,20,18,.94); color: #fff; border-radius: 26px; padding: 12px 18px 16px; box-shadow: 0 30px 60px -30px rgba(0,0,0,.7); transform: translateY(-14px); opacity: 0; transition: transform .72s var(--spring), opacity .5s var(--ease); }
+.stagecard.on { transform: none; opacity: 1; }
+.grabber { width: 36px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.28); margin: 0 auto 10px; }
+.stagecard .now { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-weight: 600; font-size: 16px; }
+.stagecard .now span:last-child { font: 500 13px var(--mono); color: rgba(255,255,255,.62); }
+.stagecard .next { font-size: 13.5px; color: rgba(255,255,255,.62); margin-top: 3px; }
+.segbar { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-top: 12px; }
+.segbar i { height: 4px; border-radius: 2px; background: rgba(255,255,255,.18); transition: background .3s var(--ease); }
+.segbar i.done { background: #fff; }
+.segbar i.run { background: linear-gradient(90deg, #fff 0 50%, rgba(255,255,255,.18) 50%); background-size: 200% 100%; animation: run 1.1s linear infinite; }
+@keyframes run { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.verdict { position: absolute; right: max(20px, 4vw); bottom: 72px; text-align: right; color: #fff; text-shadow: 0 2px 30px rgba(0,0,0,.45); opacity: 0; transform: translateY(18px); transition: opacity .7s var(--ease), transform .72s var(--spring); }
+.verdict.on { opacity: 1; transform: none; }
+.verdict b { display: block; font: 600 clamp(40px, 5vw, 64px)/1 var(--display); letter-spacing: -0.03em; }
+.verdict span { font-size: 15px; opacity: .9; }
+@media (max-width: 900px) {
+  .hero-photo { inset: 0 0 40% 0; -webkit-mask-image: linear-gradient(to top, transparent 0, #000 45%); mask-image: linear-gradient(to top, transparent 0, #000 45%); }
+  .hero .wrap { grid-template-columns: 1fr; padding-block: 380px 56px; min-height: 0; }
+  .stagecard { top: 84px; right: 16px; width: min(300px, calc(100% - 32px)); }
+  .verdict { display: none; }
+}
+
+/* ——— Partners strip ——— */
+.strip { border-block: 1px solid var(--line); }
+.strip .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px 32px; padding-block: 26px; align-items: center; }
+.strip a { text-decoration: none; font: 600 clamp(17px, 1.8vw, 22px)/1 var(--display); letter-spacing: -0.02em; color: var(--ink-2); transition: color .2s; }
+.strip a:hover { color: var(--ink); }
+.strip small { font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; margin-left: 6px; opacity: .8; }
+
+/* ——— The story: chapters beside a sticky phone, each technology tethered to its moment ——— */
+.story { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: clamp(40px, 7vw, 120px); position: relative; }
+.chapters { display: grid; }
+.chapter { min-height: 96vh; display: grid; align-content: center; gap: 16px; padding-block: 40px; opacity: .3; transition: opacity .6s var(--ease); scroll-margin-top: 80px; }
+.chapter.on { opacity: 1; }
+.chapter .when { font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--leaf); }
+.chapter h3 { font-size: clamp(34px, 4vw, 52px); }
+.chapter > p { color: var(--ink-2); max-width: 32em; }
+/* The plate: what runs under this moment, in the hotspot label's language. */
+.plate { position: relative; max-width: 30em; margin-top: 10px; padding: 18px 20px 16px; border-radius: 24px; background: var(--surface); box-shadow: var(--shadow); display: grid; gap: 8px; transform: translateY(10px); opacity: .6; transition: transform .72s var(--spring), opacity .5s var(--ease); }
+.chapter.on .plate { transform: none; opacity: 1; }
+.plate + .plate { margin-top: 0; }
+.plate .k { font: 500 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+.plate .k::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--leaf); }
+.plate b { font: 600 25px/1.05 var(--display); letter-spacing: -0.02em; }
+.plate p { font-size: 15.5px; color: var(--ink-2); }
+.plate .proof { font: 500 12px/1.55 var(--mono); color: var(--ink); background: var(--surface-2); border-radius: 12px; padding: 8px 11px; }
+.plate code { font: 500 .9em var(--mono); }
+.stage { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 84px); height: calc(100vh - 120px); display: grid; place-items: center; }
+.dots { position: absolute; right: -26px; top: 50%; transform: translateY(-50%); display: grid; gap: 10px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); transition: background .3s, transform .5s var(--spring); }
+.dots i.on { background: var(--leaf); transform: scale(1.5); }
+.tether { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 12; overflow: visible; }
+.tether path { fill: none; stroke: var(--leaf); stroke-width: 1.5; stroke-dasharray: 2 5; stroke-linecap: round; transition: opacity .3s; }
+.tether .pin { fill: #fff; stroke: var(--leaf); stroke-width: 2.5; transition: opacity .3s; }
+.tether .halo { fill: none; stroke: var(--leaf); stroke-width: 1.5; animation: halo 2.2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes halo { from { opacity: .8; transform: scale(.6); } to { opacity: 0; transform: scale(2.2); } }
+@media (max-width: 900px) {
+  .story { grid-template-columns: minmax(0, 1fr); }
+  .stage { order: -1; top: calc(env(safe-area-inset-top, 0px) + 60px); height: 50vh; z-index: 2; background: linear-gradient(var(--ground) 86%, transparent); padding-block: 8px 24px; }
+  .chapter { min-height: 0; padding-block: 18vh 12vh; align-content: end; }
+  .dots, .tether { display: none; }
+}
+
+/* ——— The phone ——— */
+.phone { --s: .82; position: relative; height: min(720px, 100%); aspect-ratio: 390 / 844; max-width: 100%; border-radius: 15% / 7%; padding: 2.6%; background: linear-gradient(145deg, #3a3f3c, #121514 40%, #2a2e2c); box-shadow: 0 50px 90px -40px rgba(20,33,28,.55), 0 0 0 1px rgba(255,255,255,.06) inset; }
+.phone::before { content: ""; position: absolute; inset: 1.1%; border-radius: 14% / 6.5%; background: #050606; }
+.screen { position: relative; width: 100%; height: 100%; border-radius: 12.4% / 5.8%; overflow: hidden; background: var(--ground); isolation: isolate; }
+@supports (corner-shape: squircle) {
+  /* iOS draws continuous corners; where the browser can, so do we. */
+  .phone, .phone::before, .screen { corner-shape: squircle; border-radius: 22% / 10.2%; }
+  .card, .plate, .tech, .pipe { corner-shape: squircle; }
+}
+.canvas { position: absolute; left: 0; top: 0; width: 390px; height: 844px; transform: scale(var(--s)); transform-origin: 0 0; font-size: 17px; line-height: 1.3; }
+.island { position: absolute; z-index: 40; left: 50%; top: 11px; width: 126px; height: 37px; transform: translateX(-50%); background: #000; border-radius: 22px; overflow: hidden; color: #fff; transition: width .6s var(--spring), height .6s var(--spring), top .6s var(--spring), border-radius .6s var(--spring); }
+.island .la { opacity: 0; padding: 16px 20px; transition: opacity .3s; display: grid; gap: 8px; font-size: 14px; }
+.island.wide { width: 366px; height: 98px; border-radius: 40px; top: 9px; }
+.island.wide .la { opacity: 1; transition-delay: .25s; }
+.la .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.la b { font-weight: 600; }
+.la .t { font: 500 13px var(--mono); color: rgba(255,255,255,.6); }
+.la .nine { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; }
+.la .nine i { height: 4px; border-radius: 2px; background: rgba(255,255,255,.2); }
+.la .nine i.d { background: #7CC59A; }
+.sb { position: absolute; z-index: 30; left: 0; right: 0; top: 0; height: 54px; display: flex; justify-content: space-between; align-items: center; padding: 6px 34px 0 46px; font: 600 16px var(--body); color: var(--ink); pointer-events: none; }
+.sb.light { color: #fff; }
+.sb .icons { display: flex; gap: 6px; align-items: center; }
+.sb .icons i { display: block; background: currentColor; }
+.sb .bars { width: 17px; height: 11px; clip-path: polygon(0 100%, 0 70%, 22% 70%, 22% 45%, 44% 45%, 44% 22%, 66% 22%, 66% 0, 88% 0, 88% 100%); }
+.sb .batt { width: 25px; height: 12px; border-radius: 4px; }
+.homebar { position: absolute; z-index: 30; left: 50%; bottom: 8px; width: 140px; height: 5px; border-radius: 3px; transform: translateX(-50%); background: var(--ink); opacity: .9; }
+.homebar.light { background: #fff; }
+.scr { position: absolute; inset: 0; opacity: 0; visibility: hidden; transform: translateY(24px) scale(.985); transition: opacity .42s var(--ease), transform .72s var(--spring), visibility 0s .72s; background: var(--ground); color: var(--ink); overflow: hidden; }
+.scr.on { opacity: 1; visibility: visible; transform: none; transition: opacity .42s var(--ease), transform .72s var(--spring), visibility 0s; }
+.vt .scr { transition: none; }
+.scr.cam { background: #000; color: #fff; }
+/* Element-scoped view transitions (where supported) morph the leaf photo from screen to screen. */
+.scr.on .vt-leaf { view-transition-name: leaf; }
+::view-transition-group(*) { animation-duration: .6s; animation-timing-function: var(--ease); }
+.card { background: var(--surface); border-radius: 28px; box-shadow: var(--shadow); }
+.melt { position: absolute; left: 0; right: 0; top: 0; background-size: cover; background-position: center; -webkit-mask-image: linear-gradient(#000 45%, transparent); mask-image: linear-gradient(#000 45%, transparent); }
+.icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.32); color: #fff; }
+.icon-btn svg { width: 20px; height: 20px; }
+.sec-t { font: 600 22px var(--display); letter-spacing: -0.02em; display: flex; justify-content: space-between; align-items: baseline; }
+.sec-t small { font: 500 15px var(--body); color: var(--leaf); letter-spacing: 0; }
+.tap { position: absolute; z-index: 35; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: rgba(255,255,255,.55); box-shadow: 0 0 0 2px rgba(0,0,0,.08); opacity: 0; transform: scale(.4); pointer-events: none; }
+.tap.go { animation: tap .7s var(--ease); }
+@keyframes tap { 0% { opacity: 0; transform: scale(.4); } 30% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.4); } }
+
+/* Sign in */
+.signin { background: var(--wash); }
+.signin .melt { height: 520px; background-image: url("img/lettuce.jpg"); background-position: 50% 40%; -webkit-mask-image: linear-gradient(#000 50%, transparent); mask-image: linear-gradient(#000 50%, transparent); }
+.signin .copy { position: absolute; left: 24px; right: 24px; top: 430px; display: grid; gap: 8px; }
+.signin .copy b { font: 600 54px/0.95 var(--display); letter-spacing: -0.03em; }
+.signin .copy span { font-size: 17px; color: var(--ink-2); }
+.signin .btns { position: absolute; left: 20px; right: 20px; bottom: 54px; display: grid; gap: 10px; }
+.signin .btns span { height: 54px; border-radius: 27px; display: grid; place-items: center; font-weight: 600; font-size: 17px; }
+.signin .apple { background: var(--ink); color: var(--ground); }
+.signin .google { background: var(--surface); box-shadow: 0 0 0 .5px var(--line); }
+.signin .email { color: var(--ink); background: var(--surface-2); }
+.signin .ok { position: absolute; left: 50%; top: 360px; transform: translate(-50%, 10px); opacity: 0; transition: .6s var(--spring); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.signin .ok i { background: var(--healthy); }
+.signin .ok.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* Home */
+.home .melt { height: 330px; background-image: url("img/tomato.jpg"); background-position: 50% 30%; }
+.home .bg { position: absolute; inset: 0; background: linear-gradient(var(--wash) 0, var(--wash) 300px, var(--ground) 420px); }
+.home .body { position: absolute; left: 0; right: 0; top: 208px; bottom: 0; padding: 0 20px 100px; display: grid; align-content: start; gap: 18px; }
+.home .where { font-size: 14px; color: var(--ink-2); font-weight: 600; }
+.home h4 { font: 600 54px/0.95 var(--display); letter-spacing: -0.03em; margin: 2px 0 0; }
+.fc { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; text-align: center; font-size: 13px; }
+.fc div { padding: 10px 0; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); display: grid; gap: 5px; }
+.fc b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.fc span { color: var(--ink-2); }
+.fc .frost { background: var(--info-soft); color: var(--info); box-shadow: none; }
+.fc .frost span { color: var(--info); }
+.alert { padding: 14px 16px; display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: center; font-size: 14.5px; }
+.alert .ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--info-soft); color: var(--info); }
+.alert b { display: block; font-size: 15.5px; }
+.alert span { color: var(--ink-2); }
+.plants { display: flex; gap: 12px; overflow: hidden; margin-right: -20px; }
+.pc { flex: none; width: 132px; padding-bottom: 12px; overflow: hidden; }
+.pc .ph { height: 118px; background-size: cover; background-position: center; -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
+.pc b { display: block; padding: 0 12px; font: 600 17px var(--display); letter-spacing: -0.02em; margin-top: -4px; }
+.pc .st { padding: 0 12px; font-size: 13px; }
+.tasks { padding: 4px 16px; font-size: 15px; }
+.tasks div { display: grid; grid-template-columns: 24px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; }
+.tasks div + div { border-top: 1px solid var(--line); }
+.tasks i { width: 22px; height: 22px; border-radius: 50%; border: 1.6px solid var(--line); }
+.tasks small { color: var(--ink-2); font-size: 13px; }
+.tabbar { position: absolute; left: 16px; right: 84px; bottom: 26px; height: 62px; border-radius: 31px; background: color-mix(in oklab, var(--surface) 88%, transparent); box-shadow: var(--shadow), 0 0 0 .5px var(--line); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; text-align: center; font-size: 10.5px; font-weight: 600; color: var(--ink-2); padding: 0 6px; }
+.tabbar div { display: grid; justify-items: center; gap: 2px; }
+.tabbar svg { width: 22px; height: 22px; }
+.tabbar .sel { color: var(--ink); background: var(--surface-2); border-radius: 26px; padding: 5px 0; }
+.scanbtn { position: absolute; right: 16px; bottom: 26px; width: 62px; height: 62px; border-radius: 50%; background: var(--surface); box-shadow: var(--shadow), 0 0 0 .5px var(--line); display: grid; place-items: center; color: var(--ink); }
+.scanbtn svg { width: 26px; height: 26px; }
+
+/* Capture and the live analysis: always dark, like the camera. */
+.cam .photo { position: absolute; left: 0; right: 0; top: 120px; height: 520px; background: url("img/tomato-blight.jpg") 70% 60% / cover; }
+.cam .outside { position: absolute; inset: 0; background: url("img/tomato-blight.jpg") 70% 60% / 260% auto; filter: brightness(.5) blur(1px); }
+.cam .frame { position: absolute; left: 44px; right: 44px; top: 236px; height: 260px; border-radius: 22px; }
+.cam .frame::before, .cam .frame::after { content: ""; position: absolute; width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.9); }
+.cam .frame::before { left: 0; top: 0; border-right: 0; border-bottom: 0; border-radius: 18px 0 0 0; }
+.cam .frame::after { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 18px 0; }
+.topcard { position: absolute; left: 12px; right: 12px; top: 60px; background: #1c1f1e; color: #fff; border-radius: 28px; padding: 10px 20px 16px; transform: translateY(-160px); transition: transform .72s var(--spring); z-index: 5; box-shadow: 0 20px 40px -20px #000; }
+.topcard.on { transform: none; }
+.topcard .k { font: 600 12px var(--mono); letter-spacing: .1em; color: var(--cam-yellow); }
+.topcard p { font-size: 16.5px; margin-top: 4px; line-height: 1.32; }
+.dist { position: absolute; left: 50%; top: 520px; transform: translateX(-50%); }
+.dist i { background: var(--cam-yellow); }
+.modebar { position: absolute; left: 0; right: 0; bottom: 178px; height: 40px; display: flex; justify-content: center; }
+.modebar .track { display: flex; gap: 6px; padding: 4px; border-radius: 20px; background: rgba(28,31,30,.95); font: 600 12.5px var(--body); letter-spacing: .04em; }
+.modebar span { padding: 8px 11px; border-radius: 16px; color: rgba(255,255,255,.82); white-space: nowrap; position: relative; }
+.modebar span.sel { color: var(--cam-yellow); background: rgba(255,255,255,.12); }
+.modebar span.stored::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #fff; }
+.shutrow { position: absolute; left: 0; right: 0; bottom: 56px; height: 100px; display: grid; grid-template-columns: 1fr 100px 1fr; align-items: center; padding: 0 34px; }
+.thumb { width: 52px; height: 52px; border-radius: 14px; background: url("img/tomato-blight.jpg") 75% 65% / 300% auto; border: 2px solid rgba(255,255,255,.9); opacity: 0; transform: scale(.6); transition: .6s var(--spring); }
+.thumb.on { opacity: 1; transform: none; }
+.shutter { position: relative; width: 84px; height: 84px; margin: 0 auto; }
+.shutter svg { position: absolute; inset: 0; width: 84px; height: 84px; }
+.shutter .core { position: absolute; inset: 11px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease); }
+.shutter.press .core { transform: scale(.86); }
+.dial path { fill: none; stroke: rgba(255,255,255,.3); stroke-width: 4; stroke-linecap: round; transition: stroke .35s; }
+.dial path.f { stroke: #fff; }
+.analyse { justify-self: end; font-weight: 600; font-size: 16px; color: #fff; opacity: .45; transition: opacity .3s; }
+.analyse.on { opacity: 1; }
+.flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 8; }
+.flash.go { animation: flash .45s ease-out; }
+@keyframes flash { 0% { opacity: .85; } 100% { opacity: 0; } }
+.live .photo { top: 0; height: 640px; background-position: 74% 62%; background-size: auto 100%; }
+.live .photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(#000 0, transparent 22%, transparent 70%, #000 100%); }
+.live .hot { --x: 236px; --y: 372px; }
+.live .species { position: absolute; left: 28px; top: 256px; opacity: 0; transform: translateY(6px); transition: .6s var(--spring); }
+.live .species.on { opacity: 1; transform: none; }
+.live .topcard .now { display: flex; justify-content: space-between; font-weight: 600; font-size: 16.5px; }
+.live .topcard .now span:last-child { font: 500 14px var(--mono); color: rgba(255,255,255,.6); }
+.live .topcard .next { font-size: 14px; color: rgba(255,255,255,.62); margin-top: 2px; }
+.qcard { position: absolute; left: 12px; right: 12px; bottom: 186px; background: #1c1f1e; border-radius: 26px; padding: 14px 16px; transform: translateY(40px); opacity: 0; transition: transform .72s var(--spring), opacity .4s var(--ease); z-index: 5; }
+.qcard.on { transform: none; opacity: 1; }
+.qcard p { font-size: 15px; line-height: 1.32; }
+.qcard .k { font: 600 11.5px var(--mono); letter-spacing: .1em; color: rgba(255,255,255,.55); margin-bottom: 6px; }
+.answers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+.answers div { border-radius: 16px; background: #2a2e2c; padding: 6px; display: grid; gap: 6px; font-weight: 600; font-size: 13.5px; text-align: center; transition: box-shadow .3s, background .3s; }
+.answers div.pick { box-shadow: 0 0 0 2px #fff; background: #3a3f3c; }
+.answers .pic { height: 54px; border-radius: 11px; background: url("img/tomato-blight.jpg") 84% 67% / 520% auto; }
+.answers .pic.no { background-position: 49% 48%; background-size: 700% auto; }
+.answers .ns { display: grid; place-items: center; height: 54px; color: rgba(255,255,255,.7); font-weight: 500; }
+.strip3 { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px; background: #1c1f1e; border-radius: 18px; }
+.strip3 i { width: 44px; height: 44px; border-radius: 12px; background: url("img/tomato-blight.jpg") var(--p) / 320% auto; }
+.strip3 i:nth-child(1) { --p: 80% 66%; box-shadow: 0 0 0 2px #fff; }
+.strip3 i:nth-child(2) { --p: 30% 40%; }
+.strip3 i:nth-child(3) { --p: 50% 90%; }
+.ring { position: absolute; left: 50%; bottom: 118px; width: 64px; height: 64px; margin-left: -32px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 22px rgba(255,255,255,.6), inset 0 0 14px rgba(255,255,255,.35); animation: glow 1.8s ease-in-out infinite; transition: opacity .3s; }
+@keyframes glow { 50% { box-shadow: 0 0 34px rgba(255,255,255,.85), inset 0 0 20px rgba(255,255,255,.5); } }
+.ring.off { opacity: 0; }
+.seeplan { position: absolute; left: 24px; right: 24px; bottom: 116px; justify-content: center; opacity: 0; transform: translateY(12px); transition: .72s var(--spring); background: #7CC59A; color: #0D1A12; font-size: 16.5px; }
+.seeplan .disc { background: #0D1A12; color: #7CC59A; }
+.seeplan.on { opacity: 1; transform: none; }
+
+/* Diagnosis, after Apple Music: the photo fades into a ground tinted from it. */
+.diag { background: var(--wash); }
+.diag .melt { height: 400px; background-image: url("img/tomato-blight.jpg"); background-position: 78% 62%; background-size: 240% auto; -webkit-mask-image: linear-gradient(#000 50%, transparent); mask-image: linear-gradient(#000 50%, transparent); }
+.diag .bar { position: absolute; z-index: 3; top: 56px; left: 16px; right: 16px; display: flex; justify-content: space-between; }
+.diag .scroll { position: absolute; inset: 0; transition: transform 1.4s var(--ease); }
+.diag .name { position: absolute; top: 300px; left: 0; right: 0; text-align: center; display: grid; gap: 8px; padding: 0 24px; }
+.diag .name b { font: 600 46px/1 var(--display); letter-spacing: -0.03em; }
+.diag .name span { font-size: 14.5px; color: var(--ink-2); }
+.diag .row { position: absolute; top: 410px; left: 16px; display: flex; gap: 10px; }
+.diag .tile { width: 270px; padding: 16px 18px; border-radius: 22px; background: color-mix(in oklab, var(--surface) 72%, transparent); display: grid; gap: 4px; font-size: 14.5px; }
+.diag .tile .k { font: 600 11px var(--mono); letter-spacing: .1em; color: var(--ink-2); }
+.diag .tile b { font-size: 16.5px; }
+.diag .list { position: absolute; top: 530px; left: 16px; right: 16px; padding: 14px 18px; border-radius: 22px; background: color-mix(in oklab, var(--surface) 72%, transparent); font-size: 14.5px; display: grid; gap: 10px; }
+.diag .list div { display: flex; justify-content: space-between; gap: 10px; }
+.diag .list em { font-style: normal; color: var(--ink-2); font-size: 13px; }
+.diag .list .sec-t { font-size: 19px; }
+.mini { position: absolute; left: 12px; right: 12px; bottom: 30px; height: 70px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow), 0 0 0 .5px var(--line); display: grid; grid-template-columns: 48px 1fr auto auto; gap: 10px; align-items: center; padding: 0 12px; z-index: 4; transform: translateY(110px); transition: transform .72s var(--spring) .3s; }
+.scr.on .mini { transform: none; }
+.mini .ph { width: 48px; height: 48px; border-radius: 12px; background: url("img/tomato-blight.jpg") 80% 66% / 300% auto; }
+.mini small { display: block; color: var(--ink-2); font-size: 12px; }
+.mini b { font-size: 14.5px; display: block; line-height: 1.2; }
+.mini .ctl { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); }
+.mini .ctl svg { width: 17px; height: 17px; }
+.mini .ask { font-weight: 600; font-size: 14px; padding: 0 12px; height: 38px; display: grid; place-items: center; border-radius: 19px; background: var(--surface-2); }
+
+/* Plan, step by step */
+.stepper { padding: 70px 24px 0; display: grid; gap: 20px; height: 100%; align-content: start; }
+.stepper .top { display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--ink-2); }
+.pips { display: flex; gap: 5px; }
+.pips i { width: 22px; height: 4px; border-radius: 2px; background: var(--line); transition: background .4s; }
+.pips i.d { background: var(--leaf); }
+.steps { position: relative; height: 560px; }
+.step { position: absolute; inset: 0; display: grid; gap: 18px; align-content: start; transition: transform .72s var(--spring), opacity .45s var(--ease); }
+.step.out { transform: translateX(-110%); opacity: 0; }
+.step.in { transform: translateX(110%); opacity: 0; }
+.step h5 { font: 600 40px/1 var(--display); letter-spacing: -0.03em; margin: 0; }
+.step .meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.step .meta span { padding: 7px 12px; border-radius: 999px; background: var(--surface-2); font-size: 13.5px; font-weight: 600; }
+.step dl { margin: 0; display: grid; gap: 12px; font-size: 15.5px; }
+.step dt { font: 600 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.step dd { margin: 3px 0 0; }
+.step .src { font-size: 13.5px; color: var(--ink-2); padding: 12px 14px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); }
+.adds { display: flex; flex-wrap: wrap; gap: 6px; }
+.adds span { padding: 6px 10px; border-radius: 10px; background: var(--leaf-soft); color: var(--leaf); font: 600 13px var(--body); opacity: 0; transform: translateY(6px); transition: .6s var(--spring); }
+.adds.on span { opacity: 1; transform: none; transition-delay: calc((var(--i, 1) - 1) * 90ms); }
+@supports (transition-delay: calc(sibling-index() * 1ms)) { .adds.on span { transition-delay: calc((sibling-index() - 1) * 90ms); } }
+.stepper .done { position: absolute; left: 24px; right: 24px; bottom: 44px; justify-content: center; font-size: 17px; }
+.check { width: 22px; height: 22px; }
+.check path { stroke-dasharray: 24; stroke-dashoffset: 24; transition: stroke-dashoffset .4s var(--ease); }
+.done.ok .check path { stroke-dashoffset: 0; }
+
+/* Chat with answer blocks */
+.chat { padding: 62px 14px 0; }
+.chat .head { text-align: center; font-weight: 600; font-size: 16px; padding-bottom: 10px; }
+.chat .head small { display: block; color: var(--ink-2); font-weight: 500; font-size: 12.5px; }
+.thread { position: absolute; left: 14px; right: 14px; top: 112px; bottom: 96px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; overflow: hidden; }
+.msg { opacity: 0; transform: translateY(14px); transition: transform .72s var(--spring), opacity .4s var(--ease); }
+.msg.on { opacity: 1; transform: none; }
+.me { align-self: flex-end; max-width: 80%; background: var(--leaf); color: var(--leaf-ink); padding: 10px 14px; border-radius: 20px 20px 6px 20px; font-size: 15px; }
+.tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.tools span { font-size: 12.5px; font-weight: 600; color: var(--ink-2); padding: 6px 10px; border-radius: 999px; background: var(--surface-2); display: inline-flex; gap: 6px; align-items: center; }
+.tools span i { width: 7px; height: 7px; border-radius: 50%; background: var(--watch); animation: pulse 1s infinite; }
+.tools span.ok i { background: var(--healthy); animation: none; }
+@keyframes pulse { 50% { opacity: .3; } }
+.bot { font-size: 15px; line-height: 1.38; }
+.bot sup { font: 600 10px var(--mono); color: var(--leaf); }
+.block { background: var(--surface); border-radius: 22px; box-shadow: var(--shadow); padding: 14px; display: grid; gap: 10px; font-size: 14px; }
+.block .k { font: 600 11px var(--mono); letter-spacing: .1em; color: var(--ink-2); display: flex; justify-content: space-between; }
+.block .k b { color: var(--info); font-family: var(--body); letter-spacing: 0; font-size: 13px; }
+.fp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fp div { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); font-weight: 600; font-size: 13.5px; }
+.fp .tg { width: 34px; height: 20px; border-radius: 10px; background: var(--line); position: relative; transition: background .3s; }
+.fp .tg::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .5s var(--spring); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.fp .on .tg { background: var(--healthy); }
+.fp .on .tg::after { transform: translateX(14px); }
+.fp .hardy { color: var(--ink-2); font-weight: 500; }
+.block .addbtn { justify-content: center; padding: 11px; font-size: 15px; }
+.mem { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--ink-2); padding: 8px 12px; border-radius: 14px; border: 1px dashed var(--line); }
+.mem b { color: var(--leaf); font-weight: 600; }
+.srcs { display: grid; gap: 6px; }
+.src2 { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; padding: 10px 12px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 13px; }
+.src2 .ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font: 700 12px var(--mono); background: var(--surface-2); color: var(--ink-2); }
+.src2 b { display: block; font-size: 13.5px; }
+.src2 span { color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.demo-note { font: 500 10.5px var(--mono); letter-spacing: .06em; color: var(--ink-2); text-align: center; }
+.composer { position: absolute; left: 14px; right: 14px; bottom: 30px; height: 48px; border-radius: 24px; background: var(--surface); box-shadow: 0 0 0 .5px var(--line); display: flex; align-items: center; padding: 0 16px; color: var(--ink-2); font-size: 15px; }
+.toast { position: absolute; left: 50%; top: 64px; transform: translate(-50%, -80px); background: var(--ink); color: var(--ground); font-weight: 600; font-size: 14px; padding: 10px 16px; border-radius: 999px; transition: transform .72s var(--spring); z-index: 6; white-space: nowrap; }
+.toast.on { transform: translate(-50%, 0); }
+
+/* The 3D garden: a turntable on a plinth, drawn in CSS 3D here, RealityKit in the app. */
+@property --a { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+.g3d { background: var(--ground); }
+.g3d .view { position: absolute; inset: 0; perspective: 1600px; perspective-origin: 50% 40%; }
+.g3d .plinth { position: absolute; left: 50%; top: 52%; width: 300px; height: 300px; margin: -150px 0 0 -150px; transform-style: preserve-3d; transform: rotateX(60deg) rotateZ(var(--a)); animation: turn 36s linear infinite; }
+@keyframes turn { to { --a: 360deg; } }
+.g3d .base { position: absolute; inset: -14px; border-radius: 40px; background: var(--wash); box-shadow: 0 30px 50px -20px rgba(20,33,28,.35); }
+.g3d .bed { position: absolute; border-radius: 14px; background: color-mix(in oklab, var(--surface) 90%, var(--line)); box-shadow: inset 0 0 0 6px var(--surface); }
+.g3d .bed::after { content: ""; position: absolute; inset: 7px; border-radius: 9px; background: #5B4636; }
+.g3d .pot { position: absolute; width: 50px; height: 50px; border-radius: 50%; background: var(--clay); box-shadow: inset 0 0 0 5px color-mix(in oklab, var(--clay) 70%, #000); }
+.pl { position: absolute; width: 0; height: 0; transform-style: preserve-3d; }
+.pl .ringz { position: absolute; left: -24px; top: -24px; width: 48px; height: 48px; border-radius: 50%; border: 3px solid var(--c); }
+.pl .bb { position: absolute; left: 0; top: 0; transform-style: preserve-3d; transform: rotateZ(calc(-1 * var(--a))) rotateX(-60deg); }
+.pl .shape { position: absolute; left: calc(var(--w) / -2); bottom: 0; width: var(--w); height: var(--h); }
+.pl .shape i { position: absolute; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in oklab, var(--f) 70%, #fff), var(--f) 55%, color-mix(in oklab, var(--f) 70%, #000)); }
+.pl .shape i:nth-child(1) { left: 10%; right: 10%; bottom: 0; height: 52%; }
+.pl .shape i:nth-child(2) { left: 0; right: 30%; bottom: 30%; height: 46%; }
+.pl .shape i:nth-child(3) { left: 28%; right: 0; bottom: 38%; height: 50%; }
+.pl .shape i:nth-child(4) { left: 22%; right: 22%; top: 0; height: 40%; }
+.pl .fruit { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--fr, #D2452F); box-shadow: inset -2px -2px 0 rgba(0,0,0,.18); }
+.pl .lab { position: absolute; left: 50%; bottom: calc(var(--h) + 8px); transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--ink); font: 600 11.5px var(--body); padding: 5px 9px; border-radius: 999px; box-shadow: var(--shadow); display: inline-flex; gap: 5px; align-items: center; }
+.pl .lab .st { font-size: 11.5px; }
+.pl .lab.sel { box-shadow: 0 0 0 2px var(--ink); }
+.pl .cover { position: absolute; left: calc(var(--w) / -2 - 6px); bottom: -2px; width: calc(var(--w) + 12px); height: calc(var(--h) + 10px); border-radius: 50% 50% 8px 8px; background: color-mix(in oklab, #fff 55%, transparent); border: 1.5px solid color-mix(in oklab, var(--info) 50%, #fff); opacity: 0; transform: translateY(-30px); transition: .8s var(--spring); }
+.g3d.frost .pl.tender .cover { opacity: 1; transform: none; }
+.g3d .gh { position: absolute; top: 60px; left: 12px; right: 12px; z-index: 3; padding: 12px 18px 14px; display: grid; gap: 6px; font-size: 14.5px; }
+.g3d .gh b { font-size: 15.5px; }
+.g3d .legend { display: flex; gap: 12px; }
+.g3d .legend .st { font-size: 12px; }
+.g3d .modes { position: absolute; left: 50%; bottom: 186px; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow), 0 0 0 .5px var(--line); font: 600 12.5px var(--body); letter-spacing: .05em; z-index: 3; }
+.g3d .modes span { padding: 8px 12px; border-radius: 16px; color: var(--ink-2); transition: .3s; }
+.g3d .modes span.sel { color: var(--ink); background: var(--surface-2); }
+.g3d .selpill { position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); padding: 11px 18px; border-radius: 999px; font-weight: 600; font-size: 15px; z-index: 3; white-space: nowrap; display: inline-flex; gap: 8px; align-items: center; }
+.g3d .shutrow3 { position: absolute; left: 0; right: 0; bottom: 36px; display: grid; grid-template-columns: 1fr 76px 1fr; align-items: center; text-align: center; font-weight: 600; font-size: 14px; z-index: 3; }
+.g3d .wshut { width: 70px; height: 70px; margin: 0 auto; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px var(--surface), 0 0 0 5.5px var(--line), var(--shadow); display: grid; place-items: center; color: #18211C; }
+.g3d .wshut svg { width: 26px; height: 26px; }
+.g3d .scrub { position: absolute; left: 24px; right: 24px; bottom: 250px; z-index: 3; display: grid; gap: 6px; font: 500 11px var(--mono); color: var(--ink-2); }
+.g3d .scrub .tr { height: 4px; border-radius: 2px; background: var(--line); position: relative; }
+.g3d .scrub .tr i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--p, 86%); border-radius: 2px; background: var(--ink); transition: width 1s var(--ease); }
+.g3d .scrub .tr b { position: absolute; top: -6px; left: var(--p, 86%); width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 .5px var(--line), 0 2px 6px rgba(0,0,0,.2); transition: left 1s var(--ease); }
+.g3d .scrub .ds { display: flex; justify-content: space-between; }
+
+/* Insights */
+.ins { padding: 64px 18px 0; display: grid; gap: 14px; align-content: start; }
+.ins .titles { display: grid; gap: 2px; }
+.ins .titles b { font: 600 34px/1 var(--display); letter-spacing: -0.03em; }
+.ins .titles span { color: var(--ink-2); font-size: 14px; }
+.ins .chartcard { padding: 16px; display: grid; gap: 8px; }
+.ins svg text { font: 500 11px var(--mono); fill: var(--ink-2); }
+.ins .cap { font-size: 13.5px; color: var(--ink-2); line-height: 1.4; }
+.ins .drawn path.ln { stroke-dasharray: 400; stroke-dashoffset: 400; transition: stroke-dashoffset 1.4s var(--ease); }
+.ins .drawn.on path.ln { stroke-dashoffset: 0; }
+.ins .pt { opacity: 0; transition: opacity .4s; }
+.ins .drawn.on .pt { opacity: 1; }
+.ins .drawn.on .pt:nth-of-type(2) { transition-delay: .5s; }
+.ins .drawn.on .pt:nth-of-type(3) { transition-delay: 1s; }
+.hum { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 70px; }
+.hum i { display: block; border-radius: 6px 6px 3px 3px; background: var(--info-soft); height: 0; transition: height .9s var(--spring); }
+.hum i.h { background: var(--info); }
+.hum.on i { height: var(--v); }
+.humd { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; font: 500 10.5px var(--mono); color: var(--ink-2); }
+.also { padding: 14px 16px; display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: center; font-size: 14px; }
+.also .ph { width: 52px; height: 52px; border-radius: 14px; background: url("img/tomato-blight.jpg") 82% 66% / 300% auto; }
+.also b { display: block; font-size: 15px; }
+
+/* ——— How it works ——— */
+.pipe { background: var(--surface); border-radius: 36px; box-shadow: var(--shadow); padding: clamp(18px, 3vw, 36px); }
+.diagram { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.diagram svg { display: block; min-width: 860px; width: 100%; height: auto; }
+.diagram .node rect { fill: var(--surface-2); stroke: var(--line); }
+.diagram .node.key rect { fill: var(--leaf-soft); stroke: color-mix(in oklab, var(--leaf) 40%, var(--line)); }
+.diagram .node.gpu rect { fill: color-mix(in oklab, var(--clay) 14%, var(--surface)); stroke: color-mix(in oklab, var(--clay) 40%, var(--line)); }
+.diagram .t1 { font: 600 17px var(--display); fill: var(--ink); letter-spacing: -0.01em; }
+.diagram .t2 { font: 500 11.5px var(--mono); fill: var(--ink-2); }
+.diagram .edge { fill: none; stroke: var(--line); stroke-width: 2; }
+.diagram .flow { fill: none; stroke: var(--leaf); stroke-width: 2.2; stroke-dasharray: 3 14; stroke-linecap: round; animation: flow 1.6s linear infinite; }
+.diagram .flow.slow { animation-duration: 2.6s; stroke: var(--clay); }
+.diagram .flow.info { stroke: var(--info); }
+@keyframes flow { to { stroke-dashoffset: -34; } }
+.diagram .lbl { font: 500 11px var(--mono); fill: var(--ink-2); }
+.diagram .zone { fill: none; stroke: var(--line); stroke-dasharray: 4 6; }
+.diagram .zl { font: 600 11px var(--mono); letter-spacing: .12em; fill: var(--ink-2); }
+.phases { margin-top: 28px; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; counter-reset: ph; }
+.phases div { padding: 14px 12px; border-radius: 18px; background: var(--surface-2); font-size: 14px; font-weight: 600; line-height: 1.25; display: grid; gap: 8px; align-content: start; position: relative; overflow: hidden; }
+.phases div::before { counter-increment: ph; content: counter(ph, decimal-leading-zero); font: 500 11px var(--mono); color: var(--ink-2); }
+.phases div small { font: 500 11px/1.35 var(--mono); color: var(--ink-2); }
+.phases div::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--leaf); transform-origin: 0 50%; transform: scaleX(0); }
+.phases div.lit { background: var(--leaf-soft); }
+.phases div.lit::after { transform: scaleX(1); transition: transform .8s var(--ease); }
+/* Where scroll timelines exist, the stages light up as the strip scrolls through, one after another. */
+@supports (animation-timeline: view()) {
+  .phases { view-timeline: --phases block; }
+  .phases div { animation: lit linear both; animation-timeline: --phases; animation-range: cover calc(10% + var(--n) * 4%) cover calc(14% + var(--n) * 4%); }
+  .phases div::after { animation: litbar linear both; animation-timeline: --phases; animation-range: cover calc(10% + var(--n) * 4%) cover calc(14% + var(--n) * 4%); }
+}
+@keyframes lit { to { background: var(--leaf-soft); } }
+@keyframes litbar { to { transform: scaleX(1); } }
+@media (max-width: 900px) { .phases { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ——— Built with: the recap, with numbers ——— */
+.bento { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+.tech { grid-column: span 2; background: var(--surface); border-radius: 30px; box-shadow: var(--shadow); padding: 26px; display: grid; gap: 12px; align-content: start; position: relative; overflow: hidden; transition: transform .6s var(--spring); }
+.tech:hover { transform: translateY(-4px); }
+.tech .who { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.tech h3 { font-size: 28px; }
+.tech .pin { font: 500 11.5px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.tech .big { font: 600 54px/1 var(--display); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.tech .big small { font: 500 15px var(--body); letter-spacing: 0; color: var(--ink-2); margin-left: 6px; }
+.tech p { font-size: 15px; color: var(--ink-2); }
+.tech .where { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); font: 500 12px/1.6 var(--mono); color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.tech .where a { text-decoration: none; border-bottom: 1px solid var(--line); }
+.tech .where a:hover { color: var(--ink); border-color: var(--ink); }
+.tech.rest { grid-column: span 6; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+.tech.rest div { display: grid; gap: 4px; align-content: start; }
+.tech.rest b { font: 600 20px var(--display); letter-spacing: -0.02em; }
+.tech.rest span { font-size: 14.5px; color: var(--ink-2); }
+/* Numbers count up as they scroll in, with an integer custom property; the plain number is the fallback. */
+@property --n2 { syntax: "<integer>"; inherits: false; initial-value: 0; }
+@supports (animation-timeline: view()) {
+  .count { --n2: var(--to); counter-reset: n var(--n2); animation: count linear both; animation-timeline: view(); animation-range: entry 20% cover 45%; }
+  .count > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .count::before { content: counter(n); }
+}
+@keyframes count { from { --n2: 0; } }
+@media (max-width: 1000px) { .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tech { grid-column: span 1; } .tech.rest { grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .bento { grid-template-columns: minmax(0, 1fr); } .tech.rest { grid-column: span 1; grid-template-columns: minmax(0, 1fr); } }
+
+/* ——— Status ——— */
+.status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.status > div { border-radius: 26px; padding: 24px; background: var(--surface); box-shadow: var(--shadow); display: grid; gap: 12px; align-content: start; }
+.status h3 { font-size: 24px; display: flex; gap: 10px; align-items: center; }
+.status ul { margin: 0; padding: 0 0 0 18px; display: grid; gap: 8px; font-size: 15px; color: var(--ink-2); }
+@media (max-width: 860px) { .status { grid-template-columns: minmax(0, 1fr); } }
+
+/* ——— Footer ——— */
+.foot { background: var(--wash); }
+.foot .wrap { padding-block: 72px 48px; display: grid; gap: 40px; }
+.foot .big { font: 600 clamp(44px, 7vw, 96px)/.95 var(--display); letter-spacing: -0.04em; }
+.foot .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; font-size: 15px; }
+.foot .cols div { display: grid; gap: 6px; align-content: start; }
+.foot .cols b { font: 600 11.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 4px; }
+.foot .credits { font-size: 12.5px; color: var(--ink-2); line-height: 1.6; }
+@media (max-width: 760px) { .foot .cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* Section reveals: scroll-driven where the browser has view timelines. Everything is readable at rest. */
+@supports (animation-timeline: view()) {
+  .rise { animation: rise linear both; animation-timeline: view(); animation-range: entry 0% entry 70%; }
+}
+@keyframes rise { from { opacity: .15; translate: 0 40px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .rise, .hero-layer, .hero-copy, .readbar, .phases div, .phases div::after { animation: none !important; }
+  .phases div { background: var(--leaf-soft); } .phases div::after { transform: scaleX(1); }
+  .count { animation: none !important; }
+  .g3d .plinth { animation: none; --a: 28deg; }
+  .tether .halo { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Main">
+  <div class="wrap">
+    <a class="mark" href="#top" aria-label="GreenLens home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M9 21c0-7 5-11 13-12-1 8-5 13-12 13" fill="var(--leaf)"/><path d="M10 22l8-8" stroke="var(--ground)" stroke-width="1.6" stroke-linecap="round"/></svg>
+      GreenLens
+    </a>
+    <ul>
+      <li><a href="#story">The app</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#built">Built with</a></li>
+      <li><a href="#status">Status</a></li>
+      <li><a href="https://github.com/aacruzgon/GreenLens#readme">README</a></li>
+    </ul>
+  </div>
+  <div class="readbar" aria-hidden="true"></div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="hero-layer">
+    <div class="hero-photo vt-leaf" role="img" aria-label="A tomato leaf with early blight lesions"></div>
+    <div class="hero-scene" aria-hidden="true">
+      <div class="hot" id="heroHot" style="--x: 81%; --y: 63%;"><div class="oval"></div><div class="dot"></div><span class="chip"><i></i>Leaf spots · 8–12 mm</span></div>
+      <div class="stagecard" id="heroCard">
+        <div class="grabber"></div>
+        <div class="now"><span id="heroStage">Finding the plant</span><span id="heroTime">0 s</span></div>
+        <div class="next" id="heroNext">Next: identifying the species</div>
+        <div class="segbar" id="heroSeg"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="verdict" id="heroVerdict"><b>Early blight</b><span>Tomato 2 · from 3 photos, your answer and the weather</span></div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="hero-copy">
+      <p class="eyebrow">GreenLens · Build North 2026</p>
+      <h1>Know what your <em>garden</em> needs.</h1>
+      <p class="lede">Photograph a plant. GreenLens reads the leaf, the soil and the surroundings on a GPU rig, weighs them against the weather and the plant's history, and hands you a diagnosis and a plan you can talk through with Claude.</p>
+      <div class="ctas">
+        <a class="pill go" href="#story"><span class="disc"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></span>Walk through a scan</a>
+        <a class="pill soft" href="https://github.com/aacruzgon/GreenLens#readme">Read the README</a>
+      </div>
+      <div class="hero-meta"><span>iPhone app</span><span>Rust server</span><span>Home GPU rig</span><span>Claude</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="strip" aria-label="Built with">
+  <div class="wrap">
+    <a href="#ch-chat">Anthropic<small>Claude</small></a><a href="#ch-signin">Clerk<small>auth</small></a><a href="#ch-live">SurrealDB<small>3.3.4</small></a><a href="#ch-farm">Agent Memory<small>SurrealDB</small></a><a href="#ch-farm">Era<small>by Eon</small></a><a href="#ch-home">Expo<small>SDK 57</small></a>
+  </div>
+</div>
+
+<!-- ——— The story ——— -->
+<section class="sec" id="story">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <p class="eyebrow">The app, screen by screen</p>
+      <h2>One scan, from the garden to the plan.</h2>
+      <p class="lede">Tomato 1 was diagnosed with early blight on Oct 11 and is recovering under its plan. One step of that plan is a weekly check of Tomato 2, 40 cm away. Today's check catches the same problem early. Scroll to follow it, and see what runs under each moment.</p>
+    </div>
+    <div class="story">
+      <div class="chapters" id="chapters">
+        <article class="chapter" id="ch-signin" data-screen="signin">
+          <p class="when">Sign in</p>
+          <h3>Your garden, and only yours.</h3>
+          <p>Sign in with Apple, Google or email. Invite the people you garden with: owners, editors and viewers each see what their role allows.</p>
+          <div class="plate" data-dot="#dotSignin">
+            <span class="k">Under the hood</span><b>Clerk</b>
+            <p>Our own screens on Clerk's sign-in, sign-up and SSO hooks, with Apple's own button and an SMS second factor. The Rust API checks every token itself.</p>
+            <span class="proof">RS256 only · JWKS from the configured issuer, never the token's · keys cached by kid</span>
+          </div>
+        </article>
+        <article class="chapter" id="ch-home" data-screen="home">
+          <p class="when">Garden home · Sat Oct 17</p>
+          <h3>The garden, at a glance.</h3>
+          <p>The garden's name set large over its own photo, the next six days of weather, a frost alert for Thursday, plants by health and today's tasks. One of them is the weekly check of Tomato 2.</p>
+          <div class="plate" data-dot="#dotTabs">
+            <span class="k">Under the hood</span><b>Expo SDK 57</b>
+            <p>Expo Router's native tabs, so iOS draws its own Liquid Glass tab bar. Controls are Apple's components, and nothing imitates glass.</p>
+            <span class="proof">Expo 57 · React Native 0.86 · NativeTabs · @expo/ui · 629 app tests</span>
+          </div>
+        </article>
+        <article class="chapter" id="ch-capture" data-screen="capture">
+          <p class="when">Capture</p>
+          <h3>A camera that knows what to ask for.</h3>
+          <p>Capture works like the Camera app. The shots are its modes: whole plant, close-up, underside, soil, fruit. A card drops in with each shot's instruction, the distance reads live, and a dial around the shutter fills one segment per needed photo.</p>
+          <div class="plate" data-dot="#dotDist">
+            <span class="k">Under the hood</span><b>A Swift module in Expo</b>
+            <p>Our LiDAR module: the camera with depth, the mode bar as iOS 26's segmented control on glass, and an ARKit session that maps the garden.</p>
+            <span class="proof">app/modules/lidar · 17 Swift files · LidarCameraView · ModePicker</span>
+          </div>
+        </article>
+        <article class="chapter" id="ch-live" data-screen="live">
+          <p class="when">Live analysis</p>
+          <h3>Watch the rig think.</h3>
+          <p>The photos go to a GPU rig at home. Each stage streams back as it runs, and findings land on the photo as chips. When two problems look alike, it asks you one question with picture answers instead of guessing. The scan also follows you to the Dynamic Island.</p>
+          <div class="plate" data-dot="#liveCard">
+            <span class="k">Under the hood</span><b>SurrealDB, streamed</b>
+            <p>Every stage is an event with a gap-free sequence number in SurrealDB 3.3.4. Drop the connection and the app resumes from the last one it saw. Workers on the rig pull their jobs, so the rig opens no ports.</p>
+            <span class="proof">API killed mid-scan on the rig: events 1–61, no gap</span>
+          </div>
+        </article>
+        <article class="chapter" id="ch-diag" data-screen="diag">
+          <p class="when">Diagnosis</p>
+          <h3>A name, and what it rests on.</h3>
+          <p>The photo fades into a ground tinted from it, with the diagnosis centred over its edge and what it rests on: three photos, your answer and the weather. No confidence number, by design. The risk of spread, a helpful ladybug larva and the plan follow.</p>
+          <div class="plate" data-dot="#dotName">
+            <span class="k">Under the hood</span><b>Vision makes facts</b>
+            <p>BioCLIP 2 names the species, our disease head ranks the problems, and Qwen3.5-9B checks the telltale signs. Fixed rules set the risk. The language model only writes the words.</p>
+            <span class="proof">6 photos and 40 crops read in 1.2 s on an RTX 3070</span>
+          </div>
+        </article>
+        <article class="chapter" id="ch-step" data-screen="step">
+          <p class="when">The plan, step by step</p>
+          <h3>One step per screen.</h3>
+          <p>Each step says when, how and why, with its source. A step that repeats turns into dated tasks the moment you finish the one before it.</p>
+          <div class="plate" data-dot="#dotSrc">
+            <span class="k">Under the hood</span><b>Claude writes the plan</b>
+            <p>Claude Opus 5.5 turns the evidence into steps through strict structured output, and every step must cite a source. A dose check keeps amounts out of plans and chat. They come from the label.</p>
+            <span class="proof">claude-opus-5-5 · output_config.format · cited steps · dose check</span>
+          </div>
+        </article>
+        <article class="chapter" id="ch-chat" data-screen="chat">
+          <p class="when">Chat</p>
+          <h3>Answers you can use, not only read.</h3>
+          <p>Ask about the frost. Claude checks the forecast and the garden map, then answers with a frost-cover planner you can toggle. One tap adds a task for each plant you chose.</p>
+          <div class="plate" data-dot="#m4">
+            <span class="k">Under the hood</span><b>Claude, with 21 tools</b>
+            <p>Answer blocks are built from the tools' records, never from the model's arithmetic. Anything the model wants to change waits for your confirmation.</p>
+            <span class="proof">21 tools · show_block(kind, call_id) · confirm before every write</span>
+          </div>
+        </article>
+        <article class="chapter" id="ch-farm" data-screen="farm">
+          <p class="when">Memory and farm records</p>
+          <h3>It remembers, and it checks your notes.</h3>
+          <p>Say "no copper" once and it stays said. Ask when the east bed was last sprayed, and the answer cites your crew's spray log in Google Drive and this week's report in Slack.</p>
+          <div class="plate" data-dot="#m6">
+            <span class="k">Under the hood</span><b>SurrealDB Agent Memory</b>
+            <p>A memory shared with the garden is mirrored as a belief. A newer one supersedes it, and deleting it forgets it there too. Private memories never leave our database.</p>
+            <span class="proof">scopes gardens/&lt;id&gt; · an API key that can't widen itself</span>
+          </div>
+          <div class="plate" data-dot="#farmSrc">
+            <span class="k">Under the hood</span><b>Era by Eon</b>
+            <p>Era's Slack and Drive simulators run Maple Row Farm's records in dev, in CI and in the demo. The agent was graded against them: 18 questions, 3 runs, 2 models.</p>
+            <span class="proof">54/54 answers · 51/51 citations · planted injection never followed</span>
+          </div>
+        </article>
+        <article class="chapter" id="ch-g3d" data-screen="g3d">
+          <p class="when">The 3D garden</p>
+          <h3>The garden, on a turntable.</h3>
+          <p>Built from the garden map, with plants sized by measurement and ringed by health. The modes are Health, Growth and Frost. Move to Thursday and covers drop over the four tender plants.</p>
+          <div class="plate" data-dot="#dotPlinth">
+            <span class="k">Under the hood</span><b>RealityKit on Metal</b>
+            <p>In the app, the garden is a RealityKit scene inside our Swift module, built from beds and plants mapped with ARKit. This page draws a stand-in in CSS 3D.</p>
+            <span class="proof">GardenMappingView (ARKit) · GardenView (RealityKit)</span>
+          </div>
+        </article>
+        <article class="chapter" id="ch-ins" data-screen="ins">
+          <p class="when">Insights</p>
+          <h3>Proof the plan worked.</h3>
+          <p>Tomato 1's spots covered 14%, then 9%, then 5% of the measured leaves at each check after the infected leaves came off. Humid days are shown as a pattern, never as a cause, and Tomato 2's is "also found on", never "spread from".</p>
+          <div class="plate" data-dot="#insChart">
+            <span class="k">Under the hood</span><b>Rust, end to end</b>
+            <p>One axum API over 51 SurrealDB tables. Its types generate the OpenAPI spec, and the app's types are generated from that, so the two can't drift.</p>
+            <span class="proof">76 operations · 51 tables · 61 indexes · utoipa → openapi.json → TypeScript</span>
+          </div>
+        </article>
+      </div>
+
+      <div class="stage" aria-label="iPhone showing the GreenLens app">
+        <div class="phone" id="phone">
+          <div class="screen" id="screen">
+            <div class="canvas" id="canvas">
+              <div class="island" id="island"><div class="la">
+                <div class="row"><b id="laStage">Checking telltale signs</b><span class="t" id="laTime">0:38</span></div>
+                <div class="nine" id="laNine"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                <div class="row"><span class="t">Tomato 2 · Back garden</span><span class="t" id="laNext">Next: weighing the evidence</span></div>
+              </div></div>
+              <div class="sb" id="sb"><span>9:41</span><span class="icons"><i class="bars"></i><i class="batt"></i></span></div>
+
+              <!-- Sign in -->
+              <section class="scr signin" data-id="signin">
+                <div class="melt"></div>
+                <span class="chip ok" id="signOk"><i></i>Signed in</span>
+                <div class="copy"><b>GreenLens</b><span>Know what your garden needs.</span></div>
+                <div class="btns"><span class="apple" id="dotSignin">Sign in with Apple</span><span class="google">Continue with Google</span><span class="email">Use email</span></div>
+              </section>
+
+              <!-- Garden home -->
+              <section class="scr home" data-id="home">
+                <div class="bg"></div>
+                <div class="melt"></div>
+                <div class="body">
+                  <div><div class="where">Toronto, ON</div><h4>Back garden</h4></div>
+                  <div class="fc">
+                    <div><span>Sun</span><b>9°</b></div><div><span>Mon</span><b>8°</b></div><div><span>Tue</span><b>6°</b></div><div><span>Wed</span><b>3°</b></div><div class="frost"><span>Thu</span><b>−1°</b></div><div><span>Fri</span><b>5°</b></div>
+                  </div>
+                  <div class="card alert"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M4 6l16 12M20 6L4 18"/></svg></span><div><b>Frost on Thursday: cover tender plants</b><span>The low is −1 °C. Move pots under cover or throw a sheet over them.</span></div></div>
+                  <div class="sec-t">Plants <small>See all</small></div>
+                  <div class="plants">
+                    <div class="card pc"><div class="ph" style="background-image:url('img/tomato.jpg')"></div><b>Tomato 1</b><span class="st sick">Sick</span></div>
+                    <div class="card pc"><div class="ph" style="background-image:url('img/tomato-blight.jpg'); background-position: 30% 40%"></div><b>Tomato 2</b><span class="st healthy">Healthy</span></div>
+                    <div class="card pc"><div class="ph" style="background-image:url('img/pepper.jpg')"></div><b>Pepper</b><span class="st watch">Watch</span></div>
+                  </div>
+                  <div class="sec-t">Today</div>
+                  <div class="card tasks">
+                    <div><i></i><span>Check Tomato 2's lower leaves</span><small>Weekly</small></div>
+                    <div><i></i><span>Check Tomato 1 for new spots</span><small>3 days</small></div>
+                  </div>
+                </div>
+                <div class="tabbar" id="dotTabs">
+                  <div class="sel"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 19c0-8 6-13 15-14-1 9-6 15-14 15"/></svg>Garden</div>
+                  <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>Tasks</div>
+                  <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h11a3 3 0 013 3v5a3 3 0 01-3 3H9l-4 3v-3a3 3 0 01-1-2V8a3 3 0 013-3z"/></svg>Chat</div>
+                  <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Settings</div>
+                </div>
+                <div class="scanbtn" id="homeScan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8a2 2 0 012-2h2l2-2h4l2 2h2a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg></div>
+              </section>
+
+              <!-- Capture -->
+              <section class="scr cam capture" data-id="capture">
+                <div class="outside"></div>
+                <div class="photo vt-leaf"></div>
+                <div class="frame"></div>
+                <div class="topcard" id="capCard"><div class="grabber"></div><div class="k">CLOSE-UP</div><p>Fill the frame with one affected leaf, about 30 cm away.</p></div>
+                <span class="chip dist" id="dotDist"><i></i>32 cm · good distance</span>
+                <div class="flash" id="capFlash"></div>
+                <div class="modebar"><div class="track"><span class="stored">WHOLE PLANT</span><span class="sel">CLOSE-UP</span><span>UNDERSIDE</span><span>SOIL</span><span>FRUIT</span></div></div>
+                <div class="shutrow">
+                  <div class="thumb" id="capThumb"></div>
+                  <div class="shutter" id="capShutter">
+                    <svg class="dial" viewBox="0 0 84 84"><path class="f" d="M42 4 A38 38 0 0 1 74.9 61"/><path id="dial2" d="M72.9 64.5 A38 38 0 0 1 11.1 64.5"/></svg>
+                    <div class="core"></div>
+                  </div>
+                  <div class="analyse" id="capAnalyse">Analyse</div>
+                </div>
+              </section>
+
+              <!-- Live analysis -->
+              <section class="scr cam live" data-id="live">
+                <div class="photo vt-leaf"></div>
+                <div class="hot" id="liveHot"><div class="oval"></div><div class="dot"></div><span class="chip"><i></i>Leaf spots · 8–12 mm</span></div>
+                <span class="chip species" id="liveSpecies">Tomato · Change</span>
+                <div class="topcard" id="liveCard"><div class="grabber"></div>
+                  <div class="now"><span id="liveStage">Finding the plant</span><span id="liveTime">0 s</span></div>
+                  <div class="next" id="liveNext">Next: identifying the species</div>
+                  <div class="segbar" id="liveSeg"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                </div>
+                <div class="qcard" id="liveQ"><div class="k">NOT SURE YET · EARLY BLIGHT OR SEPTORIA LEAF SPOT</div>
+                  <p>Do the spots on the lower leaves have target-like rings, dark circles inside circles?</p>
+                  <div class="answers"><div id="ansYes"><span class="pic"></span>Yes</div><div><span class="pic no"></span>No</div><div><span class="ns">?</span>Not sure</div></div>
+                </div>
+                <div class="ring" id="liveRing"></div>
+                <span class="pill go seeplan" id="liveSee"><span class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>See the diagnosis and plan</span>
+                <div class="strip3"><i></i><i></i><i></i></div>
+              </section>
+
+              <!-- Diagnosis -->
+              <section class="scr diag" data-id="diag">
+                <div class="scroll" id="diagScroll">
+                  <div class="melt vt-leaf"></div>
+                  <div class="name" id="dotName"><b>Early blight</b><span>Tomato 2 · from 3 photos, your answer and the weather</span></div>
+                  <div class="row">
+                    <div class="tile"><span class="k">RISK OF SPREAD</span><b class="st sick">High</b><span>Crowded: 40 cm from Tomato 1 · 4 humid days in the forecast</span></div>
+                    <div class="tile"><span class="k">ALSO FOUND</span><b>Ladybug larva</b><span>Leave it alone. It eats aphids.</span></div>
+                  </div>
+                  <div class="list">
+                    <div class="sec-t">Your plan ›</div>
+                    <div><span>Remove the infected leaves</span><em>Today</em></div>
+                    <div><span>Mulch around the base</span><em>By Mon</em></div>
+                    <div><span>Give Tomato 2 more room</span><em>This week</em></div>
+                    <div><span>Leave the ladybug larva alone</span><em>Ongoing</em></div>
+                    <div><span>Check Tomato 2 for new spots</span><em>Every 3 days</em></div>
+                  </div>
+                </div>
+                <div class="bar"><span class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></span><span class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4l-5 2v14l5-2 6 2 5-2V4l-5 2z M9 4v14M15 6v14"/></svg></span></div>
+                <div class="mini"><span class="ph"></span><div><small>Up next · step 1 of 5</small><b>Remove the infected leaves</b></div><span class="ctl"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></span><span class="ask">Ask</span></div>
+              </section>
+
+              <!-- Plan, step by step -->
+              <section class="scr" data-id="step">
+                <div class="stepper">
+                  <div class="top"><span id="stepOf">Step 1 of 5</span><span class="pips" id="pips"><i class="d"></i><i></i><i></i><i></i><i></i></span></div>
+                  <div class="steps">
+                    <div class="step" id="step1">
+                      <h5>Remove the infected leaves</h5>
+                      <div class="meta"><span>Today</span><span>Tomato 2</span></div>
+                      <dl><div><dt>How</dt><dd>Cut off the leaves with spots at the stem and bag them. Do not compost them. Wipe the pruners with alcohol between cuts.</dd></div>
+                      <div><dt>Why</dt><dd>Spotted leaves carry the fungus to the leaves above them.</dd></div></dl>
+                      <div class="src" id="dotSrc">Source: Early blight of tomato and potato</div>
+                    </div>
+                    <div class="step in" id="step2">
+                      <h5>Check Tomato 2 for new spots</h5>
+                      <div class="meta"><span>Every 3 days</span><span>Tomato 2</span></div>
+                      <dl><div><dt>How</dt><dd>Look at the upper and lower leaves. New spots on upper leaves mean the spread continues.</dd></div></dl>
+                      <div class="adds" id="adds"><span style="--i:1">Oct 20</span><span style="--i:2">Oct 23</span><span style="--i:3">Oct 26</span><span style="--i:4">Oct 29</span><span style="--i:5">Nov 1</span></div>
+                      <div class="src">Adds 5 tasks · Source: Early blight of tomato and potato</div>
+                    </div>
+                  </div>
+                  <span class="pill go done" id="stepDone"><span class="disc"><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>Done</span>
+                </div>
+              </section>
+
+              <!-- Chat: the frost planner -->
+              <section class="scr" data-id="chat">
+                <div class="toast" id="chatToast">Added 4 tasks for Thursday</div>
+                <div class="chat"><div class="head">Back garden<small>Chat</small></div></div>
+                <div class="thread">
+                  <div class="msg me" id="m1">Should I cover anything on Thursday?</div>
+                  <div class="msg tools" id="m2"><span id="tool1"><i></i>Checking the forecast</span><span id="tool2"><i></i>Reading the garden map</span></div>
+                  <div class="msg bot" id="m3">Yes. Thursday night's low is −1 °C<sup>1</sup>. Four of your plants are tender: cover them by Thursday evening.</div>
+                  <div class="msg block" id="m4">
+                    <div class="k">FROST COVER PLANNER <b>Thu · −1 °C</b></div>
+                    <div class="fp" id="fp">
+                      <div data-p>Tomato 1 <span class="tg"></span></div><div data-p>Tomato 2 <span class="tg"></span></div>
+                      <div data-p>Pepper <span class="tg"></span></div><div data-p>Basil <span class="tg"></span></div>
+                      <div class="hardy">Kale <span>hardy</span></div><div class="hardy">Lettuce <span>light frost</span></div>
+                    </div>
+                    <span class="pill go addbtn" id="addCover">Add cover tasks</span>
+                  </div>
+                </div>
+                <div class="composer">Ask about your garden</div>
+              </section>
+
+              <!-- Chat: memory and farm records -->
+              <section class="scr" data-id="farm">
+                <div class="chat"><div class="head">Back garden<small>Chat</small></div></div>
+                <div class="thread">
+                  <div class="msg me" id="f1">No copper on anything, please. When did we last spray the east bed?</div>
+                  <div class="msg mem" id="m6"><span>Remembered: No copper products</span><b>Undo</b></div>
+                  <div class="msg tools" id="f2"><span id="tool3"><i></i>Searching the farm records</span></div>
+                  <div class="msg bot" id="f3">Noted. The spray log has the east bed last sprayed on Aug 2, after leaf spots on Tomato 2<sup>1</sup>. This week in #field-reports, Priya reported brown rings on the lower tomato leaves again and removed the worst ones<sup>2</sup>.</div>
+                  <div class="msg srcs" id="farmSrc">
+                    <div class="src2"><span class="ic">1</span><div><b>Spray log 2026 · Google Drive</b><span>Jul 14: east bed, copper on the tomatoes after the rain. Aug 2: east bed again, after leaf spots on Tomato 2.</span></div></div>
+                    <div class="src2"><span class="ic">2</span><div><b>#field-reports · Priya · Slack</b><span>Lower leaves on both tomatoes in the east bed have brown rings again.</span></div></div>
+                    <div class="demo-note">DEMO DATA FROM ERA BY EON (SYNTHETIC)</div>
+                  </div>
+                </div>
+                <div class="composer">Ask about your garden</div>
+              </section>
+
+              <!-- 3D garden -->
+              <section class="scr g3d" data-id="g3d" id="g3d">
+                <div class="card gh"><b id="ghTitle">Health · latest scan, Oct 17</b><span id="ghText">Tomato 1 is recovering. Early blight found on Tomato 2 today.</span>
+                  <div class="legend"><span class="st healthy">Healthy</span><span class="st watch">Watch</span><span class="st sick">Sick</span></div></div>
+                <div class="view"><div class="plinth" id="dotPlinth">
+                  <div class="base"></div>
+                  <div class="bed" style="left:10px; top:20px; width:150px; height:260px"></div>
+                  <div class="bed" style="left:180px; top:150px; width:110px; height:130px"></div>
+                  <div class="pot" style="left:205px; top:40px"></div>
+                  <div class="pl tender" style="left:85px; top:70px; --c: var(--sick); --f:#4E8A3C; --w:62px; --h:96px"><span class="ringz"></span><div class="bb"><div class="shape"><i></i><i></i><i></i><i></i><span class="fruit" style="left:12px; top:30px"></span><span class="fruit" style="left:40px; top:52px"></span></div><span class="cover"></span><span class="lab sel"><span class="st sick"></span>Tomato 1</span></div></div>
+                  <div class="pl tender" style="left:85px; top:150px; --c: var(--sick); --f:#4E8A3C; --w:58px; --h:84px"><span class="ringz"></span><div class="bb"><div class="shape"><i></i><i></i><i></i><i></i><span class="fruit" style="left:30px; top:26px"></span></div><span class="cover"></span><span class="lab"><span class="st sick"></span>Tomato 2</span></div></div>
+                  <div class="pl" style="left:85px; top:235px; --c: var(--healthy); --f:#3F6B5C; --w:56px; --h:52px"><span class="ringz"></span><div class="bb"><div class="shape"><i></i><i></i><i></i><i></i></div><span class="lab"><span class="st healthy"></span><span class="kl">Kale</span></span></div></div>
+                  <div class="pl tender" style="left:235px; top:185px; --c: var(--watch); --f:#3F7D3A; --w:44px; --h:58px; --fr:#E07B22"><span class="ringz"></span><div class="bb"><div class="shape"><i></i><i></i><i></i><i></i><span class="fruit" style="left:18px; top:24px"></span></div><span class="cover"></span><span class="lab"><span class="st watch"></span>Pepper</span></div></div>
+                  <div class="pl" style="left:235px; top:250px; --c: var(--healthy); --f:#9BCB6A; --w:44px; --h:28px"><span class="ringz"></span><div class="bb"><div class="shape"><i></i><i></i><i></i><i></i></div><span class="lab"><span class="st healthy"></span>Lettuce</span></div></div>
+                  <div class="pl tender" style="left:230px; top:65px; --c: var(--healthy); --f:#6DB24C; --w:36px; --h:38px"><span class="ringz"></span><div class="bb"><div class="shape"><i></i><i></i><i></i><i></i></div><span class="cover"></span><span class="lab"><span class="st healthy"></span>Basil</span></div></div>
+                </div></div>
+                <div class="scrub"><div class="tr" id="scrub"><i></i><b></b></div><div class="ds"><span>Sep 20</span><span>Oct 11</span><span>Today</span><span>Thu</span></div></div>
+                <div class="modes" id="g3dModes"><span class="sel">HEALTH</span><span>GROWTH</span><span>FROST</span></div>
+                <div class="card selpill"><span class="st sick"></span>Tomato 1 · Sick</div>
+                <div class="shutrow3"><span>Insights</span><span class="wshut"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8a2 2 0 012-2h2l2-2h4l2 2h2a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg></span><span>Ask</span></div>
+              </section>
+
+              <!-- Insights -->
+              <section class="scr" data-id="ins">
+                <div class="ins">
+                  <div class="titles"><span>Insights</span><b>Tomato 1</b></div>
+                  <div class="card chartcard">
+                    <div class="sec-t" style="font-size:17px">Spot cover <small style="color:var(--ink-2)">of measured leaves</small></div>
+                    <svg class="drawn" id="insChart" viewBox="0 0 330 170" role="img" aria-label="Spot cover fell from 14% on Oct 11 to 9% on Oct 14 and 5% on Oct 17, with ranges 9–21%, 6–12% and 3–7%">
+                      <!-- y: 0–25% maps to 140–10 (5.2 px per %); x: Oct 11, 14, 17 at 50, 165, 280 -->
+                      <g stroke="var(--line)" stroke-width="1"><line x1="34" x2="320" y1="140" y2="140"/><line x1="34" x2="320" y1="88" y2="88" stroke-dasharray="3 4"/><line x1="34" x2="320" y1="36" y2="36" stroke-dasharray="3 4"/></g>
+                      <text x="0" y="144">0%</text><text x="0" y="92">10%</text><text x="0" y="40">20%</text>
+                      <g stroke="var(--sick)" stroke-width="10" stroke-linecap="round" opacity=".18"><line x1="50" x2="50" y1="93.2" y2="30.8"/><line x1="165" x2="165" y1="108.8" y2="77.6"/><line x1="280" x2="280" y1="124.4" y2="103.6"/></g>
+                      <path class="ln" d="M50 67.2 L165 93.2 L280 114" fill="none" stroke="var(--sick)" stroke-width="2.5" stroke-linecap="round"/>
+                      <g class="pt"><circle cx="50" cy="67.2" r="5" fill="var(--sick)"/><text x="58" y="62">14%</text></g>
+                      <g class="pt"><circle cx="165" cy="93.2" r="5" fill="var(--sick)"/><text x="173" y="88">9%</text></g>
+                      <g class="pt"><circle cx="280" cy="114" r="5" fill="var(--sick)"/><text x="288" y="109">5%</text></g>
+                      <text x="36" y="162">Oct 11</text><text x="151" y="162">Oct 14</text><text x="266" y="162">Oct 17</text>
+                    </svg>
+                    <p class="cap">After the infected leaves were removed on Oct 11 and the base mulched on Oct 12, spots covered less of the measured leaves at each check.</p>
+                  </div>
+                  <div class="card chartcard">
+                    <div class="sec-t" style="font-size:17px">Humid hours <small style="color:var(--ink-2)">over 90%, week before Oct 11</small></div>
+                    <div class="hum" id="hum"><i style="--v:22%"></i><i style="--v:30%"></i><i style="--v:18%"></i><i class="h" style="--v:88%"></i><i class="h" style="--v:100%"></i><i class="h" style="--v:84%"></i><i style="--v:26%"></i></div>
+                    <div class="humd"><span>Oct 4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span></div>
+                    <p class="cap">3 humid days in a row before the diagnosis.</p>
+                  </div>
+                  <div class="card also"><span class="ph"></span><div><b>Also found on Tomato 2 today</b><span style="color:var(--ink-2)">40 cm away · Early blight</span></div></div>
+                </div>
+              </section>
+
+              <div class="tap" id="tap"></div>
+              <div class="homebar" id="homebar"></div>
+            </div>
+          </div>
+        </div>
+        <div class="dots" id="dots" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+  <svg class="tether" id="tether" aria-hidden="true"><path id="tp1"/><path id="tp2"/><circle class="halo" id="th1" r="9"/><circle class="halo" id="th2" r="9"/><circle class="pin" id="tc1" r="5.5"/><circle class="pin" id="tc2" r="5.5"/></svg>
+</section>
+
+<!-- ——— How it works ——— -->
+<section class="sec" id="how" style="padding-top: 0">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <p class="eyebrow">How it works</p>
+      <h2>A phone, a server, and a GPU rig at home.</h2>
+      <p class="lede">The app talks to one Rust API. The API keeps everything in SurrealDB and RustFS and never runs a model itself: workers on the rig pull jobs, run the vision models and the vision-language model, and post results back. If no worker claims a job in 15 seconds, Claude takes it. Claude also writes the plan and answers in the chat.</p>
+    </div>
+    <div class="pipe rise">
+      <div class="diagram">
+        <svg viewBox="0 0 1100 470" role="img" aria-label="Architecture: the iPhone app talks to the Rust API with a Clerk token and receives SSE events; the API stores records in SurrealDB and photos in RustFS, calls Claude, mirrors shared memories to Agent Memory and syncs Slack and Drive; GPU workers on the rig pull jobs from the API.">
+          <rect class="zone" x="10" y="20" width="200" height="430" rx="22"/><text class="zl" x="30" y="46">IPHONE</text>
+          <rect class="zone" x="250" y="20" width="560" height="430" rx="22"/><text class="zl" x="270" y="46">CONTROL PLANE</text>
+          <rect class="zone" x="850" y="20" width="240" height="430" rx="22"/><text class="zl" x="870" y="46">GPU RIG</text>
+          <path class="edge" d="M190 235 H300"/><path class="flow" d="M190 228 H300"/><path class="flow info" d="M300 244 H190"/>
+          <text class="lbl" x="200" y="216">REST · Clerk JWT</text><text class="lbl" x="214" y="266">SSE events</text>
+          <path class="edge" d="M500 235 C 560 235, 560 110, 610 110"/><path class="flow" d="M500 235 C 560 235, 560 110, 610 110"/>
+          <path class="edge" d="M500 235 H610"/><path class="flow" d="M500 235 H610"/>
+          <path class="edge" d="M500 235 C 560 235, 560 360, 610 360"/><path class="flow" d="M500 235 C 560 235, 560 360, 610 360"/>
+          <path class="edge" d="M400 290 V340"/><path class="flow" d="M400 290 V340"/>
+          <path class="edge" d="M400 180 V140"/><path class="flow" d="M400 180 V140"/>
+          <path class="edge" d="M300 380 H190"/><path class="flow" d="M300 380 H190"/>
+          <path class="edge" d="M880 170 C 840 170, 830 200, 500 215"/><path class="flow slow" d="M880 170 C 840 170, 830 200, 500 215"/>
+          <path class="edge" d="M880 330 C 840 330, 830 270, 500 255"/><path class="flow slow" d="M880 330 C 840 330, 830 270, 500 255"/>
+          <text class="lbl" x="676" y="184">claim · heartbeat · complete</text>
+          <g class="node key"><rect x="30" y="185" width="160" height="100" rx="18"/><text class="t1" x="48" y="222">GreenLens</text><text class="t2" x="48" y="244">Expo SDK 57</text><text class="t2" x="48" y="262">Swift LiDAR module</text></g>
+          <g class="node key"><rect x="300" y="180" width="200" height="110" rx="18"/><text class="t1" x="320" y="216">API</text><text class="t2" x="320" y="238">Rust · axum · tokio</text><text class="t2" x="320" y="256">agent core · scheduler</text><text class="t2" x="320" y="274">pipeline · fusion</text></g>
+          <g class="node"><rect x="300" y="70" width="200" height="70" rx="16"/><text class="t1" x="320" y="100">Clerk</text><text class="t2" x="320" y="122">sign-in · JWKS check</text></g>
+          <g class="node"><rect x="300" y="340" width="200" height="80" rx="16"/><text class="t1" x="320" y="372">SurrealDB 3.3.4</text><text class="t2" x="320" y="394">51 tables · vectors · jobs</text></g>
+          <g class="node"><rect x="610" y="75" width="180" height="70" rx="16"/><text class="t1" x="628" y="105">Claude</text><text class="t2" x="628" y="127">chat · plan · fallback</text></g>
+          <g class="node"><rect x="610" y="200" width="180" height="70" rx="16"/><text class="t1" x="628" y="230">Agent Memory</text><text class="t2" x="628" y="252">shared memories</text></g>
+          <g class="node"><rect x="610" y="325" width="180" height="80" rx="16"/><text class="t1" x="628" y="356">Slack · Drive</text><text class="t2" x="628" y="378">farm connectors</text><text class="t2" x="628" y="394">tested on Era by Eon</text></g>
+          <g class="node gpu"><rect x="880" y="120" width="190" height="100" rx="18"/><text class="t1" x="898" y="154">Perception</text><text class="t2" x="898" y="176">RTX 3070 · ort · CUDA</text><text class="t2" x="898" y="194">BioCLIP 2 · RF-DETR · SAM 2.1</text></g>
+          <g class="node gpu"><rect x="880" y="280" width="190" height="100" rx="18"/><text class="t1" x="898" y="314">VLM</text><text class="t2" x="898" y="336">RTX 5070 Ti · vLLM</text><text class="t2" x="898" y="354">Qwen3.5-9B · findings</text></g>
+          <g class="node"><rect x="30" y="345" width="160" height="70" rx="16"/><text class="t1" x="48" y="375">RustFS 1.0.1</text><text class="t2" x="48" y="397">photos · signed URLs</text></g>
+        </svg>
+      </div>
+      <div class="phases" id="phases">
+        <div style="--n:1">Finding the plant<small>plant check · segmentation</small></div>
+        <div style="--n:2">Identifying the species<small>BioCLIP 2</small></div>
+        <div style="--n:3">Looking for disease<small>disease head</small></div>
+        <div style="--n:4">Measuring spots<small>LiDAR depth</small></div>
+        <div style="--n:5">Checking weather and soil<small>Open-Meteo · soil map</small></div>
+        <div style="--n:6">Checking telltale signs<small>VLM · verify</small></div>
+        <div style="--n:7">Weighing the evidence<small>rules · fusion</small></div>
+        <div style="--n:8">Writing your plan<small>Claude</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ——— Built with ——— -->
+<section class="sec" id="built" style="padding-top: 0">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <p class="eyebrow">Built with</p>
+      <h2>Six partners, each on the demo's path.</h2>
+      <p class="lede">You met each of them in the story above. Here they are again, with the numbers.</p>
+    </div>
+    <div class="bento">
+      <article class="tech rise">
+        <div class="who"><h3>Anthropic</h3><span class="pin">claude-opus-5-5</span></div>
+        <div class="big count" style="--to:21"><span>21</span><small>agent tools</small></div>
+        <p>Claude runs the chat, writes every plan, takes a vision job no worker claims in 15 s, and graded the farm-records evaluation. Haiku 5.5 handles memory extraction. The team built GreenLens with Claude Code and 184 project skills.</p>
+        <div class="where"><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/architecture/README.md#7-chat-and-agent-core">architecture §7</a><span>crates/agent</span></div>
+      </article>
+      <article class="tech rise">
+        <div class="who"><h3>Clerk</h3><span class="pin">@clerk/expo 4</span></div>
+        <div class="big">RS256<small>only</small></div>
+        <p>Custom sign-in screens with Apple, Google, email and an SMS second factor. The API fetches keys from the configured issuer, caches them by kid, and verifies webhooks with Svix.</p>
+        <div class="where"><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/frontend/README.md#8-authentication-clerk">frontend §8</a><span>integrations/clerk.rs</span></div>
+      </article>
+      <article class="tech rise">
+        <div class="who"><h3>SurrealDB</h3><span class="pin">v3.3.4 · by digest</span></div>
+        <div class="big count" style="--to:51"><span>51</span><small>tables</small></div>
+        <p>Gap-free event sequences, compare-and-set plans, job claims with leases, idempotency keys and vector search, each pattern run against the pinned version.</p>
+        <div class="where"><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/database/README.md">database notes</a><span>crates/store</span></div>
+      </article>
+      <article class="tech rise">
+        <div class="who"><h3>Agent Memory</h3><span class="pin">SurrealDB</span></div>
+        <div class="big count" style="--to:140"><span>140</span><small>live requests measured</small></div>
+        <p>Shared memories mirrored as beliefs, scoped to a garden or a plant. Supersession follows when a thing was observed, not when it arrived. Deletes are queued in the same transaction.</p>
+        <div class="where"><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/database/agent-memory.md">agent-memory.md</a></div>
+      </article>
+      <article class="tech rise">
+        <div class="who"><h3>Era by Eon</h3><span class="pin">Slack · Drive sims</span></div>
+        <div class="big">54/54<small>answers right</small></div>
+        <p>Maple Row Farm's Slack and Drive, simulated with about 120 messages over 180 days and a planted prompt injection. A required CI job runs against them: pagination, throttling and day-to-day changes.</p>
+        <div class="where"><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#9-era-as-the-test-bench">connectors §9</a><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/EON/README.md">docs/EON</a></div>
+      </article>
+      <article class="tech rise">
+        <div class="who"><h3>Expo</h3><span class="pin">SDK 57</span></div>
+        <div class="big count" style="--to:629"><span>629</span><small>app tests</small></div>
+        <p>Expo Router with native tabs, our Swift LiDAR module, and a Live Activity with its widget extension. Mock mode runs the whole demo with scripted streams and fault injection.</p>
+        <div class="where"><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/frontend/README.md">frontend</a><span>app/modules</span></div>
+      </article>
+      <article class="tech rest rise">
+        <div><b>Rust</b><span>Rust 1.99, axum 0.8, tokio 1.53. 8 library crates, 2 binaries, about 1,160 tests.</span></div>
+        <div><b>RustFS 1.0.1</b><span>Photos in a private bucket, served through signed API URLs. EXIF stripped before storage.</span></div>
+        <div><b>The GPU rig</b><span>RTX 3070 for perception, RTX 5070 Ti for the VLM. Species in the top 3 for 93% of test photos.</span></div>
+        <div><b>Python ML</b><span>Training, ONNX export and evaluation in <code>ml/</code>, on 267 labelled cases with leakage checks.</span></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ——— Status ——— -->
+<section class="sec" id="status" style="padding-top: 0">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <p class="eyebrow">Where it stands · Oct 24</p>
+      <h2>What runs today.</h2>
+      <p class="lede">Built in ten days. The screens above use the app's demo data. Here is what runs on real hardware, what runs on demo data, and what's still waiting.</p>
+    </div>
+    <div class="status">
+      <div class="rise"><h3><span class="st healthy"></span>Live</h3><ul>
+        <li>The API on the control plane since Oct 20, with Clerk sign-in on an iPhone.</li>
+        <li>Real perception on the RTX 3070 and Qwen3.5-9B on the RTX 5070 Ti, serving real scans.</li>
+        <li>A full scan on the rig on Oct 24, ending in a cited 8-step plan from Claude.</li>
+        <li>Chat, its tools and Agent Memory on the control plane; Era's connectors seeded; the era CI job green.</li>
+        <li>Live weather and soil data for Toronto.</li>
+      </ul></div>
+      <div class="rise"><h3><span class="st watch"></span>On demo data</h3><ul>
+        <li>Chat's answer blocks in the app.</li>
+        <li>Insights and the 3D garden's history.</li>
+        <li>The connectors screen. Farm records are Era's synthetic Maple Row Farm.</li>
+      </ul></div>
+      <div class="rise"><h3><span class="st sick" style="color:var(--ink-2)"></span>Waiting</h3><ul>
+        <li>The LiDAR check on the iPhone, and spot sizes measured from depth.</li>
+        <li>The RX 9070 XT as a second VLM worker.</li>
+        <li>Push notifications and the web build.</li>
+        <li>An end-to-end accuracy measure for diagnoses.</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <p class="big">Know what your<br>garden needs.</p>
+    <div class="cols">
+      <div><b>Build North</b><span>Ship Something Real</span><span>Build week Oct 16–25, 2026</span><span>Demo Day Oct 29, Toronto</span></div>
+      <div><b>Read more</b><a href="https://github.com/aacruzgon/GreenLens#readme">README</a><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/architecture/README.md">Architecture</a><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/design/design.md">Design: Conservatory</a></div>
+      <div><b>This page</b><span>The app's Conservatory design and its spring</span><span>Screens rebuilt in HTML from the app</span><span>Scroll timelines and view transitions where your browser has them</span></div>
+    </div>
+    <p class="credits">Plant photos from Wikimedia Commons, as used by the app's mock mode: early blight on tomato leaves by Dwight Sipler (CC BY 2.0); ripe tomato by Clintacc (CC0); Hungarian wax pepper by Jeff Kwapil (CC BY-SA 4.0); lettuce 'Ashbrook' by DeFacto (CC BY-SA 4.0). The garden, its plants, dates and farm records are the demo's mock data.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  var scrollTimelines = CSS.supports("animation-timeline: view()");
+
+  var PHASES = [
+    ["Finding the plant", 3], ["Identifying the species", 2], ["Looking for disease", 4], ["Measuring spots", 2],
+    ["Checking weather and soil", 1], ["Checking telltale signs", 6], ["Weighing the evidence", 2], ["Writing your plan", 5]
+  ];
+  function nextOf(i) { return i + 1 < PHASES.length ? "Next: " + PHASES[i + 1][0].toLowerCase() : "Plan ready"; }
+
+  /* The screens are drawn at 390 × 844 pt and scaled to the frame. */
+  var phone = $("#phone"), screenEl = $("#screen");
+  function fit() { phone.style.setProperty("--s", (screenEl.clientWidth / 390).toFixed(4)); }
+  if ("ResizeObserver" in window) new ResizeObserver(fit).observe(phone); fit();
+
+  /* ——— Hero: one live analysis, looped. ——— */
+  var hero = { card: $("#heroCard"), stage: $("#heroStage"), time: $("#heroTime"), next: $("#heroNext"), seg: $$("#heroSeg i"), hot: $("#heroHot"), verdict: $("#heroVerdict") };
+  async function heroLoop() {
+    if (reduce) {
+      hero.card.classList.add("on"); hero.hot.classList.add("on"); hero.verdict.classList.add("on");
+      hero.seg.forEach(function (s) { s.className = "done"; });
+      hero.stage.textContent = "Plan ready"; hero.time.textContent = "25 s"; hero.next.textContent = "See the diagnosis and plan";
+      return;
+    }
+    await wait(500);
+    for (;;) {
+      hero.card.classList.add("on"); var t = 0;
+      for (var i = 0; i < PHASES.length; i++) {
+        hero.stage.textContent = PHASES[i][0]; hero.next.textContent = nextOf(i);
+        hero.seg.forEach(function (s, j) { s.className = j < i ? "done" : j === i ? "run" : ""; });
+        if (i === 3) hero.hot.classList.add("on");
+        for (var k = 0; k < PHASES[i][1]; k++) { t++; hero.time.textContent = t + " s"; await wait(260); }
+      }
+      hero.seg.forEach(function (s) { s.className = "done"; });
+      hero.stage.textContent = "Plan ready"; hero.next.textContent = "See the diagnosis and plan";
+      hero.verdict.classList.add("on");
+      await wait(5200);
+      hero.verdict.classList.remove("on"); hero.hot.classList.remove("on"); hero.card.classList.remove("on");
+      await wait(1200);
+    }
+  }
+  heroLoop();
+
+  /* The pipeline strip: scroll timelines light it in CSS; elsewhere it lights once when it comes into view. */
+  if (!scrollTimelines && "IntersectionObserver" in window) {
+    var phs = $$("#phases div");
+    var pio = new IntersectionObserver(function (es) {
+      if (!es[0].isIntersecting) return; pio.disconnect();
+      phs.forEach(function (p, i) { setTimeout(function () { p.classList.add("lit"); }, reduce ? 0 : i * 220); });
+    }, { threshold: .4 });
+    pio.observe($("#phases"));
+  }
+
+  /* ——— The story: the active chapter picks the phone's screen and plays it. ——— */
+  var screens = {}; $$(".scr", phone).forEach(function (s) { screens[s.dataset.id] = s; });
+  var chapters = $$(".chapter"), dotsEl = $("#dots");
+  chapters.forEach(function () { dotsEl.appendChild(document.createElement("i")); });
+  var dots = $$("i", dotsEl);
+  var sb = $("#sb"), homebar = $("#homebar"), island = $("#island"), tap = $("#tap");
+  var current = null, token = 0, activeChapter = null;
+  var scopedVT = typeof screenEl.startViewTransition === "function" && !reduce;
+
+  function tapAt(el) {
+    if (reduce) return;
+    var c = $("#canvas").getBoundingClientRect(), r = el.getBoundingClientRect(), s = c.width / 390;
+    tap.style.left = ((r.left + r.width / 2 - c.left) / s) + "px"; tap.style.top = ((r.top + r.height / 2 - c.top) / s) + "px";
+    tap.classList.remove("go"); void tap.offsetWidth; tap.classList.add("go");
+  }
+  function swap(id) {
+    Object.keys(screens).forEach(function (k) { screens[k].classList.toggle("on", k === id); });
+    var dark = id === "capture" || id === "live" || id === "diag";
+    sb.classList.toggle("light", dark); homebar.classList.toggle("light", id === "capture" || id === "live");
+    island.classList.remove("wide");
+  }
+  function show(chapter) {
+    var id = chapter.dataset.screen; activeChapter = chapter;
+    chapters.forEach(function (c, i) { var on = c === chapter; c.classList.toggle("on", on); dots[i].classList.toggle("on", on); });
+    if (id === current) return; current = id; var my = ++token;
+    if (scopedVT) {
+      // Element-scoped view transition: only the phone's screen morphs; the page keeps scrolling.
+      phone.classList.add("vt");
+      try { var vt = screenEl.startViewTransition(function () { swap(id); }); vt.finished.finally(function () { phone.classList.remove("vt"); }); }
+      catch (e) { phone.classList.remove("vt"); swap(id); }
+    } else swap(id);
+    var alive = function () { return my === token; };
+    (plays[id] || function () {})(alive);
+  }
+
+  var plays = {
+    signin: async function (alive) {
+      var ok = $("#signOk"); ok.classList.remove("on");
+      if (reduce) return;
+      await wait(1400); if (!alive()) return; tapAt($("#dotSignin"));
+      await wait(500); if (!alive()) return; ok.classList.add("on");
+    },
+    home: async function (alive) {
+      if (reduce) return;
+      await wait(2600); if (!alive()) return; tapAt($("#homeScan"));
+    },
+    capture: async function (alive) {
+      var card = $("#capCard"), thumb = $("#capThumb"), sh = $("#capShutter"), an = $("#capAnalyse"), d2 = $("#dial2"), fl = $("#capFlash");
+      card.classList.remove("on"); thumb.classList.remove("on"); an.classList.remove("on"); d2.classList.remove("f");
+      if (reduce) { card.classList.add("on"); thumb.classList.add("on"); an.classList.add("on"); d2.classList.add("f"); return; }
+      await wait(450); if (!alive()) return; card.classList.add("on");
+      await wait(1600); if (!alive()) return; tapAt(sh); sh.classList.add("press");
+      await wait(160); sh.classList.remove("press"); fl.classList.remove("go"); void fl.offsetWidth; fl.classList.add("go");
+      d2.classList.add("f"); thumb.classList.add("on"); an.classList.add("on");
+      await wait(1400); if (!alive()) return; tapAt(an);
+    },
+    live: async function (alive) {
+      var card = $("#liveCard"), hot = $("#liveHot"), sp = $("#liveSpecies"), q = $("#liveQ"), ring = $("#liveRing"), see = $("#liveSee"), yes = $("#ansYes");
+      var stage = $("#liveStage"), time = $("#liveTime"), next = $("#liveNext"), seg = $$("#liveSeg i"), nine = $$("#laNine i");
+      [card, hot, sp, q, see].forEach(function (e) { e.classList.remove("on"); }); ring.classList.remove("off"); yes.classList.remove("pick");
+      function set(i, t) {
+        stage.textContent = PHASES[i][0]; next.textContent = nextOf(i); time.textContent = t + " s";
+        seg.forEach(function (s, j) { s.className = j < i ? "done" : j === i ? "run" : ""; });
+        $("#laStage").textContent = PHASES[i][0]; $("#laNext").textContent = nextOf(i); $("#laTime").textContent = "0:" + String(t + 12).padStart(2, "0");
+        nine.forEach(function (n, j) { n.className = j <= i ? "d" : ""; });
+      }
+      if (reduce) { card.classList.add("on"); hot.classList.add("on"); sp.classList.add("on"); set(5, 18); q.classList.add("on"); return; }
+      await wait(400); if (!alive()) return; card.classList.add("on");
+      var t = 0, i, k;
+      for (i = 0; i < 6; i++) {
+        set(i, t);
+        if (i === 1) sp.classList.add("on");
+        if (i === 3) hot.classList.add("on");
+        for (k = 0; k < PHASES[i][1]; k++) { await wait(300); if (!alive()) return; t++; time.textContent = t + " s"; }
+      }
+      island.classList.add("wide");
+      await wait(900); if (!alive()) return; q.classList.add("on");
+      await wait(2000); if (!alive()) return; tapAt(yes); yes.classList.add("pick");
+      await wait(700); if (!alive()) return; q.classList.remove("on");
+      for (i = 6; i < 8; i++) { set(i, t); for (k = 0; k < PHASES[i][1]; k++) { await wait(300); if (!alive()) return; t++; time.textContent = t + " s"; } }
+      seg.forEach(function (s) { s.className = "done"; }); nine.forEach(function (n) { n.className = "d"; });
+      stage.textContent = "Plan ready"; next.textContent = "See the diagnosis and plan"; $("#laStage").textContent = "Plan ready"; $("#laNext").textContent = "Tap to open";
+      ring.classList.add("off"); see.classList.add("on");
+      await wait(2600); if (!alive()) return; island.classList.remove("wide");
+    },
+    diag: async function (alive) {
+      var sc = $("#diagScroll"); sc.style.transform = "";
+      if (reduce) return;
+      await wait(2800); if (!alive()) return; sc.style.transform = "translateY(-150px)";
+      await wait(2800); if (!alive()) return; sc.style.transform = "";
+    },
+    step: async function (alive) {
+      var s1 = $("#step1"), s2 = $("#step2"), done = $("#stepDone"), adds = $("#adds"), pips = $$("#pips i"), of = $("#stepOf");
+      s1.className = "step"; s2.className = "step in"; done.classList.remove("ok"); adds.classList.remove("on"); of.textContent = "Step 1 of 5";
+      pips.forEach(function (p, i) { p.className = i === 0 ? "d" : ""; });
+      if (reduce) return;
+      await wait(2200); if (!alive()) return; tapAt(done); done.classList.add("ok");
+      await wait(650); if (!alive()) return; s1.className = "step out"; s2.className = "step"; done.classList.remove("ok");
+      of.textContent = "Step 5 of 5"; pips.forEach(function (p) { p.className = "d"; });
+      await wait(500); if (!alive()) return; adds.classList.add("on");
+    },
+    chat: async function (alive) {
+      var ms = ["#m1", "#m2", "#m3", "#m4"].map(function (s) { return $(s); });
+      var fp = $$("#fp [data-p]"), t1 = $("#tool1"), t2 = $("#tool2"), add = $("#addCover"), toast = $("#chatToast");
+      ms.forEach(function (m) { m.classList.remove("on"); }); fp.forEach(function (f) { f.classList.remove("on"); });
+      t1.classList.remove("ok"); t2.classList.remove("ok"); toast.classList.remove("on");
+      if (reduce) { ms.forEach(function (m) { m.classList.add("on"); }); t1.classList.add("ok"); t2.classList.add("ok"); fp.forEach(function (f) { f.classList.add("on"); }); return; }
+      await wait(300); if (!alive()) return; ms[0].classList.add("on");
+      await wait(600); if (!alive()) return; ms[1].classList.add("on");
+      await wait(900); t1.classList.add("ok"); await wait(500); t2.classList.add("ok");
+      await wait(300); if (!alive()) return; ms[2].classList.add("on");
+      await wait(600); if (!alive()) return; ms[3].classList.add("on");
+      for (var i = 0; i < fp.length; i++) { await wait(380); if (!alive()) return; tapAt(fp[i]); fp[i].classList.add("on"); }
+      await wait(600); if (!alive()) return; tapAt(add); toast.classList.add("on");
+      await wait(2400); toast.classList.remove("on");
+    },
+    farm: async function (alive) {
+      var ms = ["#f1", "#m6", "#f2", "#f3", "#farmSrc"].map(function (s) { return $(s); }), t3 = $("#tool3");
+      ms.forEach(function (m) { m.classList.remove("on"); }); t3.classList.remove("ok");
+      if (reduce) { ms.forEach(function (m) { m.classList.add("on"); }); t3.classList.add("ok"); return; }
+      await wait(300); if (!alive()) return; ms[0].classList.add("on");
+      await wait(700); if (!alive()) return; ms[1].classList.add("on");
+      await wait(600); if (!alive()) return; ms[2].classList.add("on");
+      await wait(1200); t3.classList.add("ok");
+      await wait(300); if (!alive()) return; ms[3].classList.add("on");
+      await wait(700); if (!alive()) return; ms[4].classList.add("on");
+    },
+    g3d: async function (alive) {
+      var g = $("#g3d"), modes = $$("#g3dModes span"), title = $("#ghTitle"), text = $("#ghText"), scrub = $("#scrub"), kale = $(".kl", g);
+      function mode(m) {
+        modes.forEach(function (s, i) { s.classList.toggle("sel", i === m); });
+        g.classList.toggle("frost", m === 2);
+        kale.textContent = m === 1 ? "Kale · 55 cm" : "Kale";
+        if (m === 0) { title.textContent = "Health · latest scan, Oct 17"; text.textContent = "Tomato 1 is recovering. Early blight found on Tomato 2 today."; scrub.style.setProperty("--p", "86%"); }
+        if (m === 1) { title.textContent = "Growth · measured heights"; text.textContent = "Tomato 1 grew from 32 cm on Sep 20 to 62 cm today."; }
+        if (m === 2) { title.textContent = "Frost on Thursday night. Low of −1 °C."; text.textContent = "Cover the 4 tender plants by Thursday evening."; scrub.style.setProperty("--p", "100%"); }
+      }
+      mode(0);
+      if (reduce) return;
+      await wait(2600); if (!alive()) return; tapAt(modes[1]); mode(1);
+      await wait(2600); if (!alive()) return; tapAt(modes[2]); mode(2);
+    },
+    ins: async function (alive) {
+      var c = $("#insChart"), h = $("#hum"); c.classList.remove("on"); h.classList.remove("on");
+      await wait(reduce ? 0 : 350); if (!alive()) return; c.classList.add("on"); h.classList.add("on");
+    }
+  };
+
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) show(e.target); });
+    }, { rootMargin: matchMedia("(min-width: 901px)").matches ? "-45% 0px -45% 0px" : "-74% 0px -22% 0px" });
+    chapters.forEach(function (c) { io.observe(c); });
+  }
+  show(chapters[0]);
+
+  /* ——— The tether: a line from each plate to the part of the phone it powers. ——— */
+  var tether = $("#tether"), wide = matchMedia("(min-width: 901px)");
+  var parts = [[$("#tp1"), $("#tc1"), $("#th1")], [$("#tp2"), $("#tc2"), $("#th2")]];
+  var queued = false;
+  function draw() {
+    queued = false;
+    var plates = activeChapter && wide.matches ? $$(".plate", activeChapter) : [];
+    var ph = phone.getBoundingClientRect();
+    parts.forEach(function (p, i) {
+      var plate = plates[i], target = plate && $(plate.dataset.dot, screens[current]);
+      var vis = false;
+      if (plate && target) {
+        var a = plate.getBoundingClientRect(), b = target.getBoundingClientRect();
+        var sx = a.right, sy = a.top + Math.min(a.height / 2, 46);
+        var tx = Math.min(Math.max(b.left + Math.min(b.width * .12, 22), ph.left + 14), ph.right - 14);
+        var ty = Math.min(Math.max(b.top + b.height / 2, ph.top + 30), ph.bottom - 30);
+        vis = sy > 70 && sy < innerHeight - 20 && b.width > 0;
+        var dx = (tx - sx) * .5;
+        p[0].setAttribute("d", "M" + sx + " " + sy + " C" + (sx + dx) + " " + sy + " " + (tx - dx) + " " + ty + " " + tx + " " + ty);
+        p[1].setAttribute("cx", tx); p[1].setAttribute("cy", ty); p[2].setAttribute("cx", tx); p[2].setAttribute("cy", ty);
+      }
+      p.forEach(function (el) { el.style.opacity = vis ? "" : "0"; });
+    });
+  }
+  function queue() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
+  addEventListener("scroll", queue, { passive: true }); addEventListener("resize", queue);
+  setInterval(queue, 250); // screens animate under the pins, so follow them
+  queue();
+
+  /* Without scroll timelines, the count-ups and reveals stay as plain, visible content. */
+})();
+</script>
+</body>
+</html>
