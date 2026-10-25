@@ -8,6 +8,7 @@ mod connect;
 mod connector_deletion;
 mod connectors;
 mod fake_store;
+mod forecast_alerts;
 mod orphans;
 mod pending_actions;
 mod pipeline;

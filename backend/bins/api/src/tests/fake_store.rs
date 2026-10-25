@@ -1266,8 +1266,9 @@ mod plan_repo {
             &self,
             garden: GardenId,
             task: NewTask,
+            until: LocalDate,
         ) -> Result<Option<Task>, StoreError> {
-            self.plan_repo.create_alert_task(garden, task).await
+            self.plan_repo.create_alert_task(garden, task, until).await
         }
         async fn active_triggers(
             &self,

@@ -168,13 +168,18 @@ pub trait PlanRepo: Send + Sync {
     async fn delete_task(&self, editor: Membership<Editor>, task: TaskId)
     -> Result<(), StoreError>;
 
-    /// The scheduler's alert and plan-trigger tasks: the unique `alert_key` makes a duplicate
-    /// insert fail, returned as `Ok(None)` ([database 4], alert dedupe). A dead plant also
-    /// yields `None`.
+    /// The scheduler's alert and plan-trigger tasks, one per spell ([database 4], alert
+    /// dedupe): `task.alert_key` (required) names the spell (`AlertKey::spell`) and its first
+    /// day, and `until` its last fired day. When a task of the same spell was seen up to the
+    /// day before the first day or later, or has this very key, the spell continues: its
+    /// `spell_until` moves on to `until` and nothing is created (`Ok(None)`), whatever the
+    /// task's state. Otherwise the task is created with `spell_until = until`. A duplicate
+    /// key from a racing run, a dead plant or a garden being deleted also yield `None`.
     async fn create_alert_task(
         &self,
         garden: GardenId,
         task: NewTask,
+        until: LocalDate,
     ) -> Result<Option<Task>, StoreError>;
 
     /// Active plan trigger rules of these gardens (index `plan_trigger_active`).

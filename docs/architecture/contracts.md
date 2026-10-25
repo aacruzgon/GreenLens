@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.11.7, 2026-10-24. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.11.8, 2026-10-24. Companion to the [architecture document](README.md).
+> **v0.11.8**: forecast alerts and plan-trigger tasks come once per spell, the consecutive days a rule fires on, with `alert_key` dated by the spell's first day and the spell's progress kept server-side, so a three-night frost is one task and a dismissed alert stays dismissed; none is created in a garden being deleted (section 7, Task and the `on_trigger` row).
 > **v0.11.7**: the API keeps only the disease classes with a `classifier_label` row for the classified species, so a species whose problems aren't in the knowledge base yet gets no classifier result (section 5, classifier candidates; [#144](https://github.com/aacruzgon/GreenLens/issues/144)).
 > **v0.11.6**: an indicator answer's `reason` has a `maxLength` of 100, above the 60 characters the prompt asks for, so the grammar no longer cuts the reason the answer follows from (section 6, indicators call; vision vlm.md 7, [#183](https://github.com/aacruzgon/GreenLens/issues/183)); the prompts are unchanged, and `IndicatorEvidence.reason` has no cap of its own.
 > **v0.11.5**: each damage finding of the VLM's findings call names, first, the animal seen or the trace it left (`VlmFindingsRaw.damage[].trace`), and the worker drops one that names none, so a disease lesion reported as damage never reaches the API (section 6, task P11 of the vision dev-roadmap); `vlm_prompts` names `findings@6` (section 5). `VlmFindings` and the OpenAPI document are unchanged.
@@ -1534,7 +1535,7 @@ interface ActionPlan {
 | `now` | A task due today |
 | `by_date` | A task due on that date |
 | `recurring` | A task with `repeat`; completing it creates the next occurrence until `until` |
-| `on_trigger` | No task yet. A plan trigger rule is registered with the scheduler, which creates the task when its rule fires (architecture 8.3), until `until` or until the plan is superseded. The task's `alert_key` is `plan:<plan_id>:<plan_step_id>:<date>`, under the same unique index as forecast alerts, so it is created at most once a day per step of that plan version even when scheduler runs overlap. Step ids are unique only within a plan, so the plan id keeps two plants' `s3` steps, or `s3` in two versions of one plan, apart |
+| `on_trigger` | No task yet. A plan trigger rule is registered with the scheduler, which creates the task when its rule fires (architecture 8.3), until `until` or until the plan is superseded. The task's `alert_key` is `plan:<plan_id>:<plan_step_id>:<date>`, the date being the first day of the rule's spell ([Task](#task)), under the same unique index as forecast alerts, so it is created once per spell for each step of that plan version even when scheduler runs overlap. Step ids are unique only within a plan, so the plan id keeps two plants' `s3` steps, or `s3` in two versions of one plan, apart |
 
 A step's task belongs to the step's `plant_id` when it has one, otherwise to the plan's plant. An `on_trigger` step's trigger rule records that same plant, the one its tasks will be created on.
 
@@ -1621,7 +1622,7 @@ interface Task {
 }
 ```
 
-`alert_key` stays server-side: `<garden_id>:<trigger>:<date>` for forecast alerts, `plan:<plan_id>:<plan_step_id>:<date>` for plan triggers. Forecast-alert and plan tasks can be completed or dismissed but not deleted, so the scheduler never recreates a task the user removed.
+`alert_key` stays server-side: `<garden_id>:<trigger>:<date>` for forecast alerts, `plan:<plan_id>:<plan_step_id>:<date>` for plan triggers. The date is the first day of the alert's **spell**: the consecutive days on which the rule fires alert once (architecture 8.3), so a frost forecast for three nights is one task, due on the first night, with `trigger.date` the same day. The task also keeps, server-side, how far its spell has been seen (`spell` and `spell_until`); a fired day no later than the day after `spell_until` continues the spell and creates nothing, and a fired day after a day without the rule starts a new spell and a new task. Forecast-alert and plan tasks can be completed or dismissed but not deleted, so the scheduler never recreates a task the user removed: a dismissed alert still holds its spell. No alert or plan-trigger task is created in a garden being deleted.
 
 **Tasks only on live plants.** Every write that creates a task with a `plant_id` (`POST /tasks`, a confirmed `create_task`, a plan, a plan trigger rule firing, a repeating task's next occurrence) checks, in the same transaction, that the plant exists in the garden and has no `deleting_at`. The schema accepts a link to a missing record, so this check is what keeps a task from pointing at a deleted plant. A write that loses the check creates nothing: the scheduler skips the rule, and the endpoints answer as below. A plan write is not aborted by it: only that step's task, or its trigger rule (which the same check guards when it is registered), is skipped, and the stored step shows "plant removed", as when a neighbour is deleted later (section 7).
 
@@ -2592,6 +2593,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.11.5: a VLM damage finding names its `trace`, and one with none is dropped; `vlm_prompts` names `findings@6` | 6.5 (the damage patterns row) |
 | v0.11.6: an indicator answer's `reason` has `maxLength` 100, above the prompt's 60 | none (6.1 says only "a short reason") |
 | v0.11.7: the API keeps only the disease classes with a `classifier_label` row for the classified species | 6.1 (the disease classification row) |
+| v0.11.8: forecast alerts and plan-trigger tasks come once per spell of consecutive fired days, keyed by the spell's first day; none in a garden being deleted | 8.3; 5 (the `task` row of the data overview) |
 
 ---
 
