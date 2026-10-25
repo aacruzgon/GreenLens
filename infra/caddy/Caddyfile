@@ -11,10 +11,21 @@
 	reverse_proxy api:8080
 	log {
 		output stdout
-		# A signed image URL's sig is a 15-minute credential: never logged (rust-tracing's rule for api).
+		# Credentials never reach the log (rust-tracing's rule for api): a signed image URL's sig (a
+		# 15-minute credential), the X-Lease-Token and Authorization headers, the invite code and the push
+		# token (path segments), the OAuth code and state (a one-time code and a signed state), and the
+		# Location header (the 302 to the app repeats the OAuth code and state). Paths: backend/bins/api.
+		# Caddy already redacts Authorization, Cookie and Set-Cookie by default; the line below keeps it
+		# redacted if that default changes.
 		format filter {
-			request>uri query {
-				replace sig REDACTED
+			request>headers>X-Lease-Token delete
+			request>headers>Authorization replace REDACTED
+			resp_headers>Location delete
+			request>uri multi_regexp {
+				regexp ^(/invites/)[^/?]+(/accept) ${1}REDACTED${2}
+				regexp ^(/me/push-tokens/)[^/?]+ ${1}REDACTED
+				regexp ^(/connectors/oauth/callback)\?.* ${1}?REDACTED
+				regexp ([?&]sig)=[^&]* ${1}=REDACTED
 			}
 			wrap json
 		}
