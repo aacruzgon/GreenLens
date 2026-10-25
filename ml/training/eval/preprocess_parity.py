@@ -2,12 +2,15 @@
 
     python -m ml.training.eval.preprocess_parity run              # dump, compare, write the report
     python -m ml.training.eval.preprocess_parity run --no-embed   # without BioCLIP on the CPU
+    python -m ml.training.eval.preprocess_parity run --models-dir ~/.cache/pdm-models-faces
     python -m ml.training.eval.preprocess_parity report REPORT.json   # rewrite the .md from the JSON
 
 The heads and thresholds were fitted on tensors made by `ml/pdm_vision/preprocess.py` (Pillow);
 the perception worker makes its own with `vision`'s `preprocess::to_tensor` (`fast_image_resize`).
 This runs the `vision` crate's `preprocess_dump` example on 10 dev photos and 5 leaf crops, which
-writes every intermediate image and tensor as `.npy`, and compares them here in layers:
+sends each photo through the API's own `UploadProcessor::process` (quality gate, face blur, resize,
+`WebP`), runs the worker's steps on what it stored, writes every intermediate image and tensor as
+`.npy`, and compares them here in layers:
 
 1. **Pre-processing (J1's acceptance).** From the same pixels, the stored photo the worker
    decodes, `pp.to_tensor` against the worker's tensor for BioCLIP, the leaf detector and SAM 2.1,
@@ -18,14 +21,21 @@ writes every intermediate image and tensor as `.npy`, and compares them here in 
    against the API's, from the same decoded pixels.
 3. **Decoding,** Pillow's (`pp.load_rgb`) against the API's (`imaging::decode_upload`).
 4. **The `WebP` round trip** the API stores and the worker decodes, which `ml/` doesn't apply.
-5. **End to end:** what the heads were trained on (Pillow decode, `pp.resize` to 1,600 px, no
-   `WebP`, `pp.to_tensor`) against what the worker sends, per recipe and per crop.
-6. **BioCLIP embeddings** (`--embed`, the fp32 vision tower on the CPU) of layers 1 and 5: the
-   cosine similarity between the two sides, which is what the species and disease heads read.
+5. **The face blur:** what `process` stored against the same photo through `WebP` without it. Zero
+   unless `YuNet` found a face; on plant photos those are false faces (vision dev-roadmap D13).
+6. **End to end:** what the heads were trained on (Pillow decode, `pp.resize` to 1,600 px, no
+   `WebP`, no blur, `pp.to_tensor`) against what the worker sends, per recipe and per crop.
+7. **BioCLIP embeddings** (the fp32 vision tower on the CPU; `--no-embed` skips them) of each layer:
+   the cosine similarity between the two sides, which is what the species and disease heads read.
+
+The upload's face detector runs on the CPU from `--models-dir`, a directory filled by
+`python3 -m ml.models.fetch --for api`, whose `yunet` entry must equal the repository's. The run
+refuses uncommitted changes to the code it runs, so the report's commit is the code that ran.
 
 Photos: 10 dev photos of the evaluation set (never test), picked by `select_photos` to cover each
 source, photos at or under the stored size and over it, and both orientations. Crops: 5 boxes in
-`CROPS`, chosen to exercise the crop's rounding and clamping, not the detector.
+`CROPS`, chosen to exercise the crop's rounding and clamping, not the detector. Not covered: an
+upload with a depth map, which `process` stores at 2,048 px or more (no dev case has one).
 """
 
 from __future__ import annotations
@@ -33,6 +43,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -54,6 +65,10 @@ REPORTS = EVAL / "reports"
 RUNS = ROOT / "ml/training/runs/preprocess-parity"
 MODELS = ROOT / "ml/models/manifest.toml"
 CPU_MODELS = Path.home() / ".cache/pdm-models-cpu"
+# The code a run depends on: it refuses to run while any of it differs from the commit.
+CODE = ("backend/crates/vision", "backend/crates/domain", "backend/Cargo.lock", "ml/pdm_vision",
+        "ml/training/eval/preprocess_parity.py", "ml/models/manifest.toml")
+DEFAULT_MODELS_DIR = "~/.cache/pdm-models"
 TARGET = 0.02
 STORED_LONG_SIDE = 1600
 
@@ -148,11 +163,11 @@ def one_level(recipe: pp.Recipe) -> float:
     return 1.0 / 255.0 / min(recipe.std)
 
 
-def cargo_dump(job: dict) -> Path:
+def cargo_dump(job: dict, env: dict) -> Path:
     """Runs `preprocess_dump` on the job and returns its `index.json`."""
     from ml.training.eval.spot_fit import cargo_example
 
-    p = cargo_example("preprocess_dump", json.dumps(job) + "\n")
+    p = cargo_example("preprocess_dump", json.dumps(job) + "\n", env)
     assert p.stdout is not None
     lines = [json.loads(line) for line in p.stdout if line.strip()]
     if p.wait() != 0 or not lines or "index" not in lines[0]:
@@ -181,9 +196,11 @@ class Bioclip:
 
 
 # The embedding comparisons, each a pair of BioCLIP tensors: the worker's code against `pp`'s from
-# the same stored pixels; the stored photo against the one before `WebP` (both through `pp`); the
-# API's decode and resize against Pillow's (both before `WebP`, through `pp`); and the whole chain.
-EMBED_LAYERS = ("same_pixels", "webp", "decode_resize", "end_to_end")
+# the same stored pixels; the photo through `WebP` against the one before it, and the stored photo
+# against the one through `WebP` without the face blur (both through `pp`); the API's decode and
+# resize against Pillow's (both before `WebP`, through `pp`); and the whole chain.
+EMBED_LAYERS = ("same_pixels", "webp", "blur", "decode_resize", "end_to_end")
+IMAGES = ("stored", "webp", "resized", "own")
 
 
 def compare(index: dict, out: Path, embed: Bioclip | None) -> dict:
@@ -195,26 +212,29 @@ def compare(index: dict, out: Path, embed: Bioclip | None) -> dict:
     images: dict[str, dict[str, Image.Image]] = {}
     pairs: dict[str, list[tuple[np.ndarray, np.ndarray]]] = {k: [] for k in EMBED_LAYERS}
 
-    def add_pairs(worker: np.ndarray, stored: Image.Image, resized: Image.Image, own: Image.Image) -> None:
-        on_stored, on_resized, on_own = (pp.to_tensor(im, bio) for im in (stored, resized, own))
-        for k, pair in zip(EMBED_LAYERS, ((worker, on_stored), (on_stored, on_resized),
+    def add_pairs(worker: np.ndarray, ims: dict[str, Image.Image]) -> None:
+        on_stored, on_webp, on_resized, on_own = (pp.to_tensor(ims[k], bio) for k in IMAGES)
+        for k, pair in zip(EMBED_LAYERS, ((worker, on_stored), (on_webp, on_resized), (on_stored, on_webp),
                                           (on_resized, on_own), (worker, on_own))):
             pairs[k].append(pair)
 
     for ph in index["photos"]:
         load = lambda what: np.load(out / f"{ph['id']}.{what}.npy")  # noqa: E731
-        decoded, resized, stored = load("decoded"), load("resized"), load("stored")
+        decoded, resized, webp, stored = load("decoded"), load("resized"), load("webp"), load("stored")
         own = pp.load_rgb(ph["path"])
         own_stored = pp.resize(own, *pp.fit_long_side(own.size, STORED_LONG_SIDE))
         im = Image.fromarray(decoded)
         py_resized = np.asarray(pp.resize(im, *pp.fit_long_side(im.size, STORED_LONG_SIDE)))
-        images[ph["id"]] = {"stored": Image.fromarray(stored), "resized": Image.fromarray(resized), "own": own_stored}
+        images[ph["id"]] = {"stored": Image.fromarray(stored), "webp": Image.fromarray(webp),
+                            "resized": Image.fromarray(resized), "own": own_stored}
         row = {
             "id": ph["id"], "photo": ph["key"], "decoded": ph["decoded"], "stored": ph["stored"],
+            "blurred": ph["blurred"], "quality": ph["quality"],
             "decode": levels(decoded, np.asarray(own)),
             "resize": levels(resized, py_resized),
             "resize_hfirst": levels(load("resized.hfirst"), py_resized),
-            "webp": levels(stored, resized),
+            "webp": levels(webp, resized),
+            "blur": levels(stored, webp),
             "recipes": {},
         }
         for name, recipe in recipes.items():
@@ -224,7 +244,7 @@ def compare(index: dict, out: Path, embed: Bioclip | None) -> dict:
             row["recipes"][name] = {"same_pixels": diff(t, same, unit),
                                     "end_to_end": diff(t, pp.to_tensor(own_stored, recipe), unit),
                                     "same_pixels_hfirst": diff(load(f"{name}.hfirst"), same, unit)}
-        add_pairs(load("bioclip"), *(images[ph["id"]][k] for k in ("stored", "resized", "own")))
+        add_pairs(load("bioclip"), images[ph["id"]])
         photos.append(row)
     grow = float(index["crop_grow"])
     unit = one_level(bio)
@@ -242,7 +262,7 @@ def compare(index: dict, out: Path, embed: Bioclip | None) -> dict:
             "end_to_end": diff(t, pp.to_tensor(cut["own"], bio), unit),
             "same_pixels_hfirst": diff(np.load(out / f"{c['id']}.bioclip.hfirst.npy"), same, unit),
         })
-        add_pairs(t, cut["stored"], cut["resized"], cut["own"])
+        add_pairs(t, cut)
     result = {"photos": photos, "crops": crops}
     if embed is not None:
         n = len(photos)
@@ -273,7 +293,8 @@ def summary(result: dict, recipes: dict[str, pp.Recipe]) -> dict:
                     "same_rect": all(c["same_rect"] for c in result["crops"])}
     out["passes"] = (all(out[n]["same_pixels_max"] < TARGET for n in RECIPES)
                      and out["crops"]["same_pixels_max"] < TARGET and out["crops"]["same_rect"])
-    for layer in ("decode", "resize", "resize_hfirst", "webp"):
+    out["blurred"] = [p["id"] for p in result["photos"] if p["blurred"]]
+    for layer in ("decode", "resize", "resize_hfirst", "webp", "blur"):
         out[layer] = {"max": max(p[layer]["max"] for p in result["photos"]),
                       "mean": max(p[layer]["mean"] for p in result["photos"]),
                       "share_over_1": max(p[layer]["share_over_1"] for p in result["photos"])}
@@ -283,7 +304,31 @@ def summary(result: dict, recipes: dict[str, pp.Recipe]) -> dict:
     return out
 
 
+def upload_manifest(models_dir: Path) -> Path:
+    """The fetched `api` set's manifest, whose `yunet` entry must be the repository's."""
+    path = models_dir.expanduser() / "manifest.toml"
+    fetched = manifest_entries(path).get("yunet") if path.exists() else None
+    if fetched != manifest_entries()["yunet"]:
+        raise SystemExit(f"{path}: no `yunet` entry equal to {MODELS.relative_to(ROOT)}'s; run "
+                         f"python3 -m ml.models.fetch --for api --dest {models_dir}")
+    return path
+
+
+def commit() -> str:
+    """HEAD, after checking that the code a run depends on has no uncommitted changes."""
+    dirty = subprocess.run(["git", "status", "--porcelain", "--", *CODE], cwd=ROOT, capture_output=True,
+                           text=True, check=True).stdout
+    if dirty.strip():
+        raise SystemExit(f"commit these first, so the report's commit is the code that ran:\n{dirty}")
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True,
+                          check=True).stdout.strip()
+
+
 def run(args) -> int:
+    from ml.training.eval.spot_fit import ort_dylib
+
+    git = commit()
+    faces = upload_manifest(Path(args.models_dir))
     today = date.today().isoformat()
     rows = dev_photos()
     picked = select_photos(rows, args.photos)
@@ -292,7 +337,9 @@ def run(args) -> int:
         shutil.rmtree(out)
     photos = [{"id": f"p{i}", "path": str(PHOTOS / r["file"])} for i, r in enumerate(picked)]
     crops = [{"id": f"c{i}", "photo": f"p{i}", "bbox": list(b)} for i, (_, b) in enumerate(CROPS)]
-    index_path = cargo_dump({"manifest": str(MODELS), "out": str(out), "photos": photos, "crops": crops})
+    index_path = cargo_dump({"manifest": str(MODELS), "upload_manifest": str(faces), "out": str(out),
+                             "photos": photos, "crops": crops},
+                            {"ORT_DYLIB_PATH": os.environ.get("ORT_DYLIB_PATH") or ort_dylib()})
     index = json.loads(index_path.read_text())
     for ph, r in zip(index["photos"], picked):
         ph["key"] = r["key"]
@@ -303,10 +350,14 @@ def run(args) -> int:
     entries = manifest_entries()
     recipes = {name: manifest_recipe(entries[name]) for name in RECIPES}
     rust = subprocess.run(["rustc", "--version"], capture_output=True, text=True).stdout.strip()
-    git = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    command = "python -m ml.training.eval.preprocess_parity run"
+    if args.no_embed:
+        command += " --no-embed"
+    if args.models_dir != DEFAULT_MODELS_DIR:
+        command += f" --models-dir {args.models_dir}"
     report = {
         "date": today,
-        "command": "python -m ml.training.eval.preprocess_parity run" + (" --no-embed" if args.no_embed else ""),
+        "command": command,
         "inputs": {
             "commit": git,
             "eval_manifest": {"path": str(EVAL_MANIFEST.relative_to(ROOT)), "sha256": sha256(EVAL_MANIFEST)},
@@ -317,7 +368,8 @@ def run(args) -> int:
                       for c, (label, b) in zip(crops, CROPS)],
             "worker": {"example": "backend/crates/vision/examples/preprocess_dump.rs", "rustc": rust,
                        "crop_grow": index["crop_grow"], "stored_long_side": index["stored_long_side"],
-                       "webp_quality": index["webp_quality"]},
+                       "webp_quality": index["webp_quality"], "upload_kind": index["upload_kind"],
+                       "face_model": index["face_model"]},
             "python": {"version": platform.python_version(), "pillow": Image.__version__, "numpy": np.__version__,
                        "resize_filter": pp.RESIZE_FILTER},
         },
@@ -355,15 +407,17 @@ def report_md(r: dict) -> str:
         f"# Pre-processing parity: preprocess-parity-{r['date']}",
         "",
         f"J1 ([dev-roadmap](../../../../docs/vision/dev-roadmap.md), gap G8), {r['date']}: `{r['command']}` on commit "
-        f"`{inp['commit'][:8]}`. The `vision` crate's `preprocess_dump` example runs the upload's and the perception "
-        f"worker's steps on {len(r['photos'])} dev photos and {len(r['crops'])} leaf crops and writes every image and "
-        "tensor; `ml/pdm_vision/preprocess.py` makes its own from the same pixels and from the photo files. Inputs: "
+        f"`{inp['commit'][:8]}`. The `vision` crate's `preprocess_dump` example sends {len(r['photos'])} dev photos through "
+        f"the API's `UploadProcessor::process` (as `{w['upload_kind']}` shots with no depth map, `{w['face_model']}` on "
+        f"the CPU), runs the perception worker's steps on what it stored and on {len(r['crops'])} leaf crops, and writes "
+        "every image and tensor; `ml/pdm_vision/preprocess.py` makes its own from the same pixels and from the photo "
+        "files. Inputs: "
         f"`{inp['eval_manifest']['path']}` (SHA-256 `{inp['eval_manifest']['sha256'][:16]}…`), the recipes and "
         f"`crop_grow` ({w['crop_grow']:g}) of `{inp['model_manifest']['path']}` (`{inp['model_manifest']['sha256'][:16]}…`), "
         f"the upload's {w['stored_long_side']} px and `WebP` quality {w['webp_quality']:g}; {w['rustc']}, Python "
         f"{inp['python']['version']}, Pillow {inp['python']['pillow']}, NumPy {inp['python']['numpy']}.",
         "",
-        f"## Result: {'passes' if s['passes'] else 'fails'} the {r['target']} target, for one reason, on the worker's side",
+        f"## Result: {'passes' if s['passes'] else 'fails'} the {r['target']} target, on the worker's side",
         "",
         "- **From the same stored pixels,** the largest difference in a tensor is "
         + ", ".join(f"{f(s[n]['same_pixels_max'], 3)} for `{n}`" for n in names)
@@ -378,38 +432,57 @@ def report_md(r: dict) -> str:
         f"- **The worker is the side to change.** The heads, the plant probe and the thresholds were fitted on Pillow's "
         f"pixels. The example's diagnostic `resize_h_first`, the same `fast_image_resize` call as two one-axis passes, "
         f"horizontal first, brings BioCLIP's tensors and the crops within one level (max {f(hfirst_bio)}) and the "
-        f"detector's and SAM's within two ({f(hfirst_rest)}, at most {hfirst_share:.0e} of a tensor's values, most likely "
-        f"the two libraries' fixed-point rounding). It also brings the upload's {w['stored_long_side']} px resize from "
-        f"{s['resize']['max']:.0f} levels to {s['resize_hfirst']['max']:.0f}. The change belongs in `imaging::resize`.",
+        f"detector's and SAM's within two ({f(hfirst_rest)}, at most {hfirst_share:.0e} of a tensor's values). It also "
+        f"brings the upload's {w['stored_long_side']} px resize from {s['resize']['max']:.0f} levels to "
+        f"{s['resize_hfirst']['max']:.0f}. The change belongs in `imaging::resize`.",
+        f"- **Horizontal first isn't enough on its own" + (f":** the detector's and SAM's {f(hfirst_rest, 3)} is still over "
+        f"{r['target']}, so the target or the fix has to move. The rest is most likely the coefficients' precision: "
+        "`fast_image_resize` stores them as `i16` with at most 15 bits (`convolution/optimisations.rs`, "
+        "`MAX_COEFFS_PRECISION`)." if hfirst_rest >= r["target"] else
+        f" to fail:** with it, every tensor is within {r['target']}."),
     ]
     if e:
-        lines.append(f"- **Its effect is small:** from the same pixels, BioCLIP's embeddings agree to a cosine similarity of "
+        lines.append(f"- **The pass order's effect is small:** from the same pixels, BioCLIP's embeddings agree to a cosine similarity of "
                      f"{e['same_pixels']['photos']:.4f} or more on the photos and {e['same_pixels']['crops']:.4f} or more on the crops.")
     lines += [
         "- **The crop's rounding is confirmed:** every crop has the same rectangle and pixels as `pp.crop_box`'s, "
         "with the growth clamped at both corners." if s["crops"]["same_rect"] else
         "- **The crop's rectangles differ** from `pp.crop_box`'s.",
+        f"- **Decoding differs too:** Pillow's JPEG decoder and `imaging::decode_upload` disagree by up to "
+        f"{s['decode']['max']:.0f} levels, with {s['decode']['share_over_1']:.1%} of the values more than one level apart "
+        "on the worst photo. That moves the end-to-end numbers, not J1's same-pixels target.",
         "",
     ]
     if e:
         crop_webp = r["embeddings"]["crops"]["webp"]
         worst = r["crops"][crop_webp.index(min(crop_webp))]
+        blurred = s["blurred"]
         lines += [
-            "## Larger, and not pre-processing: the `WebP` the API stores",
+            "## Larger, and not pre-processing: what the API stores",
             "",
             f"The API stores each photo as lossy `WebP` at quality {w['webp_quality']:g}, and the worker decodes that; "
             f"`ml/` trains and calibrates on the photo before it (`heads/crops.py` stores at {w['stored_long_side']} px "
             f"with no `WebP`). The round trip moves pixels by {s['webp']['mean']:.1f} levels on average on the worst "
             f"photo (max {s['webp']['max']:.0f}), and BioCLIP's embedding to a cosine similarity of "
-            f"{e['webp']['photos']:.3f} on whole photos and {e['webp']['crops']:.3f} on a crop of "
-            f"{worst['rect'][2]} × {worst['rect'][3]} px ({worst['id']}), which BioCLIP's recipe scales up to 224 px. It is almost the whole gap between what the heads were trained on and what the worker "
-            "sends, and it needs its own decision (train on round-tripped photos, or store at a higher quality); J1 "
-            "doesn't change it.",
+            f"{e['webp']['photos']:.3f} to {max(r['embeddings']['photos']['webp']):.3f} on whole photos and "
+            f"{min(crop_webp):.3f} to {max(crop_webp):.3f} on the crops. The lowest is a crop of "
+            f"{worst['rect'][2]} × {worst['rect'][3]} px ({worst['id']}), which BioCLIP's recipe scales up to 224 px; the "
+            f"other crops are at {sorted(crop_webp)[1]:.3f} or more. It needs its own decision (train on round-tripped "
+            "photos, or store at a higher quality), and J1 doesn't change it. If `ml/` round-trips its photos, "
+            "Pillow's `libwebp` against the `webp` crate's encoder needs its own parity check first.",
+            "",
+            (f"The face blur is applied too. `YuNet` found a face on {len(blurred)} of the {len(r['photos'])} photos "
+             f"({', '.join(blurred)}), all plant photos, so every box is a false one, and the blur moves BioCLIP's "
+             f"embedding to a cosine similarity of {e['blur']['photos']:.3f} on the photos and {e['blur']['crops']:.3f} "
+             "on the crops. `ml/` never blurs; whether the API should is D13's question ([#159]"
+             "(https://github.com/aacruzgon/GreenLens/issues/159))." if blurred else
+             f"The face blur is applied too, but `YuNet` found no face on the {len(r['photos'])} photos, so it changed nothing."),
             "",
             "| BioCLIP embeddings, lowest cosine similarity | Photos | Crops |",
             "|---|---|---|",
             f"| Same stored pixels: the worker's code against `pp`'s | {e['same_pixels']['photos']:.4f} | {e['same_pixels']['crops']:.4f} |",
-            f"| `WebP`: the stored photo against the photo before it, both through `pp` | {e['webp']['photos']:.4f} | {e['webp']['crops']:.4f} |",
+            f"| `WebP`: the photo through `WebP` against the photo before it, both through `pp` | {e['webp']['photos']:.4f} | {e['webp']['crops']:.4f} |",
+            f"| Face blur: the stored photo against the same without it, both through `pp` | {e['blur']['photos']:.4f} | {e['blur']['crops']:.4f} |",
             f"| Decode and resize: the API's against Pillow's, before `WebP`, both through `pp` | {e['decode_resize']['photos']:.4f} | {e['decode_resize']['crops']:.4f} |",
             f"| End to end: the worker against `ml/`'s training chain | {e['end_to_end']['photos']:.4f} | {e['end_to_end']['crops']:.4f} |",
             "",
@@ -424,7 +497,8 @@ def report_md(r: dict) -> str:
         f"| Decode | Pillow (`pp.load_rgb`) against `imaging::decode_upload` | {s['decode']['max']:.0f} levels | {f(s['decode']['mean'], 3)} | {s['decode']['share_over_1']:.2%} |",
         f"| Resize to {w['stored_long_side']} px | `pp.resize` against `imaging::resize_long_side`, same decoded pixels | {s['resize']['max']:.0f} levels | {f(s['resize']['mean'], 3)} | {s['resize']['share_over_1']:.2%} |",
         f"| The same, horizontal first | `pp.resize` against the diagnostic | {s['resize_hfirst']['max']:.0f} levels | {f(s['resize_hfirst']['mean'], 3)} | {s['resize_hfirst']['share_over_1']:.4%} |",
-        f"| `WebP` | the stored photo against the resized one | {s['webp']['max']:.0f} levels | {f(s['webp']['mean'], 2)} | {s['webp']['share_over_1']:.1%} |",
+        f"| `WebP` | the resized photo through `WebP` against it | {s['webp']['max']:.0f} levels | {f(s['webp']['mean'], 2)} | {s['webp']['share_over_1']:.1%} |",
+        f"| Face blur | the stored photo against the same without the blur | {s['blur']['max']:.0f} levels | {f(s['blur']['mean'], 2)} | {s['blur']['share_over_1']:.1%} |",
         "",
         "| Tensor | Same pixels, max | Horizontal first, max | End to end, max | End to end, worst photo's mean | One level |",
         "|---|---|---|---|---|---|",
@@ -437,12 +511,13 @@ def report_md(r: dict) -> str:
     lines += ["", "`pp`'s recipes equal the manifest's: " + ", ".join(
         f"`{n}` {'yes' if r['recipes'][n]['matches_pp'] else '**no**'}" for n in names) + ".", "",
         "## Photos", "",
-        "| Id | Photo | Decoded | Stored | Decode max | Resize max | `WebP` mean | "
+        "| Id | Photo | Decoded | Stored | Decode max | Resize max | `WebP` mean | Blurred | "
         + " | ".join(f"`{n}` same / horizontal first" for n in names) + " |",
-        "|---|---|---|---|---|---|---|" + "---|" * len(names)]
+        "|---|---|---|---|---|---|---|---|" + "---|" * len(names)]
     for p in r["photos"]:
         lines.append(f"| {p['id']} | `{p['photo']}` | {p['decoded'][0]}×{p['decoded'][1]} | {p['stored'][0]}×{p['stored'][1]} | "
                      f"{p['decode']['max']:.0f} | {p['resize']['max']:.0f} | {f(p['webp']['mean'], 2)} | "
+                     f"{'yes' if p['blurred'] else 'no'} | "
                      + " | ".join(f"{f(p['recipes'][n]['same_pixels']['max'])} / {f(p['recipes'][n]['same_pixels_hfirst']['max'])}" for n in names)
                      + " |")
     lines += ["", "## Leaf crops", "",
@@ -457,7 +532,10 @@ def report_md(r: dict) -> str:
     lines += ["", "## Notes", "",
               "- Every photo is a dev photo; the test split isn't used.",
               "- The photos carry no EXIF orientation (the evaluation set strips it on import), so the decoders' rotation isn't exercised.",
-              "- The upload's face blur isn't applied. It changes the same pixels on both sides of the comparison.",
+              f"- Each photo goes through `process` as a `{w['upload_kind']}` shot with no depth map. An upload whose depth "
+              "map is kept is stored at 2,048 px or more, and isn't covered.",
+              "- The crop's rectangle is `classify`'s arithmetic copied into the example, which `pp.crop_box` matches; "
+              "`classify` doesn't expose it as a function.",
               "- A box of zero area, which the detector never keeps, is cut as an empty image by the worker and as 1 px by `pp.crop_box`.",
               f"- The {r['target']} target allows one level. Even horizontal first, a few values ({hfirst_share:.0e} of a tensor at most) differ by two.",
               ""]
@@ -476,6 +554,8 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--photos", type=int, default=10)
     r.add_argument("--no-embed", action="store_true")
+    r.add_argument("--models-dir", default=DEFAULT_MODELS_DIR,
+                   help="the api set of ml.models.fetch, for the upload's face detector")
     r.set_defaults(fn=run)
     b = sub.add_parser("report")
     b.add_argument("report")
