@@ -18,8 +18,8 @@
 #                                               company's 7-day token, rotated weekly (infra §6)
 #   variables SLACK_BASE_URL, GOOGLE_DRIVE_BASE_URL  the hosted systems, from infra/env/.env.era
 # It builds, so it runs on RUNNER_LABELS like ci.yml's build jobs. Pull-request jobs have run as
-# the same user on the rig, so the credential reaches a runner such code could have tampered with
-# (as in discord-mentions.yml). It reads a synthetic, read-only company; a leak can spend calls.
+# the same user on the rig, so the credential reaches a runner such code could have tampered with.
+# It reads a synthetic, read-only company; a leak can spend calls.
 name: Era hosted
 
 on:
