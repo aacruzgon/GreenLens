@@ -15,8 +15,8 @@ use crate::error::ApiError;
 /// The keyed limiters, keyed by the authenticated user, so an unauthenticated caller can't
 /// fill the key map with strings of its choosing (the limiter runs after the token check).
 pub struct RateLimits {
-    /// Every authenticated request: `RATE_PER_MINUTE` (default 120, a placeholder: the documents
-    /// give no number).
+    /// Every authenticated request: `RATE_PER_MINUTE` (default 120, decided for S7 in
+    /// `docs/backend/api.md` section 23, item 2).
     pub per_user: DefaultKeyedRateLimiter<UserId>,
     /// `POST /invites/{code}/accept`: at most 10 in any minute per user ([contracts 9]), as a
     /// burst of 5 then one every 12 s. `Quota::per_minute(10)` would be a burst of 10 refilling one

@@ -2,6 +2,7 @@
 "Where the photos come from").
 
     python -m ml.training.eval.fieldsets fetch [--per-class 8] [--only SET]
+    python -m ml.training.eval.fieldsets refetch
     python -m ml.training.eval.fieldsets add --labeller NAME [--resplit]
     python -m ml.training.eval.fieldsets regroup [--resplit]
 
@@ -151,7 +152,7 @@ def training_images() -> list[Path]:
     return files
 
 
-def download(row: dict, dest: Path) -> bool:
+def download(row: dict, dest: Path, keep_icc: bool = True) -> bool:
     """The file at Mendeley, checked against its published SHA-256, re-encoded with no metadata."""
     from ml.training.data.fetch import UA
 
@@ -165,7 +166,7 @@ def download(row: dict, dest: Path) -> bool:
             raise ValueError("SHA-256 doesn't match Mendeley's")
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix(".partial")
-        tmp.write_bytes(inat.strip(data))
+        tmp.write_bytes(inat.strip(data, keep_icc))
         tmp.rename(dest)
         return True
     except Exception as e:  # network errors, a file PIL can't read, a hash mismatch
@@ -433,6 +434,44 @@ def fetch(args) -> int:
     return 0
 
 
+def refetch(args) -> int:
+    """Downloads again the photos of cases already in the manifest and not on disk, with no new pick,
+    embedding or review: the file at Mendeley whose `photo_id` is the manifest file's, checked against
+    Mendeley's SHA-256 (`download`) and then against the manifest's; one that differs is encoded again as
+    before `inat.strip` kept the colour profile, and one that still differs is left in place (the harness
+    refuses it) and listed."""
+    from ml.training.data.fetch import mendeley_listing
+
+    want = inat.manifest_files(args.manifest, "fieldsets/", args.photos)
+    for f in want:
+        (args.photos / f).unlink(missing_ok=True)   # one of another SHA-256 is downloaded again
+    rows: dict[str, dict] = {}
+    for s in load_sets(None):
+        if not any(f.startswith(f"fieldsets/{s['name']}/") for f in want):
+            continue
+        for r in mendeley_listing(s["dataset"], s["version"]):
+            folder = r["path"].rsplit("/", 1)[0]
+            if folder in s["classes"] and Path(r["path"]).suffix.lower() in IMAGE_EXT:
+                rows[f"fieldsets/{photo_id(s['name'], folder, r['path'])}.jpg"] = r
+    todo = [f for f in want if f in rows]
+    with ThreadPoolExecutor(8) as ex:
+        ok = list(ex.map(lambda f: download(rows[f], args.photos / f), todo))
+    got = [f for f, k in zip(todo, ok) if k]
+    for f in [f for f in got if inat.sha256(args.photos / f) != want[f]]:   # encoded before the profile was kept?
+        (args.photos / f).unlink()
+        download(rows[f], args.photos / f, keep_icc=False)
+    differ = [f for f in got if (args.photos / f).is_file() and inat.sha256(args.photos / f) != want[f]]
+    got = [f for f in got if (args.photos / f).is_file()]
+    print(f"{len(want)} fieldsets photos of the manifest's missing: {len(got)} downloaded, "
+          f"{len(want) - len(got)} not, {len(differ)} with another SHA-256")
+    for f in differ:
+        print(f"SHA-256 differs from the manifest's: {f}", file=sys.stderr)
+    for f in want:
+        if f not in got:
+            print(f"not fetched: {f}", file=sys.stderr)
+    return 1 if differ or len(got) < len(want) else 0
+
+
 def add(args) -> int:
     out = args.photos / "fieldsets"
     cands = json.loads((out / "candidates.json").read_text())
@@ -503,6 +542,9 @@ def main(argv=None) -> int:
     f.add_argument("--per-class", type=int, default=8, help="photos kept per class")
     f.add_argument("--only", action="append", help="a set's name; repeatable")
     f.add_argument("--photos", type=Path, default=inat.PHOTOS)
+    rf = sub.add_parser("refetch", help="download again the photos of cases already in the manifest")
+    rf.add_argument("--photos", type=Path, default=inat.PHOTOS)
+    rf.add_argument("--manifest", type=Path, default=inat.MANIFEST)
     a = sub.add_parser("add", help="append the reviewed photos to manifest.jsonl")
     a.add_argument("--labeller", required=True, help="your GitHub login")
     a.add_argument("--photos", type=Path, default=inat.PHOTOS)
@@ -513,7 +555,7 @@ def main(argv=None) -> int:
     r.add_argument("--manifest", type=Path, default=inat.MANIFEST)
     r.add_argument("--resplit", action="store_true", help="let a case change split")
     args = ap.parse_args(argv)
-    return {"fetch": fetch, "add": add, "regroup": regroup_manifest}[args.command](args)
+    return {"fetch": fetch, "refetch": refetch, "add": add, "regroup": regroup_manifest}[args.command](args)
 
 
 if __name__ == "__main__":

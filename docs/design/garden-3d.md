@@ -1,6 +1,6 @@
 # PDM 3D Garden: Rendering Notes
 
-> **Status:** Draft v0.3.2, 2026-10-23. v0.3.2: after the second run on the iPhone, labels rank the plants that need attention before the nearest, a dot tries the crown and either side before it is hidden (never with VoiceOver on), a dot taps as 44 pt, the plants' shared parts draw through `MeshInstancesComponent` on iOS 26, and the view freezes through the turntable's 3 s wait (sections 1 and 3). v0.3.1: after the first run on an iPhone, labels that would overlap shrink to their status dot, and the UIKit labels, not `AccessibilityComponent`s, are VoiceOver's elements, since an idle garden takes the `ARView` out of the window (section 1). v0.3: the app is iPhone only, so the 3D garden moves to RealityKit on Metal, as a native view in the LiDAR module, and react-three-fiber on expo-gl (OpenGL ES, deprecated since iOS 12) becomes the fallback; adds the RealityKit APIs with their iOS versions and a new recommendation. v0.2: folds in the PR #43 audit: fiber's optional peers, and status shapes and words as in design §6. v0.1: how to render the stylised 3D garden on iOS, Android and web in Expo SDK 57 (react-three-fiber on expo-gl), the on-device ARKit mesh view, labels, interaction and accessibility, with one open expo-gl bug to patch.
+> **Status:** Draft v0.3.3, 2026-10-25. v0.3.3: the web build, dropped on Oct 25, no longer appears among the targets that show the 2D map; the notes on fiber's web entry and the Apple account say it is dropped. v0.3.2: after the second run on the iPhone, labels rank the plants that need attention before the nearest, a dot tries the crown and either side before it is hidden (never with VoiceOver on), a dot taps as 44 pt, the plants' shared parts draw through `MeshInstancesComponent` on iOS 26, and the view freezes through the turntable's 3 s wait (sections 1 and 3). v0.3.1: after the first run on an iPhone, labels that would overlap shrink to their status dot, and the UIKit labels, not `AccessibilityComponent`s, are VoiceOver's elements, since an idle garden takes the `ARView` out of the window (section 1). v0.3: the app is iPhone only, so the 3D garden moves to RealityKit on Metal, as a native view in the LiDAR module, and react-three-fiber on expo-gl (OpenGL ES, deprecated since iOS 12) becomes the fallback; adds the RealityKit APIs with their iOS versions and a new recommendation. v0.2: folds in the PR #43 audit: fiber's optional peers, and status shapes and words as in design §6. v0.1: how to render the stylised 3D garden on iOS, Android and web in Expo SDK 57 (react-three-fiber on expo-gl), the on-device ARKit mesh view, labels, interaction and accessibility, with one open expo-gl bug to patch.
 
 This note covers how the app can draw the 3D garden view and the optional on-device LiDAR mesh view. It is a companion to [`design.md`](design.md) (same folder), [frontend README](../frontend/README.md) §13 and [architecture 6.8](../architecture/README.md#68-garden-map-lidar). The server holds only bed outlines, pin positions and canopy radii, so the stylised scene is built from that data on the phone. The ARKit mesh never leaves the phone.
 
@@ -32,7 +32,7 @@ Marks: ✓ means read in a primary source (named in the line). *unverified* mean
 The costs:
 - The garden needs a development build. The LiDAR module needs one anyway (section 4).
 - The scene, labels and gestures are written in Swift.
-- Expo Go and the web build show the 2D map and the plant list instead of the 3D view. The 2D map needs no GPU; it is the same map as in the mockups' Map view (design §3.1).
+- Expo Go shows the 2D map and the plant list instead of the 3D view. The 2D map needs no GPU; it is the same map as in the mockups' Map view (design §3.1).
 - The mockups stay on three.js in the browser.
 
 ### The RealityKit APIs it needs
@@ -97,7 +97,7 @@ React 19.2.3 sits inside fiber's `>=19 <19.4`. ✓ (bundledNativeModules, npm).
 ### Does fiber work on native, and in Expo Go?
 
 - ✓ The R3F install page documents `expo install expo-gl`, then `npm install three @react-three/fiber`, and imports from `@react-three/fiber/native`. It says fiber 9 pairs with React 19. It says iOS simulators often have incomplete OpenGL ES support and can crash, so test on a physical iPhone. (r3f.docs.pmnd.rs, installation)
-- ✓ The `@react-three/fiber` package.json has a `react-native` field pointing at its native build. Metro therefore picks the native renderer on iOS and Android with a plain `import { Canvas } from '@react-three/fiber'`, and the web build uses the normal DOM entry. One scene component can serve all three platforms. *Not run in this repo yet.*
+- ✓ The `@react-three/fiber` package.json has a `react-native` field pointing at its native build. Metro therefore picks the native renderer on iOS and Android with a plain `import { Canvas } from '@react-three/fiber'`, and a web build (dropped on Oct 25) would use the normal DOM entry. One scene component can serve all three platforms. *Not run in this repo yet.*
 - ✓ `expo-gl` is listed as supported in Expo Go, on Android, iOS and web (docs.expo.dev GLView page). It needs no custom native code, so fiber, three and expo-gl run in Expo Go. *Not run on SDK 57 Expo Go in this repo yet.*
 - ✓ On web, `expo-gl` is not needed: fiber's web entry uses the browser's WebGL canvas.
 
@@ -164,7 +164,7 @@ Recommendation: ship option 1 first, since it reuses the same `ARView` that the 
 
 - ✓ Custom native code needs a development build; Expo Go is a fixed app that cannot include `app/modules/lidar` (docs.expo.dev development builds). So the mesh view, the mapping session, the depth capture and the 3D garden (section 1) all require one. Only the fallback (section 2) runs in Expo Go.
 - ✓ "Local builds are the only way to install a development build on an iPhone without a paid Apple Developer account"; EAS iPhone builds need a paid account. Local flow: `npx expo prebuild`, then `npx expo run:ios --device`, with a unique `ios.bundleIdentifier` and Developer Mode on (same page).
-- Free Apple ID personal team: *unverified* for this app, but ARKit needs only the camera permission string (`NSCameraUsageDescription`) and no entitlement, so a free team should be enough. Known free-team limits (apps expire after 7 days, a small cap on App IDs per week, no push, no TestFlight) are from memory, *unverified*. The web build does not need any Apple account.
+- Free Apple ID personal team: *unverified* for this app, but ARKit needs only the camera permission string (`NSCameraUsageDescription`) and no entitlement, so a free team should be enough. Known free-team limits (apps expire after 7 days, a small cap on App IDs per week, no push, no TestFlight) are from memory, *unverified*. A web build (dropped on Oct 25) would not need any Apple account.
 
 ## 5. Labels and interaction
 
@@ -189,7 +189,7 @@ This section is written for the fallback (section 2). On Metal, see section 1.
 ### Orbit controls
 
 - `drei`'s `OrbitControls` wraps three's DOM-based controls and listens to pointer events on `gl.domElement`. On native there is no DOM element, so it is *unverified* and likely unreliable. Do not depend on it for native.
-- Recommended: write a small `useOrbit` hook using `react-native-gesture-handler` (SDK 57 pins `~2.32.0` ✓ bundledNativeModules): a `Pan` gesture changes azimuth and elevation, a `Pinch` changes distance, a two-finger pan moves the target. Store the state in refs, apply it to the camera in `useFrame`, clamp elevation (about 10 to 85 degrees) and distance, and call `invalidate()`. The gestures wrap the `Canvas` view and work the same on web through gesture-handler's web support (*unverified for the web build; fall back to `OrbitControls` on web only if needed*).
+- Recommended: write a small `useOrbit` hook using `react-native-gesture-handler` (SDK 57 pins `~2.32.0` ✓ bundledNativeModules): a `Pan` gesture changes azimuth and elevation, a `Pinch` changes distance, a two-finger pan moves the target. Store the state in refs, apply it to the camera in `useFrame`, clamp elevation (about 10 to 85 degrees) and distance, and call `invalidate()`. The gestures wrap the `Canvas` view and work the same on web through gesture-handler's web support (*unverified for the web build, dropped on Oct 25; fall back to `OrbitControls` on web only if needed*).
 - A "reset view" button and a top-down toggle help phone users and are also the accessible way to change the view.
 
 ## 6. Reduced motion and accessibility
@@ -218,7 +218,7 @@ The rules apply on both paths. On Metal the reduce-motion check is `UIAccessibil
 Draw the 3D garden with **RealityKit on Metal, as a native `GardenView` in `app/modules/lidar`**, with procedural meshes, UIKit labels and the app's store driving it through props.
 
 1. **Stack.** RealityKit is part of iOS; nothing is installed. The view is an `ARView` in `.nonAR` mode inside an `ExpoView` (section 1). Skip `expo-gl`, `three`, `@react-three/fiber`, `expo-three`, `react-native-wgpu` and `react-native-filament`. No USDZ or GLB files, no image textures.
-2. **Where it runs.** The iPhone development build, the same build as the LiDAR features. Expo Go and the web build show the 2D map and the plant list instead.
+2. **Where it runs.** The iPhone development build, the same build as the LiDAR features. Expo Go shows the 2D map and the plant list instead.
 3. **First task.** A day-one spike in a local development build on the iPhone 17 Pro Max:
    - the mock garden: 2 beds and 6 plants, tap to select, orbit, labels, the three modes and the date scrubber;
    - then 10 beds and 40 plants, with the frame time measured in Xcode;

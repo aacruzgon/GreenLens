@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.16, 2026-10-24. v0.4.16: chat after PR #151's review (section 10): leaving mid-answer marks the conversation stale, a network retry backs off and `409 request_in_progress` is waited out on the same key, an `error` event's text stays after the stored message arrives, and a stream with no bytes for 45 s is dropped; `domain/proposed.ts` is the one place a contract type is written by hand (section 5); section 20's rows follow the backend's S5 decisions on answer blocks. v0.4.15: chat as built in F6: the stream's event name comes from the SSE `event:` line, the retried send's JSON replay, and the proposed `answer_block` (section 10); section 20 lists the contract changes F6 still needs, held in `src/domain/proposed.ts` until the backend has them. v0.4.14: the LiDAR camera refuses an all-black photo (`ERR_LIDAR_BLACK`) and depth with no valid pixel, falls back on any runtime error but a media-services reset, and the mapping view reports ARKit's fatal errors through `onMountError` (section 13); `.env.example` and section 17 say to prebuild with `--clean` after turning `EXPO_PUBLIC_DEV_TOOLS` off. v0.4.13: F5 after review: the LiDAR camera reports interruptions and falls back to `expo-camera` when it can't start, depth goes up only with intrinsics, the mapping view gains `onInterruption`, true north and `removeWorldMap`, drafts move to Application Support and the LiDAR tools need `EXPO_PUBLIC_DEV_TOOLS` (sections 11, 13, 17); a return after the background grace reconnects the stream (section 10); open decision 11 asks who alerts for a scan, the Live Activity or push. v0.4.12: the LiDAR module adds `ModePickerView`, capture's mode bar as Apple's segmented control on glass, and the camera view shows the photo's 4:3 frame with the ultra-wide outside it (section 13). v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> **Status:** Draft v0.4.18, 2026-10-25. v0.4.18: notes on the dropped web build (Oct 25) where a reader could take its text as planned: the architecture box, the library and rejected-options tables, sign-in, the `azp` check, the capabilities table, the adapters the device checks and the delivery diagram. v0.4.17: the web build is dropped by the team on Oct 25 and the app ships on the iPhone only: open decision 5 is closed (the API keeps `API_WEB_ORIGINS` empty, so no CORS), 9 and 10 are dropped with it, and the build and calendar tables follow; the sections that specify the web build (13, and its notes elsewhere) are kept as the design for one if it returns. v0.4.16: chat after PR #151's review (section 10): leaving mid-answer marks the conversation stale, a network retry backs off and `409 request_in_progress` is waited out on the same key, an `error` event's text stays after the stored message arrives, and a stream with no bytes for 45 s is dropped; `domain/proposed.ts` is the one place a contract type is written by hand (section 5); section 20's rows follow the backend's S5 decisions on answer blocks. v0.4.15: chat as built in F6: the stream's event name comes from the SSE `event:` line, the retried send's JSON replay, and the proposed `answer_block` (section 10); section 20 lists the contract changes F6 still needs, held in `src/domain/proposed.ts` until the backend has them. v0.4.14: the LiDAR camera refuses an all-black photo (`ERR_LIDAR_BLACK`) and depth with no valid pixel, falls back on any runtime error but a media-services reset, and the mapping view reports ARKit's fatal errors through `onMountError` (section 13); `.env.example` and section 17 say to prebuild with `--clean` after turning `EXPO_PUBLIC_DEV_TOOLS` off. v0.4.13: F5 after review: the LiDAR camera reports interruptions and falls back to `expo-camera` when it can't start, depth goes up only with intrinsics, the mapping view gains `onInterruption`, true north and `removeWorldMap`, drafts move to Application Support and the LiDAR tools need `EXPO_PUBLIC_DEV_TOOLS` (sections 11, 13, 17); a return after the background grace reconnects the stream (section 10); open decision 11 asks who alerts for a scan, the Live Activity or push. v0.4.12: the LiDAR module adds `ModePickerView`, capture's mode bar as Apple's segmented control on glass, and the camera view shows the photo's 4:3 frame with the ultra-wide outside it (section 13). v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
 > v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
@@ -59,7 +59,7 @@ This is the frontend's architecture. It is built on the [system architecture](..
 
 ## 1. Goals
 
-- **One codebase for iOS, Android and the web build.** The web build is the live link the judges open (architecture 12). They may open it on a laptop, in their phone's browser, or inside another app's browser (section 13), so all three are first-class targets.
+- **One codebase for iOS, Android and the web build.** *Dropped on Oct 25: the app ships on the iPhone only, and Android is out of development; the web build is dropped ([roadmap 15](roadmap.md#15-f9-the-web-build)).* The text that follows is the design for a web build if one returns: it was the live link the judges open (architecture 12), on a laptop, in a phone's browser, or inside another app's browser (section 13).
 - **Screens render; they don't decide.** Business rules (the scan event model, the capture rules, the role matrix, error handling) live in plain TypeScript modules with no React and no I/O. They are tested on their own and can't drift between screens.
 - **One door to the backend.** Only the `api` layer talks HTTP. It owns auth headers, idempotency keys, error parsing and streaming. Features call typed functions and hooks, never `fetch`.
 - **Device features behind interfaces.** Camera, LiDAR, location, push and storage are adapters with web and native implementations. A feature asks what the device can do; it never checks `Platform.OS` itself.
@@ -80,7 +80,7 @@ This is the frontend's architecture. It is built on the [system architecture](..
                             │ hooks: useSignIn, useSSO, useAuth().getToken()
 ┌───────────────────────────┴───────────────────────────────────────────────┐
 │ PDM APP  (Expo SDK 57 · React Native 0.86 · Expo Router)                   │
-│ native on iOS and Android · web build in desktop and phone browsers        │
+│ native on the iPhone · Android and web build dropped on Oct 25             │
 │                                                                            │
 │  routes ─▶ features ─▶ api ──────────────────────────────┐                 │
 │                │        │  REST (openapi-fetch)          │                 │
@@ -152,7 +152,7 @@ Each concern has one library. A dependency not in this table needs a reason in t
 | Lists | `@shopify/flash-list` v2 | Timeline, tasks, chat messages | [FlashList](https://shopify.github.io/flash-list/) |
 | Keyboard | `react-native-keyboard-controller` | Chat composer | [Keyboard Controller](https://kirillzyusko.github.io/react-native-keyboard-controller/) |
 | Camera | `expo-camera` | Capture view on phones without LiDAR. LiDAR devices use the module's own view (section 13) | [expo-camera](https://docs.expo.dev/versions/v57.0.0/sdk/camera/) |
-| System camera and picker | `expo-image-picker` | Capture in browsers: the system camera on phones, a file picker on desktops. "Choose from library" everywhere | [expo-image-picker](https://docs.expo.dev/versions/v57.0.0/sdk/imagepicker/) |
+| System camera and picker | `expo-image-picker` | "Choose from library". For a web build (dropped on Oct 25), capture in browsers: the system camera on phones, a file picker on desktops | [expo-image-picker](https://docs.expo.dev/versions/v57.0.0/sdk/imagepicker/) |
 | Image conversion | `expo-image-manipulator` | HEIC to JPEG for picked photos until the API decodes HEIC (contracts open question 8). Never applied to LiDAR files. Also cuts the diagnosis's photo to 32 px as a PNG for its tint (design open decision 9), from an `expo-image` `ImageRef` loaded through the same disk cache and cache key as the photo on screen, so the photo downloads once | [expo-image-manipulator](https://docs.expo.dev/versions/v57.0.0/sdk/imagemanipulator/) |
 | Files | `expo-file-system` | `File` objects for multipart uploads with `expo/fetch`, which rejects React Native's `{ uri }` form parts ✓ | [expo-file-system](https://docs.expo.dev/versions/v57.0.0/sdk/filesystem/) |
 | Location | `expo-location` | Garden centroid, with consent (architecture 8.5) | [expo-location](https://docs.expo.dev/versions/v57.0.0/sdk/location/) |
@@ -175,7 +175,7 @@ Each concern has one library. A dependency not in this table needs a reason in t
 | NativeWind, Unistyles, Tamagui | Adds a compiler or native dependency for what tokens and `StyleSheet` already do (open decision 2). Unistyles 3 also needs a development build |
 | `react-native-mmkv` | Needs a development build, which breaks Expo Go, and adds nothing at this data size |
 | `EventSource` and its polyfills | Can only `GET` and can't send the auth header (architecture 9; [MDN `EventSource`](https://developer.mozilla.org/en-US/docs/Web/API/EventSource)) |
-| `expo-camera` as the browser capture | Works in browsers, but its web `takePictureAsync` returns a base64 frame from the video stream ([expo-camera](https://docs.expo.dev/versions/v57.0.0/sdk/camera/)), likely below the resolution of the system camera's photo, which matters for small lesions (open decision 9) |
+| `expo-camera` as the browser capture (web build, dropped on Oct 25) | Works in browsers, but its web `takePictureAsync` returns a base64 frame from the video stream ([expo-camera](https://docs.expo.dev/versions/v57.0.0/sdk/camera/)), likely below the resolution of the system camera's photo, which matters for small lesions (open decision 9) |
 | Victory, Skia charts | One line chart doesn't justify them |
 | Redux, MobX | TanStack Query holds the server state, which is most of the state |
 | `@gorhom/bottom-sheet` | Expo Router's native sheets cover it without another Reanimated-dependent library |
@@ -400,7 +400,7 @@ The rule: **events change what the screen shows; the cache is refreshed by refet
 
 ### Sign-in
 
-Custom screens built with Clerk's hooks, `useSignIn`, `useSignUp` and `useSSO` ✓, so sign-in matches the app's design and works in Expo Go, development builds and the web build (open decision 3).
+Custom screens built with Clerk's hooks, `useSignIn`, `useSignUp` and `useSSO` ✓, so sign-in matches the app's design and works in Expo Go and development builds, and would on a web build (dropped on Oct 25; open decision 3).
 
 | Method | Flow | Where it's offered |
 |---|---|---|
@@ -430,7 +430,7 @@ The sequence diagrams are in [flows.md](flows.md#1-app-start-and-sign-in).
 
 The webhook and header rules are in contracts 1 and 9 (auth webhook). The token checks below are to be confirmed when the API's auth middleware is written (*unverified*, Clerk docs):
 
-- The API verifies session tokens against the Clerk instance's JWKS, checks `exp`, `nbf` and `iss`, and checks `azp` against the allowed origins (the web build's origin) ([manual JWT verification](https://clerk.com/docs/guides/sessions/manual-jwt-verification)).
+- The API verifies session tokens against the Clerk instance's JWKS, checks `exp`, `nbf` and `iss`, and checks `azp` against the allowed origins (the web build's origin; none while the web build is dropped, Oct 25) ([manual JWT verification](https://clerk.com/docs/guides/sessions/manual-jwt-verification)).
 - `sub` is the Clerk user ID, stored as `user.auth_id` (contracts 9, auth webhook).
 - Clerk sends webhooks through Svix. The adapter verifies the `svix-id`, `svix-timestamp` and `svix-signature` headers before parsing, and maps `user.created` and `user.deleted` to `AuthWebhookEvent` ([Clerk webhooks](https://clerk.com/docs/guides/development/webhooks/overview), [Svix verification](https://docs.svix.com/receiving/verifying-payloads/how)).
 - A display name in the session token would need a custom claim ([customising session tokens](https://clerk.com/docs/guides/sessions/customize-session-tokens), open decision 7).
@@ -755,6 +755,8 @@ Nothing else is persisted, and signing out clears all of it.
 
 ### Capabilities by target
 
+*The two browser columns are for the web build, dropped on Oct 25; the app ships on the iPhone only, and Android is out of development.*
+
 | | iOS dev build, LiDAR device | iOS dev build | Android dev build | Expo Go | Phone browser | Desktop browser |
 |---|---|---|---|---|---|---|
 | Sign-in: email and password | yes | yes | yes | yes | yes | yes |
@@ -770,7 +772,9 @@ Nothing else is persisted, and signing out clears all of it.
 
 ### Phone browsers and in-app browsers
 
-The live link is often opened on a phone, in Safari or Chrome, or from inside another app. Two kinds of in-app browser behave differently:
+*The web build is dropped (Oct 25, [roadmap 15](roadmap.md#15-f9-the-web-build)); this subsection is the design for one if it returns.*
+
+The web build's link would often be opened on a phone, in Safari or Chrome, or from inside another app. Two kinds of in-app browser behave differently:
 
 - **The system's in-app view.** Slack, Gmail and many other apps open links in [`SFSafariViewController`](https://developer.apple.com/documentation/safariservices/sfsafariviewcontroller) on iOS or [Custom Tabs](https://developer.chrome.com/docs/android/custom-tabs) on Android. These are the system browser's engine, with its user agent and camera access, and Google allows OAuth in them. Custom Tabs shares the browser's cookies; `SFSafariViewController` keeps its own since iOS 11, so a user signed in to Safari signs in again there. The app treats them as `mobile`.
 - **An embedded web view.** Instagram, Facebook, LinkedIn and TikTok render links in their own web view. Google refuses OAuth there, and camera and file access can be limited. The app treats these as `in_app`.
@@ -788,6 +792,8 @@ The live link is often opened on a phone, in Safari or Chrome, or from inside an
 | Layout | Phone-width layouts are the same as native. Safe areas and the browser's toolbars are respected with `react-native-safe-area-context`, and the composer stays above the on-screen keyboard |
 
 ### Adapters
+
+*The browser implementations (`SystemCameraSource`, the desktop file picker, `browser`) belong to the dropped web build (Oct 25).*
 
 ```
  features/capture ──▶ CaptureSource ──┬─▶ LidarCaptureSource    (modules/lidar)               iOS, LiDAR
@@ -970,7 +976,7 @@ The fixtures use the same types as the live client, so a contract change that br
 | Model tests | Jest on every `model/`: the scan reducer against contract examples and a full replay, the resting rule, the capture machine, the message reducer, the map draft, the SSE parser on split chunks, `permissions.ts` against the role matrix, `diagnosis.ts` wording | CI |
 | API tests | Middleware against the mock transport: token refresh on `401`, key reuse with identical bytes on retry and a new key when the body changes, the retry policy (`budget_exceeded` never retried), `ErrorBody` parsing, the chat JSON replay | CI |
 | Component tests | React Native Testing Library on the cards with fixtures: question, diagnosis, plan checklist, confirmation card, capture slots | CI |
-| Device checks | A short manual script per build-plan day on a LiDAR iPhone, an Android phone, Safari and Chrome on phones, a link opened from Slack (system in-app view) and from Instagram (embedded web view), and a desktop browser | Before each demo build |
+| Device checks | A short manual script per build-plan day on a LiDAR iPhone, an Android phone, Safari and Chrome on phones, a link opened from Slack (system in-app view) and from Instagram (embedded web view), and a desktop browser (the Android and browser checks are dropped with the web build, Oct 25) | Before each demo build |
 
 ---
 
@@ -988,7 +994,7 @@ The fixtures use the same types as the live client, so a contract change that br
 ```
                         ┌─▶ Expo Go ─────────────────── UI work, mock mode (no LiDAR, no push)
  app/ ── npx expo ──────┤
-                        └─▶ web export (static files) ─▶ hosted on the control plane ─▶ live link
+                        └─▶ web export (static files) ─▶ hosted on the control plane ─▶ live link   (dropped Oct 25)
  app/ ── EAS build ─────┬─▶ development (expo-dev-client) ─▶ LiDAR iPhone, Android: module, push
                         └─▶ preview (internal distribution) ─▶ teammates' phones
 ```
@@ -997,16 +1003,16 @@ The fixtures use the same types as the live client, so a contract change that br
 |---|---|---|
 | Expo Go | Fast UI work early on, mock mode | `npx expo start` |
 | Development build | LiDAR module, push, device testing | EAS `development` profile with `expo-dev-client`; the LiDAR iPhone registered for ad-hoc installs ([development builds](https://docs.expo.dev/develop/development-builds/introduction/)) |
-| Web build | The live link (architecture 12) | `npx expo export -p web` produces static files. Where they are served from is open decision 5 ([Expo for web](https://docs.expo.dev/workflow/web/)) |
+| Web build | Dropped on Oct 25 (open decision 5) | Was `npx expo export -p web`, static files ([Expo for web](https://docs.expo.dev/workflow/web/)) |
 | Preview build | Teammates' phones | EAS `preview` profile ([EAS Build](https://docs.expo.dev/build/introduction/), [internal distribution](https://docs.expo.dev/build/internal-distribution/)) |
 
-If the web build has its own origin, the API must answer CORS for it, allowing the request headers `Authorization`, `Content-Type`, `Idempotency-Key` and `Last-Event-ID`, since every API call sends `Authorization` and JSON bodies use a non-simple `Content-Type`, so every call is [preflighted](https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request) ([MDN CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS); open decision 5).
+The web build is dropped, so the API answers no CORS: `API_WEB_ORIGINS` stays empty, and a native app sends no `Origin`. If a web build returns on its own origin, that origin goes in `API_WEB_ORIGINS` (never `*`), and the API must answer CORS for it, allowing the request headers `Authorization`, `Content-Type`, `Idempotency-Key` and `Last-Event-ID`, since every API call sends `Authorization` and JSON bodies use a non-simple `Content-Type`, so every call is [preflighted](https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request) ([MDN CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS); open decision 5).
 
 ---
 
 ## 18. Build plan
 
-The frontend track of [architecture 14](../architecture/README.md#14-build-plan). The [roadmap](roadmap.md) holds each slice's work, dependencies and exit checks; this is its calendar. The app is built for the iPhone first, in the [Conservatory](../design/design.md#31-conservatory) direction, and the web build comes last.
+The frontend track of [architecture 14](../architecture/README.md#14-build-plan). The [roadmap](roadmap.md) holds each slice's work, dependencies and exit checks; this is its calendar. The app is built for the iPhone first, in the [Conservatory](../design/design.md#31-conservatory) direction, and the web build, planned last, was dropped on Oct 25.
 
 | Dates | Frontend goal |
 |---|---|
@@ -1014,8 +1020,8 @@ The frontend track of [architecture 14](../architecture/README.md#14-build-plan)
 | Oct 20–21 | F1: the garden home and the new-scan sheet. F2: capture after the Camera app. F5: depth capture and the evaluation captures for vision by Oct 21 |
 | Oct 21–22 | F3: the live analysis. F4: the tinted diagnosis, the plan with its mini player, step by step, plant detail and the Tasks tab |
 | Oct 22–23 | F6: chat with answer blocks. F7: the 3D garden and the 2D map, Insights, members and invites, farm connectors, Google and Apple sign-in, account deletion. F5: `GardenView`, the mapping session, the Live Activity |
-| Oct 24 | F8: feature freeze, design and guideline review, accessibility, the web origin settled, the demo rehearsed and recorded |
-| Oct 25 | F9: the web build deployed as the live link |
+| Oct 24 | F8: feature freeze, design and guideline review, accessibility, the demo rehearsed and recorded |
+| Oct 25 | F9: dropped. The app ships on the iPhone only |
 
 ---
 
@@ -1025,12 +1031,12 @@ The frontend track of [architecture 14](../architecture/README.md#14-build-plan)
 2. **Styling.** Tokens with `StyleSheet` are proposed. NativeWind or Unistyles would add a build-time or native dependency; choose one only if the team prefers utility classes.
 3. **Clerk screens.** Custom screens with Clerk's hooks are proposed, because they match the app's design and work on every target. Clerk's hosted pages (`useHostedAuth`) or its native components (`AuthView`, development builds only) are the alternatives.
 4. **Sign-in methods.** Email and password, Google and Apple are proposed. Apple sign-in is only required for an App Store release, which build week doesn't include.
-5. **Web build origin.** A subdomain beside the API (needs CORS) or the same origin under a path (doesn't). Decide with open decision 2 of the architecture document.
+5. **Web build origin.** Closed on 2026-10-25: the team dropped the web build, and the app ships on the iPhone only. The API keeps `API_WEB_ORIGINS` empty, so it answers no CORS. If a web build returns: a subdomain beside the API needs CORS, and the same origin under a path doesn't.
 6. **Upload progress.** `expo/fetch` has no upload progress events. For shots without depth, `expo-file-system`'s `File.createUploadTask` sends one file with string fields as multipart and reports progress (*unverified* beyond the package's types). It doesn't fit LiDAR shots, which have three file parts. Use it only if the day-1 check shows uploads are slow enough to need a percentage.
 7. **Display name.** Sent by the app from Clerk's profile (proposed), or added to Clerk's session token as a custom claim so the API reads it directly.
 8. **Abandoned scans.** Decided: **Discard** deletes the pending scan (`DELETE /scans/{id}`). It still counts toward the daily scan limit, and a plant it created stays (contracts 3). Whether discarding should also offer to delete that new plant is open; only owners can delete plants.
-9. **Browser capture.** The system camera (`launchCameraAsync`) is proposed for phone browsers because it takes a full-resolution photo. `expo-camera`'s web view would allow the same framing overlay as native, but its photo is a frame from the video stream. Compare the two on the demo phones on day 1.
-10. **Web push.** The contracts accept `platform: "web"` push tokens and store them unused (contracts 9), because Expo Push serves only iOS and Android. Browser push would need a separate Web Push sender in the API, and on iOS works only for a page added to the home screen ([WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)). Until then the alert inbox covers browsers.
+9. **Browser capture.** Dropped with the web build (decision 5). The system camera (`launchCameraAsync`) is proposed for phone browsers because it takes a full-resolution photo. `expo-camera`'s web view would allow the same framing overlay as native, but its photo is a frame from the video stream. Compare the two on the demo phones on day 1.
+10. **Web push.** Dropped with the web build (decision 5). The contracts accept `platform: "web"` push tokens and store them unused (contracts 9), because Expo Push serves only iOS and Android. Browser push would need a separate Web Push sender in the API, and on iOS works only for a page added to the home screen ([WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)). Until then the alert inbox covers browsers.
 11. **The Live Activity or push for a scan's question and plan.** The scan's Live Activity alerts for the question and the plan (roadmap F5 item 6), and contracts 9's push sends the same events to the scan's creator. The HIG says not to send a push for an update a Live Activity already shows. Proposed: while the scan has a running activity, its alert is the one; the push goes only where there is none (another device, the activity turned off, or the app gone past the 25 s grace). That needs the app to tell the API, or the push to be dropped on the phone by `setForegroundFilter`; settle it with the backend before push lands ([backend roadmap S6](../backend/roadmap.md#10-s6-background-work-and-resilience)).
 
 ---

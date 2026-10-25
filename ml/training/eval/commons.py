@@ -2,6 +2,7 @@
 "Where the photos come from").
 
     python -m ml.training.eval.commons fetch
+    python -m ml.training.eval.commons refetch
     python -m ml.training.eval.commons add --labeller NAME
 
 iNaturalist has no 2026 photo of an abiotic problem on our crops (searched 2026-10-24), so the
@@ -202,6 +203,43 @@ def fetch(args) -> int:
     return 1 if problems else 0
 
 
+def refetch(args) -> int:
+    """Downloads again the files of cases already in the manifest and not on disk, with no new
+    selection: only the files of commons.yaml whose photo the manifest holds. Each is checked against
+    the manifest's SHA-256, and one that differs is encoded again as before `inat.strip` kept the colour
+    profile; one that still differs is left in place (the harness refuses it) and listed."""
+    want = inat.manifest_files(args.manifest, "commons/", args.photos)
+    for f in want:
+        (args.photos / f).unlink(missing_ok=True)   # one of another SHA-256 is downloaded again
+    titles = [f["title"] for c in load_cases(args.cases) for f in c["files"] if photo_file(f["title"]) in want]
+    info = file_info(titles)
+    problems, got = [], []
+    for t in titles:
+        i = info.get(t) or {"missing": True}
+        if i.get("missing"):
+            problems.append(f"{t}: not on Commons")
+            continue
+        dest = args.photos / photo_file(t)
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(inat.strip(download(i["url"])))
+            got.append(photo_file(t))
+        except (OSError, ValueError) as e:
+            problems.append(f"{t}: download failed: {e}")
+    for t in [t for t in titles if photo_file(t) in got and inat.sha256(args.photos / photo_file(t)) != want[photo_file(t)]]:
+        try:   # encoded before the colour profile was kept (inat.strip's note)?
+            (args.photos / photo_file(t)).write_bytes(inat.strip(download(info[t]["url"]), keep_icc=False))
+        except (OSError, ValueError) as e:
+            problems.append(f"{t}: download failed: {e}")
+    differ = [f for f in got if inat.sha256(args.photos / f) != want[f]]
+    print(f"{len(want)} commons photos of the manifest's missing: {len(got)} downloaded, {len(differ)} with another SHA-256")
+    problems += [f"SHA-256 differs from the manifest's: {f}" for f in differ]
+    problems += [f"not fetched: {f}" for f in want if f not in got and not any(f in p for p in problems)]
+    for p in problems:
+        print(p, file=sys.stderr)
+    return 1 if problems else 0
+
+
 def case(c: dict, cands: dict[str, dict], photos: Path, labeller: str, splits: dict[str, str]) -> dict:
     """A manifest case (evaluation.md §3) from a kept entry of commons.yaml; ValueError when it isn't one."""
     check_case(c)
@@ -266,15 +304,18 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="command", required=True)
     for name, help_ in (("fetch", "read the licences, download the photos, write the contact sheet"),
+                        ("refetch", "download again the photos of cases already in the manifest"),
                         ("add", "append the kept cases to manifest.jsonl")):
         p = sub.add_parser(name, help=help_)
         p.add_argument("--cases", type=Path, default=CASES)
         p.add_argument("--photos", type=Path, default=PHOTOS)
+        if name == "refetch":
+            p.add_argument("--manifest", type=Path, default=MANIFEST)
         if name == "add":
             p.add_argument("--labeller", required=True, help="your GitHub login")
             p.add_argument("--manifest", type=Path, default=MANIFEST)
     args = ap.parse_args(argv)
-    return fetch(args) if args.command == "fetch" else add(args)
+    return {"fetch": fetch, "refetch": refetch, "add": add}[args.command](args)
 
 
 if __name__ == "__main__":
