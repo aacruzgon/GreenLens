@@ -221,3 +221,63 @@ python3 tools/smoke/s4.py --base-url https://<control-plane-host> \
 ```
 
 `docker compose kill` sends SIGKILL. Don't use `stop` or `restart`: they send SIGTERM, and `api`'s 190 s grace period lets the step finish. `start` starts the same container with the same environment; if the `unless-stopped` policy has already brought it back, `start` does nothing and exits 0. `api`'s health check allows 60 s for start-up, and the script waits up to `--health-timeout` (300 s) for `/healthz` through the public URL. While `api` is down, the rig's workers can't claim or complete jobs; they retry.
+
+## S9: farm connectors and Era (`s9.py`)
+
+`s9.py` runs backend roadmap S9's live exit checks 1 and 4 ([roadmap 12](../../../docs/backend/roadmap.md#12-s9-farm-connectors-and-era)) against a running `api`, in `s4.py`'s and `s5.py`'s style. It signs in the same way, as the demo garden's owner (`demo+clerk_test@example.com`, the user and sign-up fields `tools/demo/demo_garden.py` uses; `--email` for another). It prints PASS, FAIL or SKIP with the evidence for each check, then the chat turn's token usage and a cost range, and exits 1 if any check failed. SKIP means the check couldn't prove its claim on this run, never a pass. Exit checks 2 (the `era` CI job) and 3 (the evaluation on two models) aren't this script's.
+
+The demo garden is `--garden-id`, else `ERA_DEMO_GARDEN_ID` from the environment or `--env-file`, else the user's own garden named as the fixture's [`garden.json`](../../tests/fixtures/era/maple-row/garden.json) (`Maple Row Farm`). Bed 3, the spray log, the folder and the channels are read from the fixture, not written into the script.
+
+| Check | What it proves |
+|---|---|
+| `connectors` | `GET /gardens/{id}/connectors` answers `available: true` with one Slack and one Drive connector of `endpoint: era`, each `active`, with a `synced_at` and `record_count` > 0. Slack's sources include `#field-reports` and `#crew`, Drive's is the `Farm records` folder (`F_FARM`). `--sync-wait N` polls for up to N seconds while the first sync runs |
+| `plan` | One scan of bed 3 (the fixture's `P_BED3`, `Bed 3`) to `planned`: `--photo` as `whole_plant`, `--leaf-photo` as `leaf_closeup`, each indicator question answered from `--answers` as in `s4.py`. `--scan-id` uses a scan the user already has instead; it must be of bed 3. Then `ActionPlan.farm_records` holds a `google_drive` record titled `Spray log 2026` (the fixture's `D_SPRAY`; a different Drive id is a note), at least one step's `farm_citations` names it, every id a step cites is in `farm_records`, every record of an `era` connector carries `text`, and no sentence of the summary, `watch_for` or a step holds a rate. Prints the step that cites the spray log |
+| `chat` | `--chat-question` (default "What has the crew reported about bed 3 in #field-reports?") on a conversation anchored on that scan, or on the garden when the run has no scan. The stored message (`farm_citations` has no SSE event: contracts 8) cites a `slack` record titled `#field-reports` with a non-empty `link`, and every `era` citation carries `text` (the app shows it in a sheet, EON decision 10); no streamed sentence holds a rate. Prints the route, the tools and the usage |
+| `era-guard` | `DELETE /connectors/{id}` of each `era` connector answers `409 invalid_state` (EON decision 11), and both stay listed with their status. A `202` fails the check, and that demo connector is then really being deleted; `api`'s next start seeds it again |
+| `disconnect` | With `--connector-id`, a real `vendor` connector that is `active`, synced and holds records (an `era` one fails at once: owners can't delete it). `DELETE /connectors/{id}` answers `202` and the connector leaves the garden's list (the store marks it `deleting` and the list skips it; the revoke and the record deletion run in the background). With `--db-check`, no `farm_record` row of it and no `connector` row remain within `--delete-timeout`. With `--api-log FILE` or `--api-log-cmd CMD`, `api`'s log holds `token revoked` and then `connector deleted` for it, and none of the not-revoked lines (`token revoke failed…`, `another connector holds this account's token; not revoked`, `connectors off: …`). SKIP without `--connector-id`, and SKIP, naming the part, when either option is missing |
+
+**A rate** is a match of the fixture's own `rate_pattern` (`answers.toml`, `[safety]`), the agent evaluation's rule: a mass or volume per volume or area (`1.75 g/L`, `1 g per litre`), a spoon or fluid-ounce measure, a percentage of a product, or a `1:N` ratio. Dates and bed numbers aren't rates, and nor is a volume alone (`60 L`). `s5.py`'s broader amount pattern only adds a warning to read.
+
+**What it writes.** The `plan` check makes one scan of bed 3 in the demo garden (none with `--scan-id`), and the `chat` check one conversation. That scan becomes bed 3's latest, as a demo scan would. The `disconnect` check deletes the `--connector-id` connector, its token and its records; nothing else is changed, since `era-guard`'s deletes must be refused. `--cleanup` sends `DELETE /scans/{id}` for the scans the script made and nothing else, but the API deletes only a `pending` scan: a planned scan stays (`409`), and the script says so. One run uses one scan of the user's daily 30 and one chat turn on the demo owner's daily chat budget.
+
+**What the API can't show.** The vendor's side of a revoke isn't visible through the API, and the script never handles a token. `token revoked` is logged when the vendor's revoke call returned success (`auth.revoke` for Slack, Google's `/revoke`); to see it from the vendor's side, check that the app is gone from the Slack workspace's installed apps and from the Google account's third-party access. Without `--db-check` the records' deletion shows only as the connector leaving the list, which happens before the deletion runs.
+
+**`--out FILE`** writes the verdicts and evidence, the connector list, the final `GET /scans/{id}` with its events, and the chat turn (text, route, tools, usage, `farm_citations`). Signed URLs keep their path, without the signature. `era` citations hold the synthetic records' text, rates included.
+
+### Locally
+
+`api` needs `CONNECTOR_KEY`, `ERA_SLACK_BASE`, `ERA_GOOGLE_BASE` and `ERA_DEMO_GARDEN_ID` (printed by `demo_garden.py`), the workers of `s5.py`'s section, and the simulators of the dev compose's `era` profile with the Maple Row Farm fixture in their `default` tenant. `infra/era-seed/seed.py` does that inject on the control plane, but it refuses simulators without an admin token, as the dev ones are, so inject by hand:
+
+```
+docker compose -f ../infra/dev.compose.yml --profile era up -d --wait era-slack era-drive
+for s in "8091 slack.json" "8092 google-drive.json"; do set -- $s
+  curl -fsS -XPOST http://127.0.0.1:$1/_admin/tenants/default/reset
+  curl -fsS -XPOST http://127.0.0.1:$1/_admin/tenants/default/inject \
+    -H 'content-type: application/json' --data-binary @tests/fixtures/era/maple-row/$2
+done
+python3 tools/demo/demo_garden.py                       # prints ERA_DEMO_GARDEN_ID=<id>
+(set -a; . ../infra/dev/.env; set +a; CONNECTOR_KEY=… ERA_DEMO_GARDEN_ID=<id> \
+  ERA_SLACK_BASE=http://127.0.0.1:8091 ERA_GOOGLE_BASE=http://127.0.0.1:8092 \
+  exec ./target/debug/api) >> /tmp/s9-api.log 2>&1 &
+python3 tools/smoke/s9.py --photo plant.jpg --leaf-photo leaf.jpg \
+  --answers concentric_rings_bullseye=yes,*=unsure --sync-wait 120 --out /tmp/s9.json
+```
+
+The first sync runs shortly after start; `--sync-wait` covers it. A disconnect needs a real connector, which only the app's connect flow makes (Slack's app and Google's OAuth client, EON E11); with one in a local garden, add `--connector-id <id> --db-check --api-log /tmp/s9-api.log`. `--db-check` reads SurrealDB with the dev compose's root user, as `s5.py`'s does, so it is for the laptop only.
+
+### Against the deployed control plane
+
+With the `demo` profile up (the simulators and `era-seed`) and `ERA_DEMO_GARDEN_ID` in `.env.api` ([demo](../demo/README.md)). Connect the real Slack workspace and Drive folder in the app as the demo owner first, let each sync, and read their ids from `GET /gardens/{id}/connectors` (the `connectors` check prints them). Then one run per real connector:
+
+```
+CP="cd /srv/pdm/repo && docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose"
+python3 tools/smoke/s9.py --base-url https://<control-plane-host> --garden-id <demo garden> \
+  --photo <a bed 3 photo with early blight> --leaf-photo <its leaf close-up> \
+  --answers concentric_rings_bullseye=yes,*=unsure --out s9-rig.json \
+  --connector-id <the Slack connector> --api-log-cmd "ssh <rig> '$CP logs --no-color --since 1h api'"
+python3 tools/smoke/s9.py --base-url https://<control-plane-host> --garden-id <demo garden> \
+  --only disconnect --connector-id <the Drive connector> \
+  --api-log-cmd "ssh <rig> '$CP logs --no-color --since 1h api'"
+```
+
+Leave out `--db-check`. The `disconnect` check then proves the revoke from `api`'s log, and that the connector left the list, but not the records' deletion: it ends SKIP, naming that part. No route shows a deleted connector's records, so prove that half on the rig's SurrealDB by hand, with the query `--db-check` sends: ``SELECT count() AS n FROM farm_record WHERE connector = connector:`<id>` GROUP ALL;`` must return nothing (no rows, so no count), and ``SELECT * FROM connector:`<id>`;`` too. A later run can reuse the bed 3 scan with `--scan-id`, as the same user.
