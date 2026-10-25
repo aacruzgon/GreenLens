@@ -126,6 +126,7 @@ export function GardenHomeScreen() {
         />
         <HeroControls
           onAddPlant={view.can.scan ? view.actions.addPlant : undefined}
+          onOpenGarden={view.actions.openGarden}
           overPhoto={hasPhoto}
           topInset={insets.top}
         />

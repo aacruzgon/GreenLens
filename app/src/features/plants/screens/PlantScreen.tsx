@@ -1,5 +1,5 @@
 // A plant's page (roadmap 10 item 8; screens 3.5): the melt hero with its name, the status, the species with Change,
-// the timeline of scans (each opening its result), its notes, and Scan. The growth curve comes with Insights in F7.
+// the timeline of scans (each opening its result), its notes, and Scan. Insights opens its charts (roadmap F7 item 3).
 import { Image } from "expo-image";
 import { useLocalSearchParams } from "expo-router";
 import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
@@ -109,6 +109,22 @@ export function PlantScreen() {
         ) : null}
 
         <View style={{ paddingHorizontal: gutter, marginTop: space[6], gap: space[6] }}>
+          {p && v.timeline.rows.length ? (
+            <Card onPress={v.actions.insights} accessibilityLabel={`Insights: ${p.name}'s health, spots and height over time`} testID="plant-insights">
+              <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+                <LineIcon name="ruler" color={colors.text} size={20} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text variant="body" emphasis>
+                    Insights
+                  </Text>
+                  <Text variant="footnote" color="textMuted">
+                    Health, spots and height over time
+                  </Text>
+                </View>
+                <LineIcon name="chevronRight" color={colors.textMuted} size={16} />
+              </View>
+            </Card>
+          ) : null}
           <Section title="Timeline">
             {v.timeline.loading ? (
               <Skeleton height={64} radius={radii.card} />

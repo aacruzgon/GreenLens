@@ -47,7 +47,10 @@ reports before the test split is scored. Writes `reports/<out>.md` and `.json`. 
 part keeps what the photos and models gave (each case's results, the disease head's logits per leaf
 photo with its labels and temperature, each VLM job's calls and guess, each photo's upload result; no
 image data), so `--rebuild` recomputes every row from it without photos, models or a GPU, and a test
-checks the committed report rebuilds exactly. `--notes` adds a markdown section, such as how the run went.
+checks the committed report rebuilds exactly. The report records a hash of its split's cases beside the
+manifest's, so it still rebuilds after the manifest gains cases in another split, and refuses once one of
+its own cases changes. `--notes` adds a markdown section, such as how the run went;
+the JSON keeps it as `notes`, beside `measured` rather than in it, since nothing measured it.
 """
 
 from __future__ import annotations
@@ -532,13 +535,16 @@ def markdown(rep: dict, out: str) -> str:
         lines.append("- **T2, T3.** Wrong top-1: " + ("; ".join(f"`{c}` ({r['truth']}) → {', '.join(r['top3'])}" for c, r in sorted(wrong.items())) or "none") + ".")
     if rep["t4"]:
         lines.append(f"- **T4.** Cases where both agree on a wrong species: {', '.join(f'`{c}`' for c in rep['t4']['all']['cases']) or 'none'}.")
-    if d:
+    if d and d["photos"]:
         e = d["t7"]["all"]
         lines.append(f"- **T5–T7.** {d['photos']} leaf photos; top-1 {d['top1']:.0%}. Mean top-1 confidence {e['mean_confidence']:.2f} "
                      f"against {e['right']} of {e['photos']} right; a perfectly calibrated head with these confidences averages ECE "
                      f"{e['calibrated_mean']:.3f} (95% of draws under {e['calibrated_p95']:.3f}). Top-1 answers per true class: " + " ".join(
             f"**{sp}:** " + "; ".join(f"{cal.short(t)} ({sum(c.values())}) → " + ", ".join(f"{cal.short(p)} {n}" for p, n in c.items())
                                       for t, c in rows_.items()) + "." for sp, rows_ in d["confusion"].items()))
+    elif d:
+        lines.append("- **T5–T7.** No leaf photos.")
+    if d:
         lines.append("- **T5, left out:** " + (", ".join(f"{v} {k}" for k, v in m["disease"]["left_out"].items()) or "none") + ".")
     if v:
         mt = rep["vlm_meta"]
@@ -549,8 +555,8 @@ def markdown(rep: dict, out: str) -> str:
         lines.append("- **T17, T18.** Rejected for: " + (", ".join(f"{k} {n}" for k, n in rep["upload"]["all"]["reasons"].items()) or "none") + ".")
     if rep["missing"]:
         lines.append("- **Not measured:** " + "; ".join(f"{k}: {why}" for k, why in rep["missing"].items()) + ".")
-    if m.get("notes"):
-        lines += ["", m["notes"].strip()]
+    if rep.get("notes"):
+        lines += ["", rep["notes"].strip()]
     lines += ["", "Inputs: " + "; ".join(f"{k} `{v['file']}` (`{v['sha256']}`)" for k, v in inputs.items() if isinstance(v, dict) and "file" in v) + "."]
     return "\n".join(lines) + "\n"
 
@@ -566,6 +572,12 @@ def split_cases(manifest: Path, split: str) -> tuple[list[dict], str]:
     data = manifest.read_bytes()
     cases = [c for c in map(json.loads, filter(str.strip, data.decode().splitlines())) if c["split"] == split]
     return cases, hashlib.sha256(data).hexdigest()
+
+
+def cases_sha(cases: list[dict]) -> str:
+    """A hash of a split's cases that ignores their order and the JSON's spacing, but not their content."""
+    lines = sorted(json.dumps(c, sort_keys=True, ensure_ascii=False) for c in cases)
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:16]
 
 
 # --- rebuilding a report from its JSON ----------------------------------------------------------
@@ -600,14 +612,26 @@ def measured_of(doc: dict, vlm_dir: Path | None = None) -> dict:
     return m
 
 
-def rebuilt(doc: dict, measured: dict, argv: list[str], draws: int = FLOOR_DRAWS) -> dict:
-    """The report recomputed from what it measured, its run's command, date and inputs kept."""
-    manifest = ROOT / doc["inputs"]["manifest"]["file"]
+def rebuilt(doc: dict, measured: dict, argv: list[str], draws: int = FLOOR_DRAWS, notes: str | None = None) -> dict:
+    """The report recomputed from what it measured, its run's command, date, inputs and notes kept.
+    `notes` replaces the notes; a report that kept them inside `measured` has them moved out."""
+    recorded = doc["inputs"]["manifest"]
+    manifest = ROOT / recorded["file"]
     cases, sha = split_cases(manifest, doc["split"])
-    if sha[:16] != doc["inputs"]["manifest"]["sha256"]:
-        raise SystemExit(f"{manifest} changed since the report was made")
+    split, kept = cases_sha(cases), recorded.get("split_sha256")
+    if sha[:16] != recorded["sha256"] and split != kept:
+        raise SystemExit(f"{manifest}'s {doc['split']} cases changed since the report was made")
+    if kept is not None and split != kept:
+        raise SystemExit(f"{manifest} is the file the report read, but its {doc['split']} cases hash to {split}, "
+                         f"not the recorded {kept}: cases_sha changed, and a rebuild won't overwrite the record")
+    # The manifest's sha256 stays the file the run read, even when the file has since changed.
     keep = {k: doc[k] for k in ("date", "command", "split", "cases", "shipped", "missing", "inputs", "vlm_meta") if k in doc}
+    keep["inputs"] = {**doc["inputs"], "manifest": {**recorded, "split_sha256": split}}
+    notes = notes if notes is not None else doc.get("notes", measured.get("notes"))
+    measured = {k: v for k, v in measured.items() if k != "notes"}
     rep = {**keep, "measured": measured, **assemble(measured, cases, draws)}
+    if notes:
+        rep["notes"] = notes
     if argv is not None:
         rep["rebuilt"] = {"command": shlex.join(["python", "-m", "ml.training.eval.score_test_split", *argv]),
                           "date": dt.date.today().isoformat()}
@@ -636,10 +660,8 @@ def main(argv=None) -> int:
 
     if args.rebuild:
         doc = json.loads(args.rebuild.read_text())
-        measured = measured_of(doc, args.vlm)
-        if args.notes:
-            measured["notes"] = args.notes.read_text()
-        write(rebuilt(doc, measured, argv), args.out or args.rebuild.stem)
+        notes = args.notes.read_text() if args.notes else None
+        write(rebuilt(doc, measured_of(doc, args.vlm), argv, notes=notes), args.out or args.rebuild.stem)
         return 0
 
     out = args.out or f"{args.split}-split-{today}"
@@ -650,7 +672,8 @@ def main(argv=None) -> int:
     m = {"plant_passes": None, "species_cases": None, "bioclip_stored": None, "disease": None, "vlm": None, "upload_photos": None}
     rep = {"date": today, "command": shlex.join(["python", "-m", "ml.training.eval.score_test_split", *argv]), "split": args.split,
            "cases": len(cases), "shipped": s, "missing": {}, "vlm_meta": None,
-           "inputs": {"manifest": file_id(args.manifest), "models_manifest": file_id(MODELS / "manifest.toml")}}
+           "inputs": {"manifest": file_id(args.manifest) | {"split_sha256": cases_sha(cases)},
+                      "models_manifest": file_id(MODELS / "manifest.toml")}}
 
     if args.plant:
         rep["inputs"]["plant"] = file_id(args.plant)
@@ -698,10 +721,10 @@ def main(argv=None) -> int:
         m["upload_photos"] = upload_photos(args.faces, cases, args.photos, args.split)
     else:
         rep["missing"]["T17, T18"] = "no face_check raw file given"
-    if args.notes:
-        m["notes"] = args.notes.read_text()
 
     rep = {**rep, "measured": m, **assemble(m, cases)}
+    if args.notes:
+        rep["notes"] = args.notes.read_text()
     write(rep, out)
     return 0
 

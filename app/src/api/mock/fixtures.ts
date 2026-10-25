@@ -79,6 +79,19 @@ export const PROBLEMS = {
   nitrogen: { id: "nitrogen_deficiency", name: "Nitrogen deficiency", kind: "abiotic" },
 } as const satisfies Record<string, ProblemDef>;
 
+/**
+ * The demo species' `frost` (S5 work 9: a species field, `tender` or `hardy`). Lettuce has none, so its plants'
+ * `frost_tender` is absent: the planner shows it as not known, never as hardy.
+ */
+export const SPECIES_FROST: Record<string, "tender" | "hardy"> = { tomato: "tender", pepper: "tender", basil: "tender", kale: "hardy" };
+
+/** The plant's status a diagnosis' primary problem leaves it in: a disease makes it sick, anything else watch. */
+export function statusForProblem(problemId: string | undefined): S["PlantStatus"] {
+  if (!problemId) return "healthy";
+  const def = Object.values(PROBLEMS).find((p) => p.id === problemId);
+  return def && (def.kind === "fungal" || def.kind === "bacterial") ? "sick" : "watch";
+}
+
 export const CITATIONS = {
   blight: {
     source_id: "umn-ext-early-blight",
@@ -218,6 +231,7 @@ export function makeScore(
     contradicted?: S["IndicatorEvidence"][];
     unsure?: S["IndicatorEvidence"][];
     fit?: S["WeatherFit"];
+    classifierWeight?: number;
   } = {},
 ): S["CandidateScore"] {
   return {
@@ -225,6 +239,7 @@ export function makeScore(
     name: problem.name,
     kind: problem.kind,
     score,
+    classifier_weight: parts.classifierWeight ?? 0,
     matched: parts.matched ?? [],
     contradicted: parts.contradicted ?? [],
     unsure: parts.unsure ?? [],

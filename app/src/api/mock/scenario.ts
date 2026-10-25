@@ -17,8 +17,11 @@ export type CallFault = "budget_exceeded" | "invalid_state" | "rate_limited";
  */
 export type ChatFault = "budget_exceeded" | "error_event" | "stall" | "in_progress";
 
-/** The demo controls' account: the demo story, or a new one that starts empty. */
-export type DemoAccount = "demo" | "new";
+/**
+ * The demo controls' account: the demo story, a new one that starts empty, or a second person with no garden of
+ * their own who holds an invite to the demo garden (members.ts).
+ */
+export type DemoAccount = "demo" | "new" | "guest";
 
 export interface ScenarioState {
   /** Outcome of the next submitted scan; back to "auto" once a scan uses it. */

@@ -137,19 +137,21 @@ yarn-error.*
 # ---------------------------------------------------------------------------
 # Python / ML (ml/): datasets, caches, runs and model files never go in git
 # ---------------------------------------------------------------------------
-.venv/
+# No trailing slash on the data folders: a worktree often links them to the main checkout, and
+# "dir/" matches only a directory, so `git add` would take the link (#210 did).
+.venv
 __pycache__/
 *.pyc
 .pytest_cache/
-ml/training/data/raw/
-ml/training/data/cache/
-ml/training/runs/
-ml/models/files/
-ml/knowledge/.cache/
-ml/knowledge/build/
-ml/knowledge/raw/
-ml/training/eval/photos/
-ml/training/eval/faces/
+ml/training/data/raw
+ml/training/data/cache
+ml/training/runs
+ml/models/files
+ml/knowledge/.cache
+ml/knowledge/build
+ml/knowledge/raw
+ml/training/eval/photos
+ml/training/eval/faces
 *.onnx
 *.onnx.data
 *.safetensors

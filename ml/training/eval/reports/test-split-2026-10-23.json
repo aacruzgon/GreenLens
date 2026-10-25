@@ -23,7 +23,8 @@
  "inputs": {
   "manifest": {
    "file": "ml/training/eval/manifest.jsonl",
-   "sha256": "e48d59e7852da853"
+   "sha256": "e48d59e7852da853",
+   "split_sha256": "8c6989f4c12a1597"
   },
   "models_manifest": {
    "file": "ml/models/manifest.toml",
@@ -3426,8 +3427,7 @@
      }
     }
    ]
-  },
-  "notes": "## How it ran\n\nThe run script is [`m18.sh`](../m18.sh), committed byte for byte as it ran (SHA-256 `7b9ffc03c1038d5a`). It holds the rig's GPU lock, stops when `ml/` or `backend/` has uncommitted changes, and refuses a second test stage once its `test.started` file exists. vLLM ran from a copy of main's `infra/rig.compose.yml` at 2846897 (byte for byte), with its defaults: Qwen3.5-9B AWQ at 0.78 of the GPU, 2 slots, 1,003,520 pixels, thinking off. The run's state files stay in the git-ignored `ml/training/runs/m18-2026-10-24/`. Times are on Oct 23, EDT.\n\n- **First attempt, at 9562d0c.** The leakage stage ran from 21:45:29 to 21:46:25 and found 0 matches not allowed, but it wrote its report over the committed `leakage-2026-10-23.*`, because it ran on the same date. The test stage stopped at 21:46:25 at the clean-tree check (a tracked file had changed), before writing `test.started` and before reading any test photo.\n- **Between the attempts.** The two files were restored from HEAD, the leakage stage was given `--out leakage-<date>-m18`, and main was merged (4fff017, 21:46:34), which changed only `docs/vision/devpost.md`.\n- **Second attempt, at 4fff017.** The leakage stage ran from 21:47:13 to 21:47:47: 0 not allowed ([leakage-2026-10-23-m18](leakage-2026-10-23-m18.md)). The test stage started at 21:47:47: the plant check to 21:48:29, the face check on the CPU to 21:49:49, the bench cases and the worker's build to 21:51:00, vLLM ready after 160 s, the 41 jobs in 140 s, vLLM down at 21:56:05 and this report at 21:56:22.\n- **Rebuilt from its JSON on Oct 23,** after Alan's review of #192, with no photo or model run again. T7 is now set against a perfectly calibrated head, T6 and T7 are also given without the 7, and T8's first tries are counted per call. The JSON now keeps the VLM jobs and the head's labels, so `--rebuild` needs nothing outside git. Every k of n is the same as in the first report; only T7's verdict changed, from missed to undecided.\n"
+  }
  },
  "t1": {
   "all": {
@@ -3858,8 +3858,9 @@
    }
   }
  },
+ "notes": "## How it ran\n\nThe run script is [`m18.sh`](../m18.sh), committed byte for byte as it ran (SHA-256 `7b9ffc03c1038d5a`). It holds the rig's GPU lock, stops when `ml/` or `backend/` has uncommitted changes, and refuses a second test stage once its `test.started` file exists. vLLM ran from a copy of main's `infra/rig.compose.yml` at 2846897 (byte for byte), with its defaults: Qwen3.5-9B AWQ at 0.78 of the GPU, 2 slots, 1,003,520 pixels, thinking off. The run's state files stay in the git-ignored `ml/training/runs/m18-2026-10-24/`. Times are on Oct 23, EDT.\n\n- **First attempt, at 9562d0c.** The leakage stage ran from 21:45:29 to 21:46:25 and found 0 matches not allowed, but it wrote its report over the committed `leakage-2026-10-23.*`, because it ran on the same date. The test stage stopped at 21:46:25 at the clean-tree check (a tracked file had changed), before writing `test.started` and before reading any test photo.\n- **Between the attempts.** The two files were restored from HEAD, the leakage stage was given `--out leakage-<date>-m18`, and main was merged (4fff017, 21:46:34), which changed only `docs/vision/devpost.md`.\n- **Second attempt, at 4fff017.** The leakage stage ran from 21:47:13 to 21:47:47: 0 not allowed ([leakage-2026-10-23-m18](leakage-2026-10-23-m18.md)). The test stage started at 21:47:47: the plant check to 21:48:29, the face check on the CPU to 21:49:49, the bench cases and the worker's build to 21:51:00, vLLM ready after 160 s, the 41 jobs in 140 s, vLLM down at 21:56:05 and this report at 21:56:22.\n- **Rebuilt from its JSON on Oct 23,** after Alan's review of #192, with no photo or model run again. T7 is now set against a perfectly calibrated head, T6 and T7 are also given without the 7, and T8's first tries are counted per call. That rebuild read the VLM jobs from the run's `out.jsonl` (`--vlm`, checked by SHA-256); the JSON now keeps them and the head's labels, so `--rebuild` needs nothing outside git. Every k of n is the same as in the first report. Two verdicts changed: T7's, from missed to undecided, and T8's retry row's, from met to a check for zero failures (no failures).\n- **Rebuilt again on Oct 24,** after Alan approved #192, to keep these notes beside the JSON's `measured` part instead of inside it, and to correct the line above, which named only T7. No row changed.\n- **Rebuilt a third time on Oct 24,** to record a hash of the test split's own cases beside the manifest's, so the report still rebuilds after the manifest gains cases in another split (M10). No row changed.\n",
  "rebuilt": {
-  "command": "python -m ml.training.eval.score_test_split --rebuild ml/training/eval/reports/test-split-2026-10-23.json --vlm ml/training/runs/vlm-bench/qwen35-awq-test --notes ml/training/runs/m18-2026-10-24/notes.md",
-  "date": "2026-10-23"
+  "command": "python -m ml.training.eval.score_test_split --rebuild ml/training/eval/reports/test-split-2026-10-23.json --notes ml/training/runs/m18-2026-10-24/notes.md",
+  "date": "2026-10-24"
  }
 }

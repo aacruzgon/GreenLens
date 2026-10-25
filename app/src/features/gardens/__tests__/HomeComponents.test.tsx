@@ -150,14 +150,16 @@ describe("GardenNotes", () => {
 describe("HeroControls", () => {
   it("offers + to editors", async () => {
     const onAdd = jest.fn();
-    await themed(<HeroControls onAddPlant={onAdd} overPhoto topInset={0} />);
+    await themed(<HeroControls onAddPlant={onAdd} onOpenGarden={jest.fn()} overPhoto topInset={0} />);
     await fireEvent.press(screen.getByRole("button", { name: "Add a plant" }));
     expect(onAdd).toHaveBeenCalledTimes(1);
   });
 
-  it("shows nothing to viewers", async () => {
-    await themed(<HeroControls overPhoto={false} topInset={0} />);
+  it("offers viewers the garden in 3D but not +", async () => {
+    const onOpen = jest.fn();
+    await themed(<HeroControls onOpenGarden={onOpen} overPhoto={false} topInset={0} />);
     expect(screen.queryByRole("button", { name: "Add a plant" })).toBeNull();
-    expect(screen.queryByTestId("hero-controls")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Garden in 3D" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });

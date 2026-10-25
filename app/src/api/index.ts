@@ -33,9 +33,12 @@ export { createQueryClient, queryClient, STALE } from "./queryClient";
 
 export * from "./resources/me";
 export * from "./resources/gardens";
+export * from "./resources/members";
 export * from "./resources/plants";
 export * from "./resources/tasks";
 export * from "./resources/scans";
 export * from "./resources/species";
 export * from "./resources/memories";
 export * from "./resources/chat";
+export * from "./resources/connectors";
+export * from "./resources/insights";

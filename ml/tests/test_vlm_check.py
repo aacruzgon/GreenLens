@@ -26,9 +26,9 @@ def valid_findings() -> dict:
         "organisms": [{"label": "aphid", "other_name": None, "count": "few", "image": "img3",
                        "bbox_2d": [100, 200, 300, 400], "certainty": "low"}],
         "damage": [
-            {"pattern": "shot_holes", "other_description": None, "image": "img2",
+            {"trace": "flea beetles", "pattern": "shot_holes", "other_description": None, "image": "img2",
              "bbox_2d": [0, 0, 1000, 1000], "certainty": "high"},
-            {"pattern": "other", "other_description": "pale stippling", "image": "img2",
+            {"trace": "mites under the leaf", "pattern": "other", "other_description": "pale stippling", "image": "img2",
              "bbox_2d": None, "certainty": "low"},
         ],
         "notes": "",
@@ -125,8 +125,11 @@ def test_indicators_schema():
     missing = valid_answers()
     missing.pop("q2_small_spots_dark_border")
     assert vc.validation_errors(schema, missing)
+    over_ask = valid_answers()
+    over_ask["q1_concentric_rings"]["reason"] = "x" * 61  # over the prompt's 60, under the cap
+    assert vc.validation_errors(schema, over_ask) == []
     long_reason = valid_answers()
-    long_reason["q1_concentric_rings"]["reason"] = "x" * 61
+    long_reason["q1_concentric_rings"]["reason"] = "x" * 101
     assert vc.validation_errors(schema, long_reason)
 
 

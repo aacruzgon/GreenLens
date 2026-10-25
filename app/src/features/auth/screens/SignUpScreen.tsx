@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Banner, Button, Text, TextField } from "@/ui";
 
 import { AuthShell } from "../components/AuthShell";
+import { SsoButtons } from "../components/SsoButtons";
 import { clerkErrorMessage, isEmailTaken } from "../model/clerkErrors";
 import { TEST_PHONE_HINT, toE164 } from "../model/phone";
 
@@ -42,6 +43,7 @@ export function SignUpScreen() {
           }}
         />
       ) : null}
+      <SsoButtons />
       <TextField
         label="Email"
         value={email}

@@ -2,7 +2,8 @@
 // Resettable: `mockStore.reset()` re-seeds the demo story with dates relative to now.
 
 import { ChatState, seedChat } from "./chat";
-import { buildSeed, IDS, type StoredPlant, type StoredScan, type Seed } from "./fixtures";
+import { buildSeed, IDS, SPECIES_FROST, statusForProblem, type StoredPlant, type StoredScan, type Seed } from "./fixtures";
+import { MemberState, seedMembers } from "./members";
 import { DateKit, nowTs, type S } from "./util";
 
 export type { StoredScan, StoredPlant };
@@ -49,6 +50,8 @@ export class MockStore {
   memories: S["Memory"][] = [];
   /** Conversations, cards, replays and the demo farm connectors (chat.ts). */
   chat = new ChatState();
+  /** Members, invites and accept attempts (members.ts). */
+  people = new MemberState();
   pushTokens = new Set<string>();
   scripts = new Map<string, Script>();
   /** Bumped by every reset; running scripts and open streams stop when it changes. */
@@ -91,6 +94,8 @@ export class MockStore {
     this.memories = seed.memories;
     this.chat = new ChatState();
     seedChat(this.chat, this.dates, seed.garden.id, { tomato1: IDS.tomato1, tomato2: IDS.tomato2 });
+    this.people = new MemberState();
+    seedMembers(this.people, this.dates, this.user);
     this.pushTokens = new Set();
     this.scripts = new Map();
     this.counter = 1000;
@@ -106,6 +111,7 @@ export class MockStore {
     this.tasks = [];
     this.memories = [];
     this.chat = new ChatState();
+    this.people = new MemberState();
     this.scripts.clear();
     if (!this.nameSet) this.user.display_name = "";
   }
@@ -164,7 +170,10 @@ export class MockStore {
     return this.scans.get(id);
   }
 
-  plantView(p: StoredPlant): S["Plant"] {
+  plantView(stored: StoredPlant): S["Plant"] {
+    // The proposed `frost` on the species (domain/proposed.ts, PlantWithFrost).
+    const frost = stored.species ? SPECIES_FROST[stored.species.id] : undefined;
+    const p: StoredPlant = stored.species && frost ? { ...stored, species: { ...stored.species, frost } as S["SpeciesRef"] } : stored;
     const latest = this.scansOf(p.id).filter((s) => s.scan.status !== "pending").at(-1);
     if (!latest) return { ...p };
     const thumb = latest.scan.images.find((i) => i.kind === "whole_plant");
@@ -200,9 +209,10 @@ export class MockStore {
 
   /** Newest first. */
   timelineOf(plantId: string): S["TimelineEntry"][] {
-    return this.scansOf(plantId)
-      .filter((s) => s.scan.status !== "pending")
-      .map((s): S["TimelineEntry"] => {
+    const done = this.scansOf(plantId).filter((s) => s.scan.status !== "pending");
+    const current = this.plants.get(plantId)?.status;
+    return done
+      .map((s, i): S["TimelineEntry"] => {
         const entry: S["TimelineEntry"] = {
           scan_id: s.scan.id,
           created_at: s.scan.created_at,
@@ -214,6 +224,12 @@ export class MockStore {
         }
         if (s.scan.plan_id) entry.plan_id = s.scan.plan_id;
         if (s.scan.failure) entry.failure_code = s.scan.failure.code;
+        // The proposed `plant_status` (domain/proposed.ts, TimelineEntryWithStatus): the plant's own status after its
+        // latest scan, as the server would keep them in step, and an earlier scan's from its diagnosis.
+        const latest = i === done.length - 1;
+        if (s.diagnosis || latest) {
+          Object.assign(entry, { plant_status: latest && current ? current : statusForProblem(s.diagnosis?.primary?.problem_id) });
+        }
         const thumb = s.scan.images.find((i) => i.kind === "whole_plant");
         if (thumb) {
           entry.thumbnail_image_id = thumb.id;

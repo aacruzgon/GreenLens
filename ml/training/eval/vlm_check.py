@@ -241,6 +241,7 @@ def findings_schema(n_images: int, species_options: list[str], organism_options:
         "certainty": certainty,
     })
     damage = _obj({
+        "trace": _text(60),  # the animal or the trace it left, before the pattern (task P11)
         "pattern": {"type": "string", "enum": DAMAGE_PATTERNS},
         "other_description": _nullable(_text(100)),
         "image": image,
@@ -274,7 +275,7 @@ def indicators_schema(indicators: list[str], n_images: int = 4,
     for i, ind in enumerate(indicators, 1):
         answers = ["unsure"] if ind in unsure_only else ["yes", "no", "unsure"]
         props[indicator_key(i, ind)] = _obj({
-            "reason": _text(60),
+            "reason": _text(100),  # above the prompt's "at most 60" (#183), as the worker
             "answer": {"type": "string", "enum": answers},
             "image": _nullable({"type": "string", "enum": aliases(n_images)}),
         })
@@ -374,7 +375,7 @@ The plant's species is not known.
 {chr(10).join(f"- {s}: {n}" for s, n in organisms)}
 Only choose a pest label when you can see the features of that pest.
 
-4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant). Use other with a short description when no pattern fits. Spots, yellowing and mould caused by disease are not damage patterns here.
+4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant). For each one, first write trace: the animal you can see or the trace it left, in a few words; leave out a pattern with neither. Use other with a short description when no pattern fits. Spots, yellowing and mould caused by disease are not damage patterns here.
 
 5. notes: at most two short sentences about anything else important you see, or an empty string."""
 

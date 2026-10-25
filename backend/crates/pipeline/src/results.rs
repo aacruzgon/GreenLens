@@ -6,10 +6,10 @@ use std::collections::BTreeMap;
 
 use domain::{
     events::Stage,
-    id::{ImageId, ScanId},
+    id::{ImageId, ScanId, SpeciesId},
     id::{IndicatorId, ObservationId, ProblemOrHealthy},
     jobs::{PerceptionRegion, PerceptionResult, SpeciesResult},
-    knowledge::{IndicatorSeed, OrganismSeed},
+    knowledge::{ClassifierLabels, IndicatorSeed, OrganismSeed},
     ports::{NewMask, ObservationWrite},
     records::{
         diagnosis::{EvidenceSource, IndicatorEvidence},
@@ -33,7 +33,9 @@ pub struct ObsContext<'a> {
     pub scan: ScanId,
     /// The run.
     pub run: Run,
-    /// `vlm` or `llm_fallback` for VLM findings, by the worker's `model_versions`.
+    /// `vlm` or `llm_fallback` for VLM findings, by the worker's `model_versions`. On a fallback
+    /// perception result it also marks the disease stage `llm_fallback`, not `classifier`: the
+    /// hosted LLM made that call, and only the disease head's adds `classifier_weight`.
     pub vlm_source: ObservationSource,
     /// The model version recorded on each observation.
     pub model_version: &'a str,
@@ -41,10 +43,12 @@ pub struct ObsContext<'a> {
     pub now: Timestamp,
 }
 
-/// Lookups the conversion needs, borrowed for the call: problem and species names, and
-/// organism names and roles.
+/// Lookups the conversion needs, borrowed for the call: problem and species names, organism
+/// names and roles, and the disease classes the knowledge base maps.
 #[derive(Debug, Clone, Copy)]
 pub struct Lookups<'a> {
+    /// The disease classes kept as observations.
+    pub classifier: &'a MappedClasses,
     /// Problem names, for classifier labels.
     pub problem_names: &'a BTreeMap<String, String>,
     /// Species' common names, for `BioCLIP`'s labels: the worker sends the label matrix's
@@ -59,6 +63,8 @@ pub struct Lookups<'a> {
 /// job's `complete` build their observations from the same names ([`keep_partial_ids`]).
 #[derive(Debug, Clone, Default)]
 pub struct Names {
+    /// The disease classes kept as observations.
+    pub classifier: MappedClasses,
     /// Problem names by id.
     pub problems: BTreeMap<String, String>,
     /// Species' common names by id.
@@ -71,11 +77,80 @@ impl Names {
     /// The names as the conversion borrows them.
     pub fn lookups(&self) -> Lookups<'_> {
         Lookups {
+            classifier: &self.classifier,
             problem_names: &self.problems,
             species_names: &self.species,
             organisms: &self.organisms,
         }
     }
+}
+
+/// The disease classes the knowledge base maps for the species the worker classified
+/// ([contracts 5], classifier candidates): the `classifier_label` rows of that species. The
+/// disease head can return classes without a row, for a species whose problems aren't in the
+/// knowledge base yet; those never become observations, so they name no candidate and count in
+/// no status rule, and a species without rows gets no classifier result at all, `healthy`
+/// included (#144).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MappedClasses {
+    classes: Vec<ProblemOrHealthy>,
+}
+
+impl MappedClasses {
+    /// The rows of `species` in `labels`; none without a species.
+    pub fn new(species: Option<&SpeciesId>, labels: &ClassifierLabels) -> Self {
+        let classes = labels
+            .labels
+            .iter()
+            .filter(|l| species == Some(&l.species_id))
+            .map(|l| l.problem_id.clone())
+            .collect();
+        Self { classes }
+    }
+
+    /// Whether a class of the head's result is kept.
+    pub fn keeps(&self, class: &ProblemOrHealthy) -> bool {
+        self.classes.contains(class)
+    }
+}
+
+/// The species the worker ran the disease head for, by the worker's rule (`vision`'s
+/// perception, [contracts 5]): the run's working species, which a run starts with when the
+/// species is confirmed or chosen, else `BioCLIP`'s first candidate, from the result or, for a
+/// partial result, from the run's stored species observations. `None` when that candidate
+/// names no species.
+pub fn disease_species(
+    working: Option<&SpeciesId>,
+    result: &PerceptionResult,
+    stored: &[Observation<Stored>],
+    run: Run,
+) -> Option<SpeciesId> {
+    if let Some(id) = working {
+        return Some(id.clone());
+    }
+    if let Some(species) = &result.species {
+        return species
+            .candidates
+            .first()
+            .and_then(|c| c.species_id.clone());
+    }
+    stored
+        .iter()
+        .filter(|o| {
+            o.stage == ObservationStage::Species
+                && o.source == ObservationSource::Bioclip
+                && o.run == run
+        })
+        .max_by(|a, b| {
+            a.confidence
+                .confidence()
+                .get()
+                .total_cmp(&b.confidence.confidence().get())
+        })
+        .and_then(|o| match &o.knowledge_ref {
+            Some(KnowledgeRef::Species(id)) => Some(id.clone()),
+            _ => None,
+        })
 }
 
 fn obs(
@@ -107,7 +182,8 @@ fn obs(
 
 /// The perception result's observations, one write per stage it ran, with no masks: a job's
 /// completion writes each region's RLE as a PNG to object storage first and then adds the
-/// records with [`attach_masks`]; a partial result stores none.
+/// records with [`attach_masks`]; a partial result stores none. Disease results keep only the
+/// classes [`Lookups::classifier`] maps ([`MappedClasses`]).
 pub fn perception_writes(
     ctx: &ObsContext<'_>,
     result: &PerceptionResult,
@@ -152,9 +228,18 @@ pub fn perception_writes(
         ));
     }
     if let Some(disease) = &result.disease {
+        let disease_source = if ctx.vlm_source == ObservationSource::LlmFallback {
+            ObservationSource::LlmFallback
+        } else {
+            ObservationSource::Classifier
+        };
         let mut list = Vec::new();
         for d in disease {
-            for top in &d.top {
+            for top in d
+                .top
+                .iter()
+                .filter(|t| lookups.classifier.keeps(&t.problem_id))
+            {
                 let (label, knowledge_ref) = match &top.problem_id {
                     ProblemOrHealthy::Healthy => ("Healthy".to_owned(), None),
                     ProblemOrHealthy::Problem(p) => (
@@ -171,7 +256,7 @@ pub fn perception_writes(
                     new_id(),
                     ObservationStage::Disease,
                     Stage::Disease,
-                    ObservationSource::Classifier,
+                    disease_source,
                     label,
                     top.confidence,
                 );
@@ -587,10 +672,146 @@ mod tests {
 
     fn names() -> Names {
         Names {
+            classifier: MappedClasses::new(Some(&"tomato".parse().unwrap()), &labels()),
             problems: BTreeMap::from([("tomato_late_blight".into(), "Late blight".into())]),
             species: BTreeMap::from([("tomato".into(), "Tomato".into())]),
             organisms: Vec::new(),
         }
+    }
+
+    /// `classifier_labels.yaml` as it stands after #134: tomato's classes only, here three of
+    /// them.
+    fn labels() -> ClassifierLabels {
+        serde_json::from_value(serde_json::json!({
+            "model_version": "disease-head-v3c-2026-10-20",
+            "labels": [
+                {"index": 11, "label": "tomato/healthy", "species_id": "tomato", "problem_id": "healthy"},
+                {"index": 13, "label": "tomato/tomato_early_blight", "species_id": "tomato",
+                 "problem_id": "tomato_early_blight"},
+                {"index": 14, "label": "tomato/tomato_late_blight", "species_id": "tomato",
+                 "problem_id": "tomato_late_blight"}
+            ]
+        }))
+        .unwrap()
+    }
+
+    /// The disease observations a result's top 3 leaves, by label, for a species classified as
+    /// `species`.
+    fn kept(species: &str, top: &serde_json::Value) -> Vec<Observation<Stored>> {
+        let result: PerceptionResult = serde_json::from_value(serde_json::json!({
+            "regions": [],
+            "disease": [{"image_id": "01JAX3K9T6R2B8V0QZ4M7D1E5A", "top": top}]
+        }))
+        .unwrap();
+        let names = Names {
+            classifier: MappedClasses::new(Some(&species.parse().unwrap()), &labels()),
+            ..Names::default()
+        };
+        let mut n = 0;
+        perception_writes(&ctx("v1"), &result, &[], &names.lookups(), || {
+            n += 1;
+            format!("01JAX3K9T6R2B8V0QZ4M7D1E{n:02}").parse().unwrap()
+        })
+        .into_iter()
+        .filter(|w| w.stage == Stage::Disease)
+        .flat_map(|w| w.observations)
+        .collect()
+    }
+
+    /// #144: the disease head also returns apple's classes, which `classifier_labels.yaml`
+    /// doesn't map yet, so an apple scan gets no classifier result: no candidate, no `healthy`.
+    #[test]
+    fn a_species_without_classifier_label_rows_gets_no_disease_results() {
+        let apple = kept(
+            "apple",
+            &serde_json::json!([
+                {"problem_id": "apple_scab", "confidence": 0.8},
+                {"problem_id": "healthy", "confidence": 0.15},
+                {"problem_id": "apple_cedar_apple_rust", "confidence": 0.05}
+            ]),
+        );
+        assert!(apple.is_empty(), "{apple:?}");
+        assert_eq!(
+            crate::findings::classifier_hits(&apple),
+            Vec::<knowledge::candidates::ClassifierHit>::new()
+        );
+    }
+
+    /// #144: a species with rows keeps only its mapped classes, `healthy` included, so a class
+    /// a later head adds before the knowledge base has it (tomato mosaic virus) names nothing.
+    #[test]
+    fn a_species_with_rows_keeps_only_its_mapped_classes() {
+        let tomato = kept(
+            "tomato",
+            &serde_json::json!([
+                {"problem_id": "tomato_mosaic_virus", "confidence": 0.6},
+                {"problem_id": "tomato_late_blight", "confidence": 0.3},
+                {"problem_id": "healthy", "confidence": 0.1}
+            ]),
+        );
+        let labels: Vec<_> = tomato
+            .iter()
+            .map(|o| (o.label.as_str(), o.knowledge_ref.clone()))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                (
+                    "tomato_late_blight",
+                    Some(KnowledgeRef::Disease("tomato_late_blight".parse().unwrap()))
+                ),
+                ("Healthy", None),
+            ]
+        );
+        let hits = crate::findings::classifier_hits(&tomato);
+        let problems: Vec<&str> = hits.iter().map(|h| h.problem.as_str()).collect();
+        assert_eq!(problems, ["tomato_late_blight"]);
+    }
+
+    /// No species, no rows: a result the worker couldn't place keeps nothing.
+    #[test]
+    fn without_a_species_no_class_is_kept() {
+        let none = MappedClasses::new(None, &labels());
+        assert!(!none.keeps(&ProblemOrHealthy::Healthy));
+        assert!(!MappedClasses::default().keeps(&ProblemOrHealthy::Healthy));
+    }
+
+    /// The worker's rule: the run's working species, else `BioCLIP`'s first candidate, from
+    /// the result or, for a partial disease result, from the run's stored species observations.
+    #[test]
+    fn the_disease_species_follows_the_workers_rule() {
+        let tomato: SpeciesId = "tomato".parse().unwrap();
+        let grape: SpeciesId = "grape".parse().unwrap();
+        let full = result();
+        assert_eq!(
+            disease_species(Some(&grape), &full, &[], Run(1)),
+            Some(grape.clone())
+        );
+        assert_eq!(
+            disease_species(None, &full, &[], Run(1)),
+            Some(tomato.clone())
+        );
+
+        let mut weed_first = result();
+        if let Some(s) = weed_first.species.as_mut() {
+            s.candidates.reverse();
+        }
+        assert_eq!(disease_species(None, &weed_first, &[], Run(1)), None);
+
+        // A partial disease result: the species partial of the same run is stored.
+        let stored: Vec<Observation<Stored>> = writes("partial", 0)
+            .into_iter()
+            .flat_map(|w| w.observations)
+            .collect();
+        let partial = PerceptionResult {
+            species: None,
+            ..result()
+        };
+        assert_eq!(
+            disease_species(None, &partial, &stored, Run(1)),
+            Some(tomato)
+        );
+        assert_eq!(disease_species(None, &partial, &stored, Run(2)), None);
     }
 
     fn writes(model_version: &str, first: u32) -> Vec<ObservationWrite> {
@@ -626,6 +847,35 @@ mod tests {
             .collect();
         // A species the knowledge base doesn't hold keeps the worker's label.
         assert_eq!(labels, ["Tomato", "a weed", "Late blight"]);
+    }
+
+    /// A fallback perception result's disease calls are the hosted LLM's, tagged `llm_fallback`
+    /// so they add no `classifier_weight` (PR #212's review); the disease head's stay `classifier`.
+    #[test]
+    fn a_fallback_disease_call_is_tagged_llm_fallback() {
+        let image: ImageId = "01JAX3K9T6R2B8V0QZ4M7D1E5A".parse().unwrap();
+        let source_of = |vlm_source| {
+            let mut c = ctx("v1");
+            c.vlm_source = vlm_source;
+            let mut n = 0;
+            perception_writes(&c, &result(), &[image], &names().lookups(), || {
+                n += 1;
+                format!("01JAX3K9T6R2B8V0QZ4M7D1E{n:02}").parse().unwrap()
+            })
+            .into_iter()
+            .flat_map(|w| w.observations)
+            .find(|o| o.stage == ObservationStage::Disease)
+            .unwrap()
+            .source
+        };
+        assert_eq!(
+            source_of(ObservationSource::Vlm),
+            ObservationSource::Classifier
+        );
+        assert_eq!(
+            source_of(ObservationSource::LlmFallback),
+            ObservationSource::LlmFallback
+        );
     }
 
     #[test]

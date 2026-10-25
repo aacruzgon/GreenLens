@@ -1,7 +1,8 @@
 //! Deterministic verification scoring ([architecture 6.3], step 3; [contracts 7],
 //! `CandidateScore`): the sum of the weights of matched indicators minus the weights of
-//! contradicted ones; `unsure` counts for nothing. Each indicator keeps one answer, ranked
-//! `user`, then `measurement`, then `vlm` ([contracts 7], measurable indicators).
+//! contradicted ones, plus the disease classifier's weight for the problem; `unsure` counts
+//! for nothing. Each indicator keeps one answer, ranked `user`, then `measurement`, then
+//! `vlm` ([contracts 7], measurable indicators).
 //!
 //! **Lifetimes.** `'e` is the lifetime of the stored evidence (`ScanSnapshot.evidence`):
 //! [`AnswerSet<'e>`] only points into it. Scores are owned (`CandidateScore`), because they
@@ -14,6 +15,7 @@ use domain::{
     knowledge::ProblemSeed,
     records::diagnosis::{CandidateScore, EvidenceSource, IndicatorEvidence},
     scan::Answer,
+    wire::{Confidence, ConfidenceBand},
 };
 
 use crate::{
@@ -62,6 +64,20 @@ impl<'e> AnswerSet<'e> {
     }
 }
 
+/// What the disease head adds to a candidate it named ([contracts 7],
+/// `CandidateScore.classifier_weight`): as much as the strongest indicator at high confidence,
+/// as an ordinary one at medium, and nothing at low, as `unsure` counts for nothing. The
+/// classifier never confirms a diagnosis alone: [`crate::status::decide`] also needs a
+/// matched indicator. The fallback's LLM call ([`Candidate::head`] `None`) adds nothing: the same
+/// model answers the indicators there, and would count twice.
+pub fn classifier_weight(candidate: &Candidate<'_>) -> u8 {
+    match candidate.head.map(Confidence::band) {
+        Some(ConfidenceBand::High) => 3,
+        Some(ConfidenceBand::Medium) => 2,
+        Some(ConfidenceBand::Low) | None => 0,
+    }
+}
+
 /// Scores one candidate over its discriminating indicators. An indicator with no answer
 /// appears in no list; an answer to an indicator the profile doesn't ask is ignored.
 pub fn score_candidate(candidate: &Candidate<'_>, answers: &AnswerSet<'_>) -> CandidateScore {
@@ -81,11 +97,13 @@ pub fn score_candidate(candidate: &Candidate<'_>, answers: &AnswerSet<'_>) -> Ca
     let sum = |list: &[IndicatorEvidence]| -> i32 {
         list.iter().map(|e| i32::from(e.weight.get())).sum()
     };
+    let classifier_weight = classifier_weight(candidate);
     CandidateScore {
         problem_id: profile.id.clone(),
         name: profile.name.clone(),
         kind: profile.kind,
-        score: sum(&matched) - sum(&contradicted),
+        score: sum(&matched) - sum(&contradicted) + i32::from(classifier_weight),
+        classifier_weight,
         matched,
         contradicted,
         unsure,
@@ -164,5 +182,60 @@ mod tests {
             (s.matched.len(), s.contradicted.len(), s.unsure.len()),
             (1, 1, 1)
         );
+        assert_eq!(s.classifier_weight, 0);
+    }
+
+    #[test]
+    fn the_classifier_adds_by_band() {
+        let profiles = fixtures::problems();
+        let mut blight = fixtures::candidate(&profiles, "tomato_early_blight");
+        let weight = |c: Option<f64>, blight: &mut Candidate<'_>| {
+            blight.classifier = c.map(Confidence::saturating);
+            blight.head = blight.classifier;
+            score_candidate(blight, &AnswerSet::default())
+        };
+        let high = weight(Some(0.8), &mut blight);
+        assert_eq!((high.classifier_weight, high.score), (3, 3));
+        let medium = weight(Some(0.575), &mut blight);
+        assert_eq!((medium.classifier_weight, medium.score), (2, 2));
+        assert_eq!(weight(Some(0.49), &mut blight).score, 0);
+        assert_eq!(weight(None, &mut blight).score, 0);
+    }
+
+    /// On the fallback the hosted LLM makes the disease call and answers the indicators too
+    /// (PR #212's review): its call ranks the candidate but adds no weight, or one model's
+    /// opinion would count twice.
+    #[test]
+    fn the_fallbacks_disease_call_adds_no_weight() {
+        let profiles = fixtures::problems();
+        let mut blight = fixtures::candidate(&profiles, "tomato_early_blight");
+        blight.classifier = Some(Confidence::saturating(0.85));
+        blight.head = None;
+        let s = score_candidate(&blight, &AnswerSet::default());
+        assert_eq!((s.classifier_weight, s.score), (0, 0));
+    }
+
+    /// The S5 rig run (backend roadmap section 9): the head called early blight at 0.575,
+    /// the VLM answered its angular-spots indicator `no`, and blossom end rot, which the
+    /// photos couldn't show, won at 0. With the head's weight, early blight ties at 0 and
+    /// ranks first on the classifier's score.
+    #[test]
+    fn a_medium_head_call_offsets_one_contradicted_indicator() {
+        let profiles = fixtures::problems();
+        let mut blight = fixtures::candidate(&profiles, "tomato_early_blight");
+        blight.classifier = Some(Confidence::saturating(0.575));
+        blight.head = blight.classifier;
+        let other = fixtures::candidate(&profiles, "tomato_late_blight");
+        let angular = blight.profile.discriminating().nth(1).unwrap().id.clone();
+        let evidence = vec![fixtures::evidence(
+            &angular,
+            2,
+            Answer::No,
+            EvidenceSource::Vlm,
+        )];
+        let answers = AnswerSet::new(&evidence);
+        let ranked = score_all(&[other, blight], &answers);
+        assert_eq!(ranked[0].score.problem_id.as_str(), "tomato_early_blight");
+        assert_eq!(ranked[0].score.score, 0);
     }
 }

@@ -32,7 +32,11 @@ its own `--label`.
   `sure` cases, also split by the case's photo size (under 1 MP, or 1 MP and up);
 - false signs: on healthy cases, the share answered "yes"; on every case, damage findings and
   organisms, which these leaf photos don't show (a disease spot called `leaf_mines` is the known
-  error, #45);
+  error, #45). A healthy case with an animal on it (`organisms_unboxed`: a pest the knowledge base
+  doesn't name, its box not drawn yet) is left out of the healthy counts, since a "yes" there may be
+  right;
+- look-alikes: on cases with a `look_alike` (an abiotic problem the knowledge base doesn't name),
+  the share that end with no candidate on top, which is what the scan should do (evaluation.md §3);
 - unsure: the share of answers that are `unsure`;
 - per indicator, for each model at the worker's default 1,003,520 pixels and one job at once: its
   answers on the `sure` cases that have its problem and on the other `sure` cases. A `probable` case
@@ -111,12 +115,18 @@ def bench_case(c: dict, photos: Path) -> dict | None:
     payload["indicator_images"] = indicator or images[:1]
     candidates = [cand["problem_id"] for cand in fx["candidates"]]
     truth = c["truth"]
+    kept = {k: truth[k] for k in ("look_alike", "organisms_unboxed") if truth.get(k)}
     return {
         "case_id": c["case_id"], "payload": payload, "photos": paths,
-        "truth": {"outcome": truth["outcome"], "species_id": sp, "problems": truth.get("problems", [])},
+        "truth": {"outcome": truth["outcome"], "species_id": sp, "problems": truth.get("problems", []), **kept},
         "label_confidence": c.get("label_confidence"), "split": c.get("split"),
-        "scored_for_diagnosis": truth["outcome"] == "healthy" or bool(set(truth.get("problems", [])) & set(candidates)),
+        "scored_for_diagnosis": plain_healthy(truth) or bool(set(truth.get("problems", [])) & set(candidates)),
     }
+
+
+def plain_healthy(truth: dict) -> bool:
+    """A healthy case with no animal on it: one whose every "yes" is a false sign."""
+    return truth["outcome"] == "healthy" and not truth.get("organisms_unboxed") and not truth.get("organisms")
 
 
 def cases(args) -> int:
@@ -295,6 +305,7 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         for c in r["calls"]:
             by_kind[c["schema"].split("@")[0]].append(c["ms"])
     species = diag_hit = diag_n = healthy_clean = healthy_n = yes_on_healthy = answers_n = unsure = ties = 0
+    look_clean = look_n = healthy_with_animals = 0
     by_size = {"under_1mp": [0, 0], "1mp_and_up": [0, 0]}   # diagnosis hits and cases, by the photo's size
     damage, organisms = Counter(), 0
     # Evaluation 5's certainty words: each finding by the confidence its word mapped to. Only the
@@ -332,10 +343,15 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         # to everything would otherwise always "diagnose" the first candidate (review of #86, point 3).
         top = leaders[0] if best > 0 and len(leaders) == 1 else None
         ties += best > 0 and len(leaders) > 1
-        if truth["outcome"] == "healthy":
+        if plain_healthy(truth):
             healthy_n += 1
             healthy_clean += top is None
             yes_on_healthy += sum(x["answer"] == "yes" for x in a)
+        elif truth["outcome"] == "healthy":
+            healthy_with_animals += 1
+        elif truth.get("look_alike"):
+            look_n += 1
+            look_clean += top is None   # no disease on top, as the scan should end
         elif case["scored_for_diagnosis"] and case["label_confidence"] == "sure":
             diag_n += 1
             diag_hit += top in truth["problems"]
@@ -344,7 +360,7 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
                 b[0] += top in truth["problems"]
                 b[1] += 1
     healthy_answers = sum(len(r["result"]["indicators"]["answers"]) for r in ok
-                          if cases_by_id[r["case_id"]]["truth"]["outcome"] == "healthy")
+                          if plain_healthy(cases_by_id[r["case_id"]]["truth"]))
     # Every job that ran, failed ones too, so a slow tail that times out still counts (review of #86, point 5).
     job_ms = [r["job_ms"] for r in rows if r.get("job_ms")]
     return {
@@ -356,13 +372,34 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         "diagnosis_by_photo_size": {k: {"hits": h, "n": n} for k, (h, n) in by_size.items()},
         "healthy_no_candidate": healthy_clean / healthy_n if healthy_n else None, "healthy_n": healthy_n,
         "yes_on_healthy": yes_on_healthy / healthy_answers if healthy_answers else None,
+        "healthy_with_animals_left_out": healthy_with_animals,
+        "look_alike_no_candidate": look_clean / look_n if look_n else None, "look_alike_n": look_n,
         "unsure_share": unsure / answers_n if answers_n else None, "top_ties": ties,
-        "damage_findings": dict(damage), "organisms_reported": organisms,
+        "damage_findings": dict(damage), "organisms_reported": organisms, "reasons": reason_lengths(rows),
         "indicators": {k: {side: dict(c) for side, c in v.items()} for k, v in sorted(per_indicator.items())},
         "certainty": {"species_guess": {k: {"n": n, "right": h} for k, (n, h) in sorted(certainty["species_guess"].items())},
                       "damage": dict(sorted(certainty["damage"].items())),
                       "organisms": dict(sorted(certainty["organisms"].items()))},
     }
+
+
+def reason_lengths(rows: list[dict]) -> dict:
+    """The indicator reasons as decoded: their lengths in characters, and how many end without a full
+    stop. On Qwen3.5 a reason with none is one the schema's `maxLength` stopped (#183)."""
+    rs = [x.get("reason") or "" for r in rows if r["ok"] for x in r["result"]["indicators"]["answers"]]
+    lengths = [len(x) for x in rs]
+    return {"n": len(rs), "median": pct(lengths, 0.5), "p90": pct(lengths, 0.9), "max": max(lengths, default=None),
+            "no_closing_stop": sum(not x.rstrip().endswith((".", "!", "?")) for x in rs)}
+
+
+def answer_changes(rows: list[dict], base: list[dict]) -> dict:
+    """The indicator answers that differ from another run's on the same case and indicator."""
+    def answers(rs):
+        return {(r["case_id"], x["indicator_id"]): x["answer"] for r in rs if r["ok"]
+                for x in r["result"]["indicators"]["answers"]}
+    mine, theirs = answers(rows), answers(base)
+    shared = mine.keys() & theirs.keys()
+    return {"shared": len(shared), "changed": sum(mine[k] != theirs[k] for k in shared)}
 
 
 def conf_key(c) -> str:
@@ -439,7 +476,7 @@ def cases_label(path: Path) -> dict:
 
 
 def score(args) -> int:
-    report = []
+    report, first = [], None
     for run_root in args.runs:
         for d in run_dirs(Path(run_root)):
             try:
@@ -452,6 +489,10 @@ def score(args) -> int:
                 continue
             s = score_run(rows, cases_by_id)
             s["jobs"] = len(cases_by_id)   # every case, so a run cut short shows the jobs it never ran
+            if first is None:
+                first = (meta["label"], rows)
+            else:
+                s["answers_vs_first"] = {"run": first[0], **answer_changes(rows, first[1])}
             model = meta["models"][0].get("root") or meta["models"][0]["id"] if meta["models"] else None
             report.append({**{k: meta[k] for k in ("label", "max_pixels", "concurrency", "peak_gpu_mib", "peak_kv_cache")},
                            "exit": meta.get("exit"), "seconds": meta.get("seconds"), "model": model,
@@ -464,21 +505,40 @@ def score(args) -> int:
     lines = [f"# VLM benchmark: {args.out}", "",
              "Scored on " + "; ".join(f"`{c['file']}` ({c['cases']} case{'s' * (c['cases'] != 1)}, SHA-256 `{c['sha256']}`)" for c in on)
              + (" (`--cases`)" if args.cases else ", each run's own cases") + ".", "",
-             "| Run | Pixels | At once | Finished | Retried calls | Job p50 | Job p95 | Species | Diagnosis (sure) | Photos under 1 MP / 1 MP and up | Ties | Healthy kept clean | Yes on healthy | Unsure | Damage found | Organisms | Peak GPU |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "| Run | Pixels | At once | Finished | Retried calls | Job p50 | Job p95 | Species | Diagnosis (sure) | Photos under 1 MP / 1 MP and up | Ties | Healthy kept clean | Yes on healthy | Look-alikes kept clean | Unsure | Damage found | Organisms | Peak GPU |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in report:
         dmg = ", ".join(f"{k} {v}" for k, v in r["damage_findings"].items()) or "none"
         run = r["label"] if r["exit"] == 0 else f"{r['label']} (exit {r['exit']})"
         lines.append(f"| {run} | {r['max_pixels']:,} | {r['concurrency']} | {r['finished']}/{r['jobs']} | {r['retried_calls']} | "
                      f"{f(r['job_ms_p50'])} | {f(r['job_ms_p95'])} | {f(r['species_agree'], True)} | "
                      f"{f(r['diagnosis_top1_sure'], True)} (n={r['diagnosis_n']}) | {sizes(r)} | {r['top_ties']} | {f(r['healthy_no_candidate'], True)} (n={r['healthy_n']}) | "
-                     f"{f(r['yes_on_healthy'], True)} | {f(r['unsure_share'], True)} | {dmg} | {r['organisms_reported']} | {r['peak_gpu_mib']:,} MiB |")
+                     f"{f(r['yes_on_healthy'], True)} | {f(r.get('look_alike_no_candidate'), True)} (n={r.get('look_alike_n', 0)}) | {f(r['unsure_share'], True)} | {dmg} | {r['organisms_reported']} | {r['peak_gpu_mib']:,} MiB |")
     lines += ["", DIAGNOSIS_NOTE]
+    if left := max((r.get("healthy_with_animals_left_out", 0) for r in report), default=0):
+        lines += ["", f"{left} healthy case{'s' * (left != 1)} with an animal on {'them' if left != 1 else 'it'} "
+                      f"(`organisms_unboxed`) {'are' if left != 1 else 'is'} left out of the healthy columns until the boxes are drawn."]
+    lines += reason_table(report)
     lines += certainty_tables(report)
     lines += indicator_tables(report)
     (REPORTS / f"vlm-bench-{args.out}.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
     return 0
+
+
+def reason_table(report: list[dict]) -> list[str]:
+    """Each run's indicator reasons, and its answers that differ from the first run's."""
+    out = ["", "## Indicator reasons", "",
+           "Each reason's length in characters as decoded, and the reasons with no closing full stop: on Qwen3.5, "
+           "the sign of one the schema's `maxLength` stopped (#183). Answers changed: on the same case and "
+           "indicator as the first run.", "",
+           "| Run | Reasons | Median | p90 | Longest | No closing stop | Answers changed from the first run |",
+           "|---|---|---|---|---|---|---|"]
+    for r in report:
+        q, vs = r["reasons"], r.get("answers_vs_first")
+        changed = f"{vs['changed']} of {vs['shared']}" if vs else "—"
+        out.append(f"| {r['label']} | {q['n']} | {q['median']} | {q['p90']} | {q['max']} | {q['no_closing_stop']} | {changed} |")
+    return out
 
 
 def main(argv=None) -> int:

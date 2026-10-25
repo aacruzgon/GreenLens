@@ -5,6 +5,7 @@
 
 import type { AnswerBlock, BlockPlant, ChatMessage, FarmCitationWithText, FrostPlant } from "@/domain/proposed";
 
+import { SPECIES_FROST } from "./fixtures";
 import { scenario, type ChatFault } from "./scenario";
 import type { MockStore } from "./store";
 import { mockImageUrl } from "./images";
@@ -161,11 +162,6 @@ const KNOWLEDGE: Record<"water" | "frost" | "spacing", S["Citation"]> = {
   spacing: { source_id: "umn-ext-tomato-spacing", publisher: "University of Minnesota Extension", title: "Growing tomatoes in the home garden", url: "https://extension.umn.edu/vegetables/growing-tomatoes" },
 };
 
-/**
- * The demo species' `frost` (S5 work 9: a species field, `tender` or `hardy`). Lettuce has none, so its plants'
- * `frost_tender` is absent: the planner shows it as not known, never as hardy.
- */
-const FROST: Record<string, "tender" | "hardy"> = { tomato: "tender", pepper: "tender", basil: "tender", kale: "hardy" };
 
 function tool(id: string, name: string, label: string): TurnStep[] {
   return [
@@ -235,7 +231,7 @@ function frostTurn(ctx: TurnCtx): TurnStep[] {
   const night = frostNights(ctx.store)[0];
   // The garden's live plants, not the map's pins (S5), with their species' frost.
   const plants: FrostPlant[] = blockPlants(ctx.store).map((p) => {
-    const frost = FROST[ctx.store.plants.get(p.plant_id)?.species?.id ?? ""];
+    const frost = SPECIES_FROST[ctx.store.plants.get(p.plant_id)?.species?.id ?? ""];
     return frost ? { ...p, frost_tender: frost === "tender" } : p;
   });
   const tender = plants.filter((p) => p.frost_tender === true);
@@ -785,9 +781,5 @@ export function registerChatRoutes(route: Register, h: ChatRouteHelpers): void {
     c.store.memories.splice(i, 1);
     return emptyResponse(204);
   });
-
-  route("GET", "/gardens/:id/connectors", (c) => {
-    if (!c.store.gardens.has(c.params.id)) return notFound();
-    return jsonResponse(200, { available: true, connectors: c.store.chat.connectors.filter((x) => x.garden_id === c.params.id) });
-  });
+  // The garden's connectors, which this file seeds, are served by connectors.ts.
 }

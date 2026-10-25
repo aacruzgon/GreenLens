@@ -25,7 +25,10 @@ pub struct Limits {
     pub other_description: usize,
     /// `other_name`.
     pub other_name: usize,
-    /// An indicator's `reason`.
+    /// A damage finding's `trace`.
+    pub trace: usize,
+    /// An indicator's `reason`. Above what the prompt asks for (at most 60), so the grammar
+    /// doesn't cut the reason the answer follows from (#183).
     pub reason: usize,
     /// `organisms` and `damage`.
     pub max_items: usize,
@@ -37,7 +40,8 @@ impl Limits {
         notes: 200,
         other_description: 100,
         other_name: 60,
-        reason: 60,
+        trace: 60,
+        reason: 100,
         max_items: 10,
     };
 }
@@ -214,7 +218,10 @@ pub fn findings(
         ("bbox_2d", boxes.schema()),
         ("certainty", certainty()),
     ]);
+    // `trace` comes first, so the model names the animal or the trace it left before it picks a
+    // pattern; decoding drops a finding with none (task P11).
     let damage = object(vec![
+        ("trace", text(limits.trace)),
         ("pattern", damage_enum),
         (
             "other_description",
@@ -363,6 +370,35 @@ mod tests {
     }
 
     #[test]
+    fn the_reason_cap_is_well_above_what_the_prompt_asks_for() {
+        // #183: when the prompt asked for the cap itself, the grammar cut reasons mid-thought.
+        // Asked for at most 60 with a cap of 80, Qwen3.5 still reached 80 on 10 of 648 reasons.
+        let ind = indicator(
+            "tomato_early_blight.concentric_rings",
+            &[ImageKind::LeafCloseup],
+        );
+        let qs = questions([&ind], &[ImageKind::LeafCloseup]);
+        let schema = indicators(1, &qs, Limits::CONTRACT);
+        assert_eq!(
+            schema["properties"]["q1_concentric_rings"]["properties"]["reason"]["maxLength"],
+            json!(Limits::CONTRACT.reason)
+        );
+        let text = super::super::prompt::indicators(&qs, false);
+        let asked: usize = text
+            .split("reason: first, at most ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(
+            asked + 40 <= Limits::CONTRACT.reason,
+            "the prompt asks for {asked}, the cap is {}",
+            Limits::CONTRACT.reason
+        );
+    }
+
+    #[test]
     fn a_question_no_image_can_show_allows_only_unsure() {
         let ind = indicator("aphids.honeydew", &[ImageKind::LeafUnderside]);
         let qs = questions([&ind], &[ImageKind::WholePlant]);
@@ -398,6 +434,57 @@ mod tests {
                 ["enum"],
             json!(["img1", "img2", "img3"])
         );
+    }
+
+    fn tomato_findings(boxes: BoxRange) -> Value {
+        let species = [SpeciesOption {
+            id: "tomato".parse().unwrap(),
+            name: "Tomato".to_owned(),
+        }];
+        let organisms = [OrganismOption {
+            id: "aphid".parse().unwrap(),
+            name: "Aphid".to_owned(),
+        }];
+        findings(4, &species, &organisms, boxes, Limits::CONTRACT)
+    }
+
+    #[test]
+    fn a_damage_finding_names_its_trace_before_its_pattern() {
+        let schema = tomato_findings(BoxRange::for_format(BoxFormat::Norm1000, 0));
+        let damage = &schema["properties"]["damage"]["items"];
+        assert_eq!(
+            damage["properties"]["trace"],
+            json!({ "type": "string", "maxLength": 60 })
+        );
+        assert_eq!(damage["required"][0], json!("trace"));
+        let keys: Vec<&String> = damage["properties"].as_object().unwrap().keys().collect();
+        assert_eq!(keys[..2], ["trace", "pattern"]);
+    }
+
+    /// Union-typed parameters (`anyOf` or a type array) in a schema.
+    fn unions(v: &Value) -> usize {
+        match v {
+            Value::Object(o) => {
+                usize::from(o.contains_key("anyOf") || o.get("type").is_some_and(Value::is_array))
+                    + o.values().map(unions).sum::<usize>()
+            }
+            Value::Array(a) => a.iter().map(unions).sum(),
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn the_hosted_findings_schema_keeps_the_trace_within_the_union_limit() {
+        // The fallback sends the schema through the hosted API's sanitiser, which strips
+        // `maxLength` and allows at most 16 union-typed parameters a request (integrations
+        // anthropic::schema). `trace` is a plain string, so it adds none.
+        let schema = tomato_findings(BoxRange::for_format(BoxFormat::AbsPxPrepared, 1568));
+        let sanitized = integrations::anthropic::sanitize_schema(&schema);
+        let damage = &sanitized.schema["properties"]["damage"]["items"];
+        assert_eq!(damage["properties"]["trace"], json!({ "type": "string" }));
+        assert_eq!(damage["required"][0], json!("trace"));
+        assert_eq!(damage["additionalProperties"], json!(false));
+        assert!(unions(&sanitized.schema) <= 16);
     }
 
     #[test]

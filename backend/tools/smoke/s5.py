@@ -5,6 +5,8 @@ Signs in the way smoke.py does (a Clerk test instance's Backend API mints a sess
 --email (default s5+clerk_test@example.com): each user has a daily chat budget, so give each
 run its own. Without --scan-id it first drives one scan of --photo to `plan_ready`, answering
 indicator questions with --answer; with --scan-id it uses that scan, which the user must own.
+--leaf-photo is uploaded as `leaf_closeup` beside --photo (`whole_plant`): the disease head reads
+only leaf close-ups and undersides, so a scan without one never runs it.
 --expect-problem fails the run when the scan's primary problem is another.
 
 What it writes. Everything but the card check happens in gardens the script makes: a fresh
@@ -36,7 +38,7 @@ Checks, in this order (--only picks some):
               AGENT_MEMORY_* variables answers available: false, chat still works, then restored
 
 usage (from backend/):
-    python3 tools/smoke/s5.py --photo ../app/assets/mock/tomato-blight.jpg
+    python3 tools/smoke/s5.py --photo ../app/assets/mock/tomato-blight.jpg [--leaf-photo PATH]
         [--base-url http://localhost:8080] [--env-file ../infra/dev/.env] [--scan-id ID]
         [--email s5a+clerk_test@example.com --phone-suffix 157] [--answer yes]
         [--expect-problem tomato_early_blight] [--only chat,card,...]
@@ -85,6 +87,17 @@ CROWDING = re.compile(r"too\s+close|crowd|closer\s+than|need\s+more\s+space|spac
 
 def info(msg=""):
     print(msg, flush=True)
+
+
+def upload_photos(api, scan_id, photo, leaf_photo=None):
+    """Uploads `photo` as `whole_plant` and, when given, `leaf_photo` as `leaf_closeup`. The
+    disease head reads only `leaf_closeup` and `leaf_underside` shots (vision 6), so a scan
+    without one never runs it (`disease_skipped: no_leaves_found`). s4.py uses it too."""
+    shots = [("whole_plant", photo)] + ([("leaf_closeup", leaf_photo)] if leaf_photo else [])
+    for kind, path in shots:
+        quality = api.upload(scan_id, kind, path).get("quality") or {}
+        info(f"uploaded {Path(path).name} as {kind}: blur {quality.get('blur_score')}, "
+             f"exposure {quality.get('exposure')}")
 
 
 class Fail(Exception):
@@ -294,7 +307,7 @@ class S5:
                 "name": "s5 tomato", "species_id": "tomato"}}, expect=(201,), idem=True)
             sid = scan["id"]
             info(f"garden {g['id']}, scan {sid}")
-            self.api.upload(sid, "whole_plant", a.photo)
+            upload_photos(self.api, sid, a.photo, a.leaf_photo)
             self.api.call("POST", f"/scans/{sid}/submit", expect=(202,))
             self.scan = {"status": "queued"}
         if self.scan["status"] != "planned":
@@ -855,6 +868,8 @@ def main():
                     help="the user's Clerk test phone number +1555555<0100-0199>, if the "
                          "instance asks for one")
     ap.add_argument("--photo", help="plant photo for the scan (without --scan-id)")
+    ap.add_argument("--leaf-photo", help="leaf close-up uploaded as leaf_closeup after --photo, so "
+                    "the scan runs the disease head (without --scan-id)")
     ap.add_argument("--scan-id", help="use this planned scan instead of making one")
     ap.add_argument("--expect-problem", help="fail unless the scan's primary problem is this, "
                     "e.g. tomato_early_blight on the rig")

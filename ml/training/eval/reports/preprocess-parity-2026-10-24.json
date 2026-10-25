@@ -1,0 +1,1718 @@
+{
+ "date": "2026-10-24",
+ "command": "python -m ml.training.eval.preprocess_parity run",
+ "inputs": {
+  "commit": "384c212073299dc4e5e9e5179daf9309ca8cc8b4",
+  "eval_manifest": {
+   "path": "ml/training/eval/manifest.jsonl",
+   "sha256": "e562c89716fc452f8200d2507ccdaba1c574ef737b3f4d1968da60d0f4d0c8af"
+  },
+  "model_manifest": {
+   "path": "ml/models/manifest.toml",
+   "sha256": "a0fc89cb94d1dacdce33e33f7bf9200a6388503bba7441487dd872e3a6438e53"
+  },
+  "photos": [
+   {
+    "id": "p0",
+    "key": "pepper-inat-409099323#2",
+    "file": "inat/409099323-752129168.jpg",
+    "sha256": "0091373e23dfcc8def4275c16d5fe1a8776c17e553966e3c49616892953b3729",
+    "size": [
+     1536,
+     2048
+    ]
+   },
+   {
+    "id": "p1",
+    "key": "grape-inat-391631249#1",
+    "file": "inat/391631249-717631762.jpg",
+    "sha256": "01a4c3ddfe30fe9dedffd7907ab6f2e222f1b15e9aa5a28073f586cc05d5e2d2",
+    "size": [
+     2048,
+     2048
+    ]
+   },
+   {
+    "id": "p2",
+    "key": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171#0",
+    "file": "fieldsets/tomato-bd-2025/yellow-leaf-curl-virus/curl-171.jpg",
+    "sha256": "02114a74349d0e47b1ea1a2a4c372f29bcc7b2843185c36f229b57720ccdf726",
+    "size": [
+     640,
+     640
+    ]
+   },
+   {
+    "id": "p3",
+    "key": "corn-maize-bd-2026-common-rust-img-261#0",
+    "file": "fieldsets/maize-bd-2026/common-rust/img-261.jpg",
+    "sha256": "06f6c46a147f8e1d169912357b55c24b5b4e4e06a4a122ccefdc7396629a1c56",
+    "size": [
+     1701,
+     3024
+    ]
+   },
+   {
+    "id": "p4",
+    "key": "tomato-tomato-bd-iphone-2025-healthy-img-3558-02d#0",
+    "file": "fieldsets/tomato-bd-iphone-2025/healthy/img-3558-02d.jpg",
+    "sha256": "07a934a1f417de609bd051b0b74b7845fa94dad1c7a33abfdc69755dd139c03d",
+    "size": [
+     4032,
+     3024
+    ]
+   },
+   {
+    "id": "p5",
+    "key": "apple-inat-408956748#1",
+    "file": "inat/408956748-751833255.jpg",
+    "sha256": "1c2f94d58b7c11ac74d4f0f5e0f54d64e2ba7357e58eaaedc8ac654e566e63c0",
+    "size": [
+     800,
+     1200
+    ]
+   },
+   {
+    "id": "p6",
+    "key": "corn-maize-in-2025-pottasium-4-28#0",
+    "file": "fieldsets/maize-in-2025/pottasium/4-28.jpg",
+    "sha256": "1cd33b62e0b4939ff48aefc653e97aeecab5a50cd46f3e34d4bd1a917917c0c7",
+    "size": [
+     667,
+     679
+    ]
+   },
+   {
+    "id": "p7",
+    "key": "corn-commons-corn-hail#0",
+    "file": "commons/hagelschaden-maisfeld.jpg",
+    "sha256": "37e1c5374f9d7d4f31b69285c837db422633d14045bd8138e7ce171b152805c1",
+    "size": [
+     2272,
+     1704
+    ]
+   },
+   {
+    "id": "p8",
+    "key": "corn-commons-corn-magnesium#0",
+    "file": "commons/mg-deficiency-vulindlela-1995-3-30-2018-01-23-2235.jpg",
+    "sha256": "44e8a7b7853f10e7d975b898fd5d2e45b4b8fafb74f3687d623ad856c0b02efc",
+    "size": [
+     1018,
+     555
+    ]
+   },
+   {
+    "id": "p9",
+    "key": "tomato-commons-tomato-blossom-end-rot-vine#0",
+    "file": "commons/blossomendrot.jpg",
+    "sha256": "4c54b8c2c1a21a65b0ee1719c911e143dcdae351c4bd2d1421d3873289318b21",
+    "size": [
+     1381,
+     1541
+    ]
+   }
+  ],
+  "crops": [
+   {
+    "id": "c0",
+    "photo": "p0",
+    "label": "past the top-left corner",
+    "bbox": [
+     0.02,
+     0.03,
+     0.3,
+     0.4
+    ]
+   },
+   {
+    "id": "c1",
+    "photo": "p1",
+    "label": "past the bottom-right corner",
+    "bbox": [
+     0.55,
+     0.5,
+     0.44,
+     0.49
+    ]
+   },
+   {
+    "id": "c2",
+    "photo": "p2",
+    "label": "fractional edges",
+    "bbox": [
+     0.3137,
+     0.2719,
+     0.1234,
+     0.0987
+    ]
+   },
+   {
+    "id": "c3",
+    "photo": "p3",
+    "label": "under 40 px",
+    "bbox": [
+     0.4,
+     0.35,
+     0.02,
+     0.03
+    ]
+   },
+   {
+    "id": "c4",
+    "photo": "p4",
+    "label": "most of the photo",
+    "bbox": [
+     0.1,
+     0.1,
+     0.8,
+     0.8
+    ]
+   }
+  ],
+  "worker": {
+   "example": "backend/crates/vision/examples/preprocess_dump.rs",
+   "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+   "crop_grow": 0.1,
+   "stored_long_side": 1600,
+   "webp_quality": 82.0
+  },
+  "python": {
+   "version": "3.12.15",
+   "pillow": "12.3.0",
+   "numpy": "2.5.2",
+   "resize_filter": "lanczos3"
+  }
+ },
+ "target": 0.02,
+ "recipes": {
+  "bioclip": {
+   "side": 224,
+   "resize": "shortest_side_crop",
+   "mean": [
+    0.48145466,
+    0.4578275,
+    0.40821073
+   ],
+   "std": [
+    0.26862954,
+    0.26130258,
+    0.27577711
+   ],
+   "matches_pp": true
+  },
+  "leaf_detector": {
+   "side": 512,
+   "resize": "squash",
+   "mean": [
+    0.485,
+    0.456,
+    0.406
+   ],
+   "std": [
+    0.229,
+    0.224,
+    0.225
+   ],
+   "matches_pp": true
+  },
+  "sam_encoder": {
+   "side": 1024,
+   "resize": "squash",
+   "mean": [
+    0.485,
+    0.456,
+    0.406
+   ],
+   "std": [
+    0.229,
+    0.224,
+    0.225
+   ],
+   "matches_pp": true
+  }
+ },
+ "summary": {
+  "bioclip": {
+   "same_pixels_max": 0.16058266162872314,
+   "end_to_end_max": 0.19908088445663452,
+   "same_pixels_share_over_1_level": 0.027450042517006803,
+   "hfirst_max": 0.015007883310317993,
+   "end_to_end_mean": 0.022829021568328108,
+   "one_level": 0.015007768493717055
+  },
+  "leaf_detector": {
+   "same_pixels_max": 0.2091503143310547,
+   "end_to_end_max": 0.3834422677755356,
+   "same_pixels_share_over_1_level": 0.014731089274088541,
+   "hfirst_max": 0.03485840559005737,
+   "end_to_end_mean": 0.036771198004587426,
+   "one_level": 0.01750700280112045
+  },
+  "sam_encoder": {
+   "same_pixels_max": 0.1750699281692505,
+   "end_to_end_max": 0.6100217998027802,
+   "same_pixels_share_over_1_level": 0.0047334035237630205,
+   "hfirst_max": 0.035014137625694275,
+   "end_to_end_mean": 0.04831908276767649,
+   "one_level": 0.01750700280112045
+  },
+  "crops": {
+   "same_pixels_max": 0.05688023567199707,
+   "end_to_end_max": 0.31284141540527344,
+   "hfirst_max": 0.015007883310317993,
+   "same_rect": true
+  },
+  "passes": false,
+  "decode": {
+   "max": 5.0,
+   "mean": 0.31900438969891337,
+   "share_over_1": 0.08565862359210033
+  },
+  "resize": {
+   "max": 9.0,
+   "mean": 0.22949756944444444,
+   "share_over_1": 0.0019892361111111113
+  },
+  "resize_hfirst": {
+   "max": 2.0,
+   "mean": 0.005601157407407407,
+   "share_over_1": 1.2152777777777778e-06
+  },
+  "webp": {
+   "max": 37.0,
+   "mean": 3.32225625,
+   "share_over_1": 0.6714163194444445
+  },
+  "embeddings": {
+   "same_pixels": {
+    "photos": 0.9992376565933228,
+    "crops": 0.9976747035980225
+   },
+   "webp": {
+    "photos": 0.9858269691467285,
+    "crops": 0.8755547404289246
+   },
+   "decode_resize": {
+    "photos": 0.9995478987693787,
+    "crops": 0.99871426820755
+   },
+   "end_to_end": {
+    "photos": 0.985448956489563,
+    "crops": 0.8815587759017944
+   }
+  }
+ },
+ "photos": [
+  {
+   "id": "p0",
+   "photo": "pepper-inat-409099323#2",
+   "decoded": [
+    1536,
+    2048
+   ],
+   "stored": [
+    1200,
+    1600
+   ],
+   "decode": {
+    "max": 5.0,
+    "mean": 0.1032668219672309,
+    "p99": 2.0,
+    "share_nonzero": 0.07399506039089626,
+    "share_over_1": 0.029133902655707464
+   },
+   "resize": {
+    "max": 6.0,
+    "mean": 0.10885138888888889,
+    "p99": 1.0,
+    "share_nonzero": 0.10868368055555555,
+    "share_over_1": 0.00014739583333333334
+   },
+   "resize_hfirst": {
+    "max": 2.0,
+    "mean": 0.0029345486111111113,
+    "p99": 0.0,
+    "share_nonzero": 0.002934201388888889,
+    "share_over_1": 3.4722222222222224e-07
+   },
+   "webp": {
+    "max": 33.0,
+    "mean": 1.7822868055555556,
+    "p99": 7.0,
+    "share_nonzero": 0.8075026041666666,
+    "share_over_1": 0.4780817708333333
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.12006223201751709,
+      "mean": 0.0019957484604694498,
+      "p99": 0.01500779390335083,
+      "share_nonzero": 0.13562925170068027,
+      "share_over_1_level": 0.0006909013605442177
+     },
+     "end_to_end": {
+      "max": 0.15007781982421875,
+      "mean": 0.014313275324040512,
+      "p99": 0.05688026547431946,
+      "share_nonzero": 0.6724197491496599,
+      "share_over_1_level": 0.22667543579931973
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007883310317993,
+      "mean": 5.139884607457616e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.00350765306122449,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.10457515716552734,
+      "mean": 0.0023991074394764667,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.13799921671549478,
+      "share_over_1_level": 0.00018183390299479166
+     },
+     "end_to_end": {
+      "max": 0.34858381748199463,
+      "mean": 0.023233165531334993,
+      "p99": 0.0871461033821106,
+      "share_nonzero": 0.7505404154459635,
+      "share_over_1_level": 0.3546600341796875
+     },
+     "same_pixels_hfirst": {
+      "max": 0.017507314682006836,
+      "mean": 5.178905423560328e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.002986907958984375,
+      "share_over_1_level": 0.0
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.12200427055358887,
+      "mean": 0.001420878166285296,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.08171526590983073,
+      "share_over_1_level": 0.00012461344401041666
+     },
+     "end_to_end": {
+      "max": 0.4880175646394491,
+      "mean": 0.02911743916264875,
+      "p99": 0.11987326666712761,
+      "share_nonzero": 0.7979269027709961,
+      "share_over_1_level": 0.45471032460530597
+     },
+     "same_pixels_hfirst": {
+      "max": 0.0348583459854126,
+      "mean": 7.044032900275592e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.004060109456380208,
+      "share_over_1_level": 1.5894571940104167e-06
+     }
+    }
+   }
+  },
+  {
+   "id": "p1",
+   "photo": "grape-inat-391631249#1",
+   "decoded": [
+    2048,
+    2048
+   ],
+   "stored": [
+    1600,
+    1600
+   ],
+   "decode": {
+    "max": 5.0,
+    "mean": 0.15218941370646158,
+    "p99": 2.0,
+    "share_nonzero": 0.10615324974060059,
+    "share_over_1": 0.04580330848693848
+   },
+   "resize": {
+    "max": 4.0,
+    "mean": 0.13035390625,
+    "p99": 1.0,
+    "share_nonzero": 0.13026002604166667,
+    "share_over_1": 9.348958333333334e-05
+   },
+   "resize_hfirst": {
+    "max": 2.0,
+    "mean": 0.0031390625,
+    "p99": 0.0,
+    "share_nonzero": 0.0031381510416666667,
+    "share_over_1": 9.114583333333333e-07
+   },
+   "webp": {
+    "max": 23.0,
+    "mean": 2.03018515625,
+    "p99": 8.0,
+    "share_nonzero": 0.8304881510416666,
+    "share_over_1": 0.53271328125
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.05688035488128662,
+      "mean": 0.001729338276673274,
+      "p99": 0.01500779390335083,
+      "share_nonzero": 0.11820392219387756,
+      "share_over_1_level": 0.00015943877551020407
+     },
+     "end_to_end": {
+      "max": 0.11376059055328369,
+      "mean": 0.013029445124045327,
+      "p99": 0.056880260651232674,
+      "share_nonzero": 0.6339285714285714,
+      "share_over_1_level": 0.1916985544217687
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007853507995605,
+      "mean": 4.07559738548679e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.002783535289115646,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.03501391410827637,
+      "mean": 0.0027841407594350422,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.1604131062825521,
+      "share_over_1_level": 2.288818359375e-05
+     },
+     "end_to_end": {
+      "max": 0.24400871992111206,
+      "mean": 0.024418362083761618,
+      "p99": 0.10457515716552734,
+      "share_nonzero": 0.7573254903157552,
+      "share_over_1_level": 0.37035497029622394
+     },
+     "same_pixels_hfirst": {
+      "max": 0.017507314682006836,
+      "mean": 5.5452233892102264e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.00319671630859375,
+      "share_over_1_level": 0.0
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.06849908828735352,
+      "mean": 0.0025747618100425327,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.14833799997965494,
+      "share_over_1_level": 1.9709269205729168e-05
+     },
+     "end_to_end": {
+      "max": 0.33115458488464355,
+      "mean": 0.031917122595213954,
+      "p99": 0.12200435996055603,
+      "share_nonzero": 0.8149353663126627,
+      "share_over_1_level": 0.4948069254557292
+     },
+     "same_pixels_hfirst": {
+      "max": 0.03501391410827637,
+      "mean": 7.43904856512027e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0042883555094401045,
+      "share_over_1_level": 9.5367431640625e-07
+     }
+    }
+   }
+  },
+  {
+   "id": "p2",
+   "photo": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171#0",
+   "decoded": [
+    640,
+    640
+   ],
+   "stored": [
+    640,
+    640
+   ],
+   "decode": {
+    "max": 4.0,
+    "mean": 0.021664225260416666,
+    "p99": 1.0,
+    "share_nonzero": 0.0158251953125,
+    "share_over_1": 0.00580322265625
+   },
+   "resize": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "resize_hfirst": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "webp": {
+    "max": 23.0,
+    "mean": 1.68031982421875,
+    "p99": 8.0,
+    "share_nonzero": 0.7922176106770833,
+    "share_over_1": 0.4410066731770833
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.03001558780670166,
+      "mean": 0.0007514033683983886,
+      "p99": 0.015007734298706055,
+      "share_nonzero": 0.05138578869047619,
+      "share_over_1_level": 9.300595238095238e-05
+     },
+     "end_to_end": {
+      "max": 0.19908088445663452,
+      "mean": 0.012576149038940623,
+      "p99": 0.05688023567199707,
+      "share_nonzero": 0.6360012755102041,
+      "share_over_1_level": 0.1716690582482993
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007853507995605,
+      "mean": 7.559790690435943e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.005175116921768708,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.08714604377746582,
+      "mean": 0.0006613118060077028,
+      "p99": 0.017506957054138184,
+      "share_nonzero": 0.037811279296875,
+      "share_over_1_level": 0.00023396809895833334
+     },
+     "end_to_end": {
+      "max": 0.3137255907058716,
+      "mean": 0.024637258364139214,
+      "p99": 0.10457515716552734,
+      "share_nonzero": 0.7655690511067709,
+      "share_over_1_level": 0.3796043395996094
+     },
+     "same_pixels_hfirst": {
+      "max": 0.017507076263427734,
+      "mean": 8.965055098286712e-06,
+      "p99": 0.0,
+      "share_nonzero": 0.0005162556966145834,
+      "share_over_1_level": 0.0
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.10457515716552734,
+      "mean": 0.0005963257841834491,
+      "p99": 0.017506957054138184,
+      "share_nonzero": 0.03401883443196615,
+      "share_over_1_level": 0.0002587636311848958
+     },
+     "end_to_end": {
+      "max": 0.4531592130661011,
+      "mean": 0.02779553539979185,
+      "p99": 0.12200438976287842,
+      "share_nonzero": 0.7867832183837891,
+      "share_over_1_level": 0.426327387491862
+     },
+     "same_pixels_hfirst": {
+      "max": 0.03501403331756592,
+      "mean": 2.3666148087316447e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0013593037923177083,
+      "share_over_1_level": 4.76837158203125e-06
+     }
+    }
+   }
+  },
+  {
+   "id": "p3",
+   "photo": "corn-maize-bd-2026-common-rust-img-261#0",
+   "decoded": [
+    1701,
+    3024
+   ],
+   "stored": [
+    900,
+    1600
+   ],
+   "decode": {
+    "max": 4.0,
+    "mean": 0.07446541716823904,
+    "p99": 2.0,
+    "share_nonzero": 0.05179194829890499,
+    "share_over_1": 0.022557666566092982
+   },
+   "resize": {
+    "max": 5.0,
+    "mean": 0.18399583333333333,
+    "p99": 1.0,
+    "share_nonzero": 0.18398541666666668,
+    "share_over_1": 8.564814814814816e-06
+   },
+   "resize_hfirst": {
+    "max": 1.0,
+    "mean": 0.005601157407407407,
+    "p99": 0.0,
+    "share_nonzero": 0.005601157407407407,
+    "share_over_1": 0.0
+   },
+   "webp": {
+    "max": 26.0,
+    "mean": 2.5488976851851852,
+    "p99": 10.0,
+    "share_nonzero": 0.8538097222222222,
+    "share_over_1": 0.5946759259259259
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.029196858406066895,
+      "mean": 0.001932736758899533,
+      "p99": 0.01500779390335083,
+      "share_nonzero": 0.13230096726190477,
+      "share_over_1_level": 6.64328231292517e-06
+     },
+     "end_to_end": {
+      "max": 0.15642082691192627,
+      "mean": 0.01641643031165954,
+      "p99": 0.07110032439231873,
+      "share_nonzero": 0.6996439200680272,
+      "share_over_1_level": 0.27260044642857145
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007883310317993,
+      "mean": 6.461658122954177e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.004417782738095238,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.06849908828735352,
+      "mean": 0.0030010969487038372,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.17291895548502603,
+      "share_over_1_level": 1.9073486328125e-05
+     },
+     "end_to_end": {
+      "max": 0.29629629105329514,
+      "mean": 0.02572828711171482,
+      "p99": 0.10457515716552734,
+      "share_nonzero": 0.7702077229817709,
+      "share_over_1_level": 0.3954658508300781
+     },
+     "same_pixels_hfirst": {
+      "max": 0.017507314682006836,
+      "mean": 6.79729072909178e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0039215087890625,
+      "share_over_1_level": 0.0
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.10457515716552734,
+      "mean": 0.003179549186909103,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.183164914449056,
+      "share_over_1_level": 5.0226847330729164e-05
+     },
+     "end_to_end": {
+      "max": 0.3660129904747009,
+      "mean": 0.037100612015578495,
+      "p99": 0.13943356275558472,
+      "share_nonzero": 0.8347530364990234,
+      "share_over_1_level": 0.5436140696207682
+     },
+     "same_pixels_hfirst": {
+      "max": 0.03501400351524353,
+      "mean": 9.716091981104569e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0056069691975911455,
+      "share_over_1_level": 1.2715657552083333e-06
+     }
+    }
+   }
+  },
+  {
+   "id": "p4",
+   "photo": "tomato-tomato-bd-iphone-2025-healthy-img-3558-02d#0",
+   "decoded": [
+    4032,
+    3024
+   ],
+   "stored": [
+    1600,
+    1200
+   ],
+   "decode": {
+    "max": 4.0,
+    "mean": 0.0031472754997060553,
+    "p99": 0.0,
+    "share_nonzero": 0.002142335522171832,
+    "share_over_1": 0.0010019053917863442
+   },
+   "resize": {
+    "max": 2.0,
+    "mean": 0.046289583333333335,
+    "p99": 1.0,
+    "share_nonzero": 0.04628802083333333,
+    "share_over_1": 1.5625e-06
+   },
+   "resize_hfirst": {
+    "max": 2.0,
+    "mean": 0.0010661458333333332,
+    "p99": 0.0,
+    "share_nonzero": 0.0010649305555555555,
+    "share_over_1": 1.2152777777777778e-06
+   },
+   "webp": {
+    "max": 31.0,
+    "mean": 1.5603659722222223,
+    "p99": 7.0,
+    "share_nonzero": 0.7604505208333333,
+    "share_over_1": 0.3919225694444444
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.015007883310317993,
+      "mean": 0.0017826820869848753,
+      "p99": 0.01500779390335083,
+      "share_nonzero": 0.12203709608843537,
+      "share_over_1_level": 0.0
+     },
+     "end_to_end": {
+      "max": 0.12798058986663818,
+      "mean": 0.012544951418004022,
+      "p99": 0.045023322105407715,
+      "share_nonzero": 0.6465308779761905,
+      "share_over_1_level": 0.17018096301020408
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007853507995605,
+      "mean": 4.881158465464903e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0033415710034013606,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.0348583459854126,
+      "mean": 0.0019695520988728767,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.11349741617838542,
+      "share_over_1_level": 1.2715657552083333e-06
+     },
+     "end_to_end": {
+      "max": 0.2788672149181366,
+      "mean": 0.019191052273532943,
+      "p99": 0.08562374114990234,
+      "share_nonzero": 0.7042973836263021,
+      "share_over_1_level": 0.272003173828125
+     },
+     "same_pixels_hfirst": {
+      "max": 0.017507076263427734,
+      "mean": 5.2138401754220354e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.003002166748046875,
+      "share_over_1_level": 0.0
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.03501403331756592,
+      "mean": 0.0012761614934091448,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.07350858052571614,
+      "share_over_1_level": 2.765655517578125e-05
+     },
+     "end_to_end": {
+      "max": 0.4531591534614563,
+      "mean": 0.024732245492989097,
+      "p99": 0.10504201054573059,
+      "share_nonzero": 0.7480252583821615,
+      "share_over_1_level": 0.3634970982869466
+     },
+     "same_pixels_hfirst": {
+      "max": 0.03501391410827637,
+      "mean": 6.3441388159724e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0036497116088867188,
+      "share_over_1_level": 3.4968058268229165e-06
+     }
+    }
+   }
+  },
+  {
+   "id": "p5",
+   "photo": "apple-inat-408956748#1",
+   "decoded": [
+    800,
+    1200
+   ],
+   "stored": [
+    800,
+    1200
+   ],
+   "decode": {
+    "max": 4.0,
+    "mean": 0.08543125,
+    "p99": 2.0,
+    "share_nonzero": 0.063540625,
+    "share_over_1": 0.02178298611111111
+   },
+   "resize": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "resize_hfirst": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "webp": {
+    "max": 18.0,
+    "mean": 2.0757246527777777,
+    "p99": 8.0,
+    "share_nonzero": 0.8335076388888889,
+    "share_over_1": 0.5360232638888889
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.015007883310317993,
+      "mean": 0.002274075242672509,
+      "p99": 0.01500779390335083,
+      "share_nonzero": 0.15569196428571427,
+      "share_over_1_level": 0.0
+     },
+     "end_to_end": {
+      "max": 0.13138580322265625,
+      "mean": 0.01546458264895786,
+      "p99": 0.05688033878803253,
+      "share_nonzero": 0.7031117134353742,
+      "share_over_1_level": 0.2621040603741497
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007883310317993,
+      "mean": 7.967257850436197e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.005440848214285714,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.05228757858276367,
+      "mean": 0.002892576410719272,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.16669464111328125,
+      "share_over_1_level": 7.62939453125e-06
+     },
+     "end_to_end": {
+      "max": 0.24400869011878967,
+      "mean": 0.025646628280076317,
+      "p99": 0.08753500133752823,
+      "share_nonzero": 0.7809244791666666,
+      "share_over_1_level": 0.4100596110026042
+     },
+     "same_pixels_hfirst": {
+      "max": 0.01750713586807251,
+      "mean": 5.455360342369412e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.003147125244140625,
+      "share_over_1_level": 0.0
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.06971681118011475,
+      "mean": 0.0020166307987368923,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.1161206563313802,
+      "share_over_1_level": 9.218851725260417e-05
+     },
+     "end_to_end": {
+      "max": 0.2788671851158142,
+      "mean": 0.03409866122929447,
+      "p99": 0.12254901230335236,
+      "share_nonzero": 0.8271859486897787,
+      "share_over_1_level": 0.5209004084269205
+     },
+     "same_pixels_hfirst": {
+      "max": 0.03501403331756592,
+      "mean": 7.328082262662387e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0042235056559244795,
+      "share_over_1_level": 5.7220458984375e-06
+     }
+    }
+   }
+  },
+  {
+   "id": "p6",
+   "photo": "corn-maize-in-2025-pottasium-4-28#0",
+   "decoded": [
+    667,
+    679
+   ],
+   "stored": [
+    667,
+    679
+   ],
+   "decode": {
+    "max": 4.0,
+    "mean": 0.1045993939701725,
+    "p99": 2.0,
+    "share_nonzero": 0.07423754985541103,
+    "share_over_1": 0.030245554689518273
+   },
+   "resize": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "resize_hfirst": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "webp": {
+    "max": 21.0,
+    "mean": 1.849945424931128,
+    "p99": 7.0,
+    "share_nonzero": 0.8155841077988252,
+    "share_over_1": 0.49336230264838127
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.029196858406066895,
+      "mean": 0.0024890560144217645,
+      "p99": 0.01500779390335083,
+      "share_nonzero": 0.17042012117346939,
+      "share_over_1_level": 6.64328231292517e-06
+     },
+     "end_to_end": {
+      "max": 0.15642072074115276,
+      "mean": 0.017947799178988647,
+      "p99": 0.07110035419464111,
+      "share_nonzero": 0.7303225977891157,
+      "share_over_1_level": 0.3208771789965986
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007883310317993,
+      "mean": 6.316754676619622e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.004311490221088435,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.035014137625694275,
+      "mean": 0.0023325044810468634,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.1343536376953125,
+      "share_over_1_level": 5.7220458984375e-05
+     },
+     "end_to_end": {
+      "max": 0.244008868932724,
+      "mean": 0.02957235389093012,
+      "p99": 0.10504209995269775,
+      "share_nonzero": 0.8029123942057291,
+      "share_over_1_level": 0.46343231201171875
+     },
+     "same_pixels_hfirst": {
+      "max": 0.03485840559005737,
+      "mean": 7.968418026334707e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.004587809244791667,
+      "share_over_1_level": 5.086263020833333e-06
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.03501415252685547,
+      "mean": 0.0016173232451526982,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.09305604298909505,
+      "share_over_1_level": 0.0001408259073893229
+     },
+     "end_to_end": {
+      "max": 0.3596198558807373,
+      "mean": 0.03170019537711314,
+      "p99": 0.12200437486171722,
+      "share_nonzero": 0.813960075378418,
+      "share_over_1_level": 0.4893487294514974
+     },
+     "same_pixels_hfirst": {
+      "max": 0.035014137625694275,
+      "mean": 0.00011226158628400522,
+      "p99": 0.0,
+      "share_nonzero": 0.006451924641927083,
+      "share_over_1_level": 1.52587890625e-05
+     }
+    }
+   }
+  },
+  {
+   "id": "p7",
+   "photo": "corn-commons-corn-hail#0",
+   "decoded": [
+    2272,
+    1704
+   ],
+   "stored": [
+    1600,
+    1200
+   ],
+   "decode": {
+    "max": 5.0,
+    "mean": 0.31900438969891337,
+    "p99": 2.0,
+    "share_nonzero": 0.23269072081156736,
+    "share_over_1": 0.08565862359210033
+   },
+   "resize": {
+    "max": 9.0,
+    "mean": 0.22949756944444444,
+    "p99": 1.0,
+    "share_nonzero": 0.2270328125,
+    "share_over_1": 0.0019892361111111113
+   },
+   "resize_hfirst": {
+    "max": 2.0,
+    "mean": 0.004097222222222223,
+    "p99": 0.0,
+    "share_nonzero": 0.004096527777777778,
+    "share_over_1": 6.944444444444445e-07
+   },
+   "webp": {
+    "max": 37.0,
+    "mean": 3.32225625,
+    "p99": 13.0,
+    "share_nonzero": 0.8651034722222222,
+    "share_over_1": 0.6714163194444445
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.16058266162872314,
+      "mean": 0.003702444671631031,
+      "p99": 0.04266011714935303,
+      "share_nonzero": 0.20901759141156462,
+      "share_over_1_level": 0.027450042517006803
+     },
+     "end_to_end": {
+      "max": 0.17064082622528076,
+      "mean": 0.02082894383762496,
+      "p99": 0.08532041311264038,
+      "share_nonzero": 0.7448049532312925,
+      "share_over_1_level": 0.377843324829932
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007883310317993,
+      "mean": 3.0848050320954685e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.002105920493197279,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.2091503143310547,
+      "mean": 0.004290742096306606,
+      "p99": 0.0348583459854126,
+      "share_nonzero": 0.22400538126627603,
+      "share_over_1_level": 0.014731089274088541
+     },
+     "end_to_end": {
+      "max": 0.3834422677755356,
+      "mean": 0.036771198004587426,
+      "p99": 0.15686273574829102,
+      "share_nonzero": 0.8073031107584635,
+      "share_over_1_level": 0.5241800944010416
+     },
+     "same_pixels_hfirst": {
+      "max": 0.017507314682006836,
+      "mean": 3.9633554557975494e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0022824605305989585,
+      "share_over_1_level": 0.0
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.1750699281692505,
+      "mean": 0.004509579008714108,
+      "p99": 0.017507076263427734,
+      "share_nonzero": 0.2531067530314128,
+      "share_over_1_level": 0.0047334035237630205
+     },
+     "end_to_end": {
+      "max": 0.6100217998027802,
+      "mean": 0.04831908276767649,
+      "p99": 0.19257700443267822,
+      "share_nonzero": 0.8465792338053385,
+      "share_over_1_level": 0.6193927129109701
+     },
+     "same_pixels_hfirst": {
+      "max": 0.03501403331756592,
+      "mean": 6.146198278633719e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0035378138224283853,
+      "share_over_1_level": 1.2715657552083333e-06
+     }
+    }
+   }
+  },
+  {
+   "id": "p8",
+   "photo": "corn-commons-corn-magnesium#0",
+   "decoded": [
+    1018,
+    555
+   ],
+   "stored": [
+    1018,
+    555
+   ],
+   "decode": {
+    "max": 4.0,
+    "mean": 0.20081653362596388,
+    "p99": 2.0,
+    "share_nonzero": 0.14489400992347948,
+    "share_over_1": 0.055664112049180814
+   },
+   "resize": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "resize_hfirst": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "webp": {
+    "max": 20.0,
+    "mean": 2.1739753505961756,
+    "p99": 8.0,
+    "share_nonzero": 0.8393682484055764,
+    "share_over_1": 0.5513324719611556
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.028440117835998535,
+      "mean": 0.0025965196702938966,
+      "p99": 0.01500779390335083,
+      "share_nonzero": 0.1777609481292517,
+      "share_over_1_level": 6.64328231292517e-06
+     },
+     "end_to_end": {
+      "max": 0.18977952003479004,
+      "mean": 0.022829021568328108,
+      "p99": 0.08532047271728516,
+      "share_nonzero": 0.7852957589285714,
+      "share_over_1_level": 0.4261732036564626
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007883310317993,
+      "mean": 2.9383937466369066e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0020062712585034014,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.03501403331756592,
+      "mean": 0.0026150313454014196,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.15067672729492188,
+      "share_over_1_level": 2.288818359375e-05
+     },
+     "end_to_end": {
+      "max": 0.30824559926986694,
+      "mean": 0.03262594390952719,
+      "p99": 0.12200438976287842,
+      "share_nonzero": 0.8189519246419271,
+      "share_over_1_level": 0.5012486775716146
+     },
+     "same_pixels_hfirst": {
+      "max": 0.01750713586807251,
+      "mean": 4.557955594523359e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0026257832845052085,
+      "share_over_1_level": 0.0
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.03501415252685547,
+      "mean": 0.001886414910790002,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.10858980814615886,
+      "share_over_1_level": 0.00012270609537760416
+     },
+     "end_to_end": {
+      "max": 0.34858396649360657,
+      "mean": 0.03720636121045029,
+      "p99": 0.1394336223602295,
+      "share_nonzero": 0.8382075627644857,
+      "share_over_1_level": 0.5485693613688151
+     },
+     "same_pixels_hfirst": {
+      "max": 0.03501400351524353,
+      "mean": 5.82903681228449e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0033556620279947915,
+      "share_over_1_level": 1.9073486328125e-06
+     }
+    }
+   }
+  },
+  {
+   "id": "p9",
+   "photo": "tomato-commons-tomato-blossom-end-rot-vine#0",
+   "decoded": [
+    1381,
+    1541
+   ],
+   "stored": [
+    1381,
+    1541
+   ],
+   "decode": {
+    "max": 4.0,
+    "mean": 0.24485230554716264,
+    "p99": 2.0,
+    "share_nonzero": 0.17277338396955186,
+    "share_over_1": 0.0716989306529093
+   },
+   "resize": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "resize_hfirst": {
+    "max": 0.0,
+    "mean": 0.0,
+    "p99": 0.0,
+    "share_nonzero": 0.0,
+    "share_over_1": 0.0
+   },
+   "webp": {
+    "max": 25.0,
+    "mean": 2.3268196059653876,
+    "p99": 9.0,
+    "share_nonzero": 0.8483068710222147,
+    "share_over_1": 0.5772204681970621
+   },
+   "recipes": {
+    "bioclip": {
+     "same_pixels": {
+      "max": 0.14598429203033447,
+      "mean": 0.0019412209853246886,
+      "p99": 0.01500779390335083,
+      "share_nonzero": 0.12963701105442177,
+      "share_over_1_level": 0.0017671130952380952
+     },
+     "end_to_end": {
+      "max": 0.13138580322265625,
+      "mean": 0.015537347413597597,
+      "p99": 0.05839371681213379,
+      "share_nonzero": 0.6867160926870748,
+      "share_over_1_level": 0.2594932504251701
+     },
+     "same_pixels_hfirst": {
+      "max": 0.015007883310317993,
+      "mean": 3.7295731315179165e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.002537733843537415,
+      "share_over_1_level": 0.0
+     }
+    },
+    "leaf_detector": {
+     "same_pixels": {
+      "max": 0.14005613327026367,
+      "mean": 0.0030399229547981577,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.17464447021484375,
+      "share_over_1_level": 0.0003382364908854167
+     },
+     "end_to_end": {
+      "max": 0.29629623889923096,
+      "mean": 0.026678291004160453,
+      "p99": 0.10457515716552734,
+      "share_nonzero": 0.7786280314127604,
+      "share_over_1_level": 0.4154866536458333
+     },
+     "same_pixels_hfirst": {
+      "max": 0.017507314682006836,
+      "mean": 5.7453603441004475e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.0033111572265625,
+      "share_over_1_level": 0.0
+     }
+    },
+    "sam_encoder": {
+     "same_pixels": {
+      "max": 0.1050419807434082,
+      "mean": 0.002956764133264992,
+      "p99": 0.01750701665878296,
+      "share_nonzero": 0.1702432632446289,
+      "share_over_1_level": 0.00010585784912109375
+     },
+     "end_to_end": {
+      "max": 0.34858381748199463,
+      "mean": 0.035144289267366347,
+      "p99": 0.1369980275630951,
+      "share_nonzero": 0.8316926956176758,
+      "share_over_1_level": 0.5341482162475586
+     },
+     "same_pixels_hfirst": {
+      "max": 0.03501403331756592,
+      "mean": 7.352233551127796e-05,
+      "p99": 0.0,
+      "share_nonzero": 0.00423431396484375,
+      "share_over_1_level": 1.2715657552083333e-06
+     }
+    }
+   }
+  }
+ ],
+ "crops": [
+  {
+   "id": "c0",
+   "photo": "p0",
+   "label": "past the top-left corner",
+   "bbox": [
+    0.02,
+    0.03,
+    0.3,
+    0.4
+   ],
+   "rect": [
+    0,
+    0,
+    420,
+    752
+   ],
+   "same_rect": true,
+   "py_size": [
+    420,
+    752
+   ],
+   "same_pixels": {
+    "max": 0.030015528202056885,
+    "mean": 0.001610328824123523,
+    "p99": 0.01500777155160904,
+    "share_nonzero": 0.11043792517006802,
+    "share_over_1_level": 6.64328231292517e-06
+   },
+   "end_to_end": {
+    "max": 0.17064088582992554,
+    "mean": 0.020362999884636815,
+    "p99": 0.07299208641052246,
+    "share_nonzero": 0.7682092368197279,
+    "share_over_1_level": 0.38536352040816324
+   },
+   "same_pixels_hfirst": {
+    "max": 0.015007883310317993,
+    "mean": 0.00010162088963835497,
+    "p99": 0.0,
+    "share_nonzero": 0.006928943452380952,
+    "share_over_1_level": 0.0
+   }
+  },
+  {
+   "id": "c1",
+   "photo": "p1",
+   "label": "past the bottom-right corner",
+   "bbox": [
+    0.55,
+    0.5,
+    0.44,
+    0.49
+   ],
+   "rect": [
+    809,
+    721,
+    791,
+    879
+   ],
+   "same_rect": true,
+   "py_size": [
+    791,
+    879
+   ],
+   "same_pixels": {
+    "max": 0.05688023567199707,
+    "mean": 0.002349085113073701,
+    "p99": 0.01500779390335083,
+    "share_nonzero": 0.16074750212585034,
+    "share_over_1_level": 5.978954081632653e-05
+   },
+   "end_to_end": {
+    "max": 0.17064082622528076,
+    "mean": 0.020842207263423333,
+    "p99": 0.08532039262354374,
+    "share_nonzero": 0.7622369260204082,
+    "share_over_1_level": 0.37890625
+   },
+   "same_pixels_hfirst": {
+    "max": 0.015007883310317993,
+    "mean": 6.123813126219323e-05,
+    "p99": 0.0,
+    "share_nonzero": 0.004165338010204082,
+    "share_over_1_level": 0.0
+   }
+  },
+  {
+   "id": "c2",
+   "photo": "p2",
+   "label": "fractional edges",
+   "bbox": [
+    0.3137,
+    0.2719,
+    0.1234,
+    0.0987
+   ],
+   "rect": [
+    192,
+    167,
+    96,
+    77
+   ],
+   "same_rect": true,
+   "py_size": [
+    96,
+    77
+   ],
+   "same_pixels": {
+    "max": 0.05688023567199707,
+    "mean": 0.0010116556849824314,
+    "p99": 0.015007764101028442,
+    "share_nonzero": 0.06861181972789115,
+    "share_over_1_level": 0.0006045386904761905
+   },
+   "end_to_end": {
+    "max": 0.31284141540527344,
+    "mean": 0.026819968132236083,
+    "p99": 0.12798058785498143,
+    "share_nonzero": 0.7965561224489796,
+    "share_over_1_level": 0.4586588541666667
+   },
+   "same_pixels_hfirst": {
+    "max": 0.015007853507995605,
+    "mean": 3.1544475409738914e-05,
+    "p99": 0.0,
+    "share_nonzero": 0.002152423469387755,
+    "share_over_1_level": 0.0
+   }
+  },
+  {
+   "id": "c3",
+   "photo": "p3",
+   "label": "under 40 px",
+   "bbox": [
+    0.4,
+    0.35,
+    0.02,
+    0.03
+   ],
+   "rect": [
+    358,
+    555,
+    22,
+    58
+   ],
+   "same_rect": true,
+   "py_size": [
+    22,
+    58
+   ],
+   "same_pixels": {
+    "max": 0.03001558780670166,
+    "mean": 0.0033657430064451335,
+    "p99": 0.01500779390335083,
+    "share_nonzero": 0.23032259778911565,
+    "share_over_1_level": 8.636267006802721e-05
+   },
+   "end_to_end": {
+    "max": 0.2275211215019226,
+    "mean": 0.05097537548620488,
+    "p99": 0.17064082622528076,
+    "share_nonzero": 0.90597762542517,
+    "share_over_1_level": 0.725758662840136
+   },
+   "same_pixels_hfirst": {
+    "max": 0.015007883310317993,
+    "mean": 9.30622743360763e-05,
+    "p99": 0.0,
+    "share_nonzero": 0.006364264455782313,
+    "share_over_1_level": 0.0
+   }
+  },
+  {
+   "id": "c4",
+   "photo": "p4",
+   "label": "most of the photo",
+   "bbox": [
+    0.1,
+    0.1,
+    0.8,
+    0.8
+   ],
+   "rect": [
+    31,
+    23,
+    1537,
+    1153
+   ],
+   "same_rect": true,
+   "py_size": [
+    1537,
+    1153
+   ],
+   "same_pixels": {
+    "max": 0.015007883310317993,
+    "mean": 0.0018056183237752763,
+    "p99": 0.01500779390335083,
+    "share_nonzero": 0.12362484056122448,
+    "share_over_1_level": 0.0
+   },
+   "end_to_end": {
+    "max": 0.12798058986663818,
+    "mean": 0.012807711772025021,
+    "p99": 0.056880176067352295,
+    "share_nonzero": 0.6509486607142857,
+    "share_over_1_level": 0.1785780718537415
+   },
+   "same_pixels_hfirst": {
+    "max": 0.015007883310317993,
+    "mean": 4.286964751224091e-05,
+    "p99": 0.0,
+    "share_nonzero": 0.002936330782312925,
+    "share_over_1_level": 0.0
+   }
+  }
+ ],
+ "embeddings": {
+  "model": "bioclip/bioclip-2-vision-fp32.onnx",
+  "photos": {
+   "same_pixels": [
+    0.9999209046363831,
+    0.9998579025268555,
+    0.9998078346252441,
+    0.9996731281280518,
+    0.9997861981391907,
+    0.9995436668395996,
+    0.9998840689659119,
+    0.9998781681060791,
+    0.9992376565933228,
+    0.9998677968978882
+   ],
+   "webp": [
+    0.9984707832336426,
+    0.9989007115364075,
+    0.9863919019699097,
+    0.9858269691467285,
+    0.9974882006645203,
+    0.9974055290222168,
+    0.9958431720733643,
+    0.9990186095237732,
+    0.9931600093841553,
+    0.9989938139915466
+   ],
+   "decode_resize": [
+    0.999915361404419,
+    0.9995573163032532,
+    0.9997528791427612,
+    0.9996235370635986,
+    0.9999059438705444,
+    0.9998776912689209,
+    0.9998831748962402,
+    0.9998834729194641,
+    0.9995478987693787,
+    0.9997951984405518
+   ],
+   "end_to_end": [
+    0.9985732436180115,
+    0.9992549419403076,
+    0.985448956489563,
+    0.9857137203216553,
+    0.9972460865974426,
+    0.9973272085189819,
+    0.9964472651481628,
+    0.9989204406738281,
+    0.994236946105957,
+    0.99897301197052
+   ]
+  },
+  "crops": {
+   "same_pixels": [
+    0.9990947246551514,
+    0.9996590614318848,
+    0.9995603561401367,
+    0.9976747035980225,
+    0.9995787143707275
+   ],
+   "webp": [
+    0.9758353233337402,
+    0.989122748374939,
+    0.8755547404289246,
+    0.9744143486022949,
+    0.9975500106811523
+   ],
+   "decode_resize": [
+    0.9990311861038208,
+    0.9995523691177368,
+    0.9992570877075195,
+    0.99871426820755,
+    0.9995031952857971
+   ],
+   "end_to_end": [
+    0.9771029949188232,
+    0.9889503717422485,
+    0.8815587759017944,
+    0.968782365322113,
+    0.9973393678665161
+   ]
+  }
+ }
+}
