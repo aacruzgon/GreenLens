@@ -12,10 +12,11 @@
 //! A request-level error (`errors`, with HTTP 400) refuses the whole batch, so one message
 //! can't silence the others: a batch refused with `PUSH_TOO_MANY_EXPERIENCE_IDS` (tokens of two
 //! Expo projects) is sent again as one batch per project, from the error's `details` (project
-//! → its tokens), and any other refusal, or a project batch refused again, is sent one message
-//! at a time. A single message refused is dropped and counted in [`PushReport::failed`]. A
-//! transport error, `429` or a `5xx` drops its batch without splitting: sending more requests
-//! wouldn't help.
+//! → its tokens), and one refused with `VALIDATION_ERROR` (a malformed message), or a project
+//! batch refused again, is sent one message at a time. A single message refused is dropped and
+//! counted in [`PushReport::failed`]. Any other code (`UNAUTHORIZED`, `TOO_MANY_REQUESTS`, one
+//! Expo adds later), a transport error, `429` or a `5xx` drops its batch without splitting:
+//! every part would get the same answer.
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -167,6 +168,9 @@ pub struct RequestError {
 /// `PUSH_TOO_MANY_EXPERIENCE_IDS`: the batch mixes tokens of several Expo projects.
 pub const TOO_MANY_EXPERIENCE_IDS: &str = "PUSH_TOO_MANY_EXPERIENCE_IDS";
 
+/// `VALIDATION_ERROR`: a message of the batch is malformed (a `to` that isn't a push token).
+pub const VALIDATION_ERROR: &str = "VALIDATION_ERROR";
+
 /// How far a refused batch has been split already.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Split {
@@ -180,8 +184,9 @@ enum Split {
 
 /// What to send again after a request-level refusal of `batch` at `level`, or `None` to drop
 /// it: a mixed-project batch splits by project (messages whose token `details` doesn't name are
-/// sent alone), anything else one message at a time. A rate limit is never split, and a single
-/// message has nothing left to split.
+/// sent alone), a malformed message one message at a time. A refusal with any other code is
+/// about the request, not its messages (`UNAUTHORIZED`, `TOO_MANY_REQUESTS`), so it is never
+/// split, and a single message has nothing left to split.
 fn split<'m>(
     batch: &[&'m PushMessage],
     errors: &[RequestError],
@@ -190,7 +195,10 @@ fn split<'m>(
     if level == Split::Single || batch.len() < 2 {
         return None;
     }
-    if errors.iter().any(|e| e.code == "TOO_MANY_REQUESTS") {
+    if !errors
+        .iter()
+        .all(|e| [TOO_MANY_EXPERIENCE_IDS, VALIDATION_ERROR].contains(&e.code.as_str()))
+    {
         return None;
     }
     let singles = |messages: &[&'m PushMessage]| -> Vec<(Vec<&'m PushMessage>, Split)> {
@@ -717,6 +725,31 @@ mod tests {
             .unwrap();
         assert_eq!(report.accepted, 2);
         assert_eq!(report.failed, 1, "the junk message alone is lost");
+    }
+
+    /// A refusal that isn't about the messages is not split, whatever its HTTP status: every
+    /// message would get the same answer.
+    #[tokio::test]
+    async fn a_request_refusal_at_400_is_not_split() {
+        for code in ["UNAUTHORIZED", "TOO_MANY_REQUESTS", "SOMETHING_NEW"] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/send"))
+                .respond_with(ResponseTemplate::new(400).set_body_json(json!({"errors": [{
+                    "code": code, "message": "refused"
+                }]})))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let err = adapter(&server)
+                .push(vec![
+                    message("ExponentPushToken[a]"),
+                    message("ExponentPushToken[b]"),
+                ])
+                .await
+                .unwrap_err();
+            assert!(matches!(err, ProviderError::BadResponse { .. }), "{code}");
+        }
     }
 
     /// A refusal that isn't about the messages (a bad access token) is not split: every message
