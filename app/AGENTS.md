@@ -1,6 +1,6 @@
 # app/AGENTS.md
 
-The PDM app: Expo SDK 57, React Native 0.86, Expo Router, `@clerk/expo` 4.x, TypeScript strict. Built for the iPhone; the web build comes last.
+The PDM app: Expo SDK 57, React Native 0.86, Expo Router, `@clerk/expo` 4.x, TypeScript strict. Built for the iPhone only; the web build is dropped (frontend roadmap F9).
 
 Read first:
 
