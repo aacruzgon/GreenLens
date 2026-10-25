@@ -88,17 +88,18 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
 /* ——— Hero: one live analysis on a real leaf ——— */
 .hero { position: relative; background: var(--wash); overflow: hidden; }
+.hero-drift { position: absolute; inset: 0; transform-origin: 80% 60%; animation: drift 24s var(--ease) infinite alternate; }
 .hero-photo { position: absolute; inset: 0 0 0 40%; background: url("img/tomato-blight.jpg") 62% 50% / cover no-repeat;
   -webkit-mask-image: linear-gradient(to right, transparent 0, #000 34%), linear-gradient(to top, transparent 0, #000 30%);
   mask-image: linear-gradient(to right, transparent 0, #000 34%), linear-gradient(to top, transparent 0, #000 30%);
-  -webkit-mask-composite: source-in; mask-composite: intersect; transform-origin: 80% 60%; animation: drift 24s var(--ease) infinite alternate; }
+  -webkit-mask-composite: source-in; mask-composite: intersect; }
 @keyframes drift { from { transform: scale(1.04); } to { transform: scale(1.1) translate(-1%, -1%); } }
 .hero-layer { position: absolute; inset: 0; }
 @supports (animation-timeline: view()) {
   .hero-layer { animation: heroOut linear both; animation-timeline: view(); animation-range: exit 0% exit 100%; }
   .hero-copy { animation: copyOut linear both; animation-timeline: view(); animation-range: exit -20% exit 80%; }
 }
-@keyframes heroOut { to { transform: translateY(14%) scale(1.04); filter: blur(6px) saturate(.7); opacity: .55; } }
+@keyframes heroOut { to { transform: translateY(14%) scale(1.04); opacity: .55; } }
 @keyframes copyOut { to { transform: translateY(-60px); opacity: .2; } }
 .hero .wrap { position: relative; min-height: min(820px, 92vh); display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 6fr); align-items: end; padding-block: 120px 72px; }
 .hero-copy { display: grid; gap: 26px; position: relative; z-index: 2; }
@@ -153,8 +154,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* ——— The story: chapters beside a sticky phone, each technology tethered to its moment ——— */
 .story { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: clamp(40px, 7vw, 120px); position: relative; }
 .chapters { display: grid; }
-.chapter { min-height: 62vh; display: grid; align-content: start; gap: 16px; padding-block: 4vh 0; opacity: .3; transition: opacity .6s var(--ease); scroll-margin-top: 80px; }
-.chapter.on { opacity: 1; }
+.chapter { min-height: 62vh; display: grid; align-content: start; gap: 16px; padding-block: 4vh 0; scroll-margin-top: 80px; }
+.chapter h3, .chapter .when { transition: color .6s var(--ease); }
+.chapter:not(.on) h3, .chapter:not(.on) .when { color: var(--ink-2); }
 .chapter:first-child { padding-top: 0; }
 .chapter:last-child { min-height: calc(100vh - 120px); }
 .chapter .when { font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--leaf); }
@@ -178,11 +180,14 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .tether path { fill: none; stroke: var(--leaf); stroke-width: 1.5; stroke-dasharray: 2 5; stroke-linecap: round; transition: opacity .3s; }
 .tether .pin { fill: #fff; stroke: var(--leaf); stroke-width: 2.5; transition: opacity .3s; }
 .tether .halo { fill: none; stroke: var(--leaf); stroke-width: 1.5; animation: halo 2.2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.tether .off { visibility: hidden; animation: none; }
 @keyframes halo { from { opacity: .8; transform: scale(.6); } to { opacity: 0; transform: scale(2.2); } }
 @media (max-width: 900px) {
   .story { grid-template-columns: minmax(0, 1fr); }
   .stage { order: -1; top: calc(env(safe-area-inset-top, 0px) + 60px); height: 50vh; z-index: 2; background: linear-gradient(var(--ground) 86%, transparent); padding-block: 8px 24px; }
-  .chapter { min-height: 0; padding-block: 18vh 12vh; align-content: end; }
+  .chapter { min-height: 0; padding-block: 18vh 12vh; align-content: end; scroll-margin-top: calc(32vh + 70px); }
+  .chapter:first-child { padding-top: 18vh; }
+  .chapter:last-child { min-height: 0; padding-bottom: 40vh; }
   .dots, .tether { display: none; }
 }
 
@@ -196,16 +201,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   .card, .plate, .tech, .pipe { corner-shape: squircle; }
 }
 .canvas { position: absolute; left: 0; top: 0; width: 390px; height: 844px; transform: scale(var(--s)); transform-origin: 0 0; font-size: 17px; line-height: 1.3; }
-.island { position: absolute; z-index: 40; left: 50%; top: 11px; width: 126px; height: 37px; transform: translateX(-50%); background: #000; border-radius: 22px; overflow: hidden; color: #fff; transition: width .6s var(--spring), height .6s var(--spring), top .6s var(--spring), border-radius .6s var(--spring); }
-.island .la { opacity: 0; padding: 16px 20px; transition: opacity .3s; display: grid; gap: 8px; font-size: 14px; }
-.island.wide { width: 366px; height: 98px; border-radius: 40px; top: 9px; }
-.island.wide .la { opacity: 1; transition-delay: .25s; }
-.la .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.la b { font-weight: 600; }
-.la .t { font: 500 13px var(--mono); color: rgba(255,255,255,.6); }
-.la .nine { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; }
-.la .nine i { height: 4px; border-radius: 2px; background: rgba(255,255,255,.2); }
-.la .nine i.d { background: #7CC59A; }
+.island { position: absolute; z-index: 40; left: 50%; top: 11px; width: 126px; height: 37px; transform: translateX(-50%); background: #000; border-radius: 22px; }
 .sb { position: absolute; z-index: 30; left: 0; right: 0; top: 0; height: 54px; display: flex; justify-content: space-between; align-items: center; padding: 6px 34px 0 46px; font: 600 16px var(--body); color: var(--ink); pointer-events: none; }
 .sb.light { color: #fff; }
 .sb .icons { display: flex; gap: 6px; align-items: center; }
@@ -214,13 +210,12 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .sb .batt { width: 25px; height: 12px; border-radius: 4px; }
 .homebar { position: absolute; z-index: 30; left: 50%; bottom: 8px; width: 140px; height: 5px; border-radius: 3px; transform: translateX(-50%); background: var(--ink); opacity: .9; }
 .homebar.light { background: #fff; }
-.scr { position: absolute; inset: 0; opacity: 0; visibility: hidden; transform: translateY(24px) scale(.985); transition: opacity .42s var(--ease), transform .72s var(--spring), visibility 0s .72s; background: var(--ground); color: var(--ink); overflow: hidden; }
-.scr.on { opacity: 1; visibility: visible; transform: none; transition: opacity .42s var(--ease), transform .72s var(--spring), visibility 0s; }
-.vt .scr { transition: none; }
+.scr { position: absolute; inset: 0; opacity: 0; visibility: hidden; transform: translateY(24px) scale(.985); transition: opacity 0s .45s, transform 0s .45s, visibility 0s .45s; background: var(--ground); color: var(--ink); overflow: hidden; }
+.scr.on { z-index: 1; opacity: 1; visibility: visible; transform: none; transition: opacity .42s var(--ease), transform .72s var(--spring); }
+.scr.snap * { transition: none !important; }
+.scr:not(.on) *, .scr:not(.on) *::before, .scr:not(.on) *::after { animation-play-state: paused; }
+.paused *, .paused *::before, .paused *::after { animation-play-state: paused; }
 .scr.cam { background: #000; color: #fff; }
-/* Element-scoped view transitions (where supported) morph the leaf photo from screen to screen. */
-.scr.on .vt-leaf { view-transition-name: leaf; }
-::view-transition-group(*) { animation-duration: .6s; animation-timing-function: var(--ease); }
 .card { background: var(--surface); border-radius: 28px; box-shadow: var(--shadow); }
 .melt { position: absolute; left: 0; right: 0; top: 0; background-size: cover; background-position: center; -webkit-mask-image: linear-gradient(#000 45%, transparent); mask-image: linear-gradient(#000 45%, transparent); }
 .icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.32); color: #fff; }
@@ -335,8 +330,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .strip3 i:nth-child(1) { --p: 80% 66%; box-shadow: 0 0 0 2px #fff; }
 .strip3 i:nth-child(2) { --p: 30% 40%; }
 .strip3 i:nth-child(3) { --p: 50% 90%; }
-.ring { position: absolute; left: 50%; bottom: 118px; width: 64px; height: 64px; margin-left: -32px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 22px rgba(255,255,255,.6), inset 0 0 14px rgba(255,255,255,.35); animation: glow 1.8s ease-in-out infinite; transition: opacity .3s; }
-@keyframes glow { 50% { box-shadow: 0 0 34px rgba(255,255,255,.85), inset 0 0 20px rgba(255,255,255,.5); } }
+.ring { position: absolute; left: 50%; bottom: 118px; width: 64px; height: 64px; margin-left: -32px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 22px rgba(255,255,255,.6), inset 0 0 14px rgba(255,255,255,.35); transition: opacity .3s; }
+.ring::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; box-shadow: 0 0 34px rgba(255,255,255,.85), inset 0 0 20px rgba(255,255,255,.5); opacity: 0; animation: glow 1.8s ease-in-out infinite; }
+@keyframes glow { 50% { opacity: 1; } }
 .ring.off { opacity: 0; }
 .seeplan { position: absolute; left: 24px; right: 24px; bottom: 116px; justify-content: center; opacity: 0; transform: translateY(12px); transition: .72s var(--spring); background: #7CC59A; color: #0D1A12; font-size: 16.5px; }
 .seeplan .disc { background: #0D1A12; color: #7CC59A; }
@@ -346,7 +342,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .diag { background: var(--wash); }
 .diag .melt { height: 400px; background-image: url("img/tomato-blight.jpg"); background-position: 78% 62%; background-size: 240% auto; -webkit-mask-image: linear-gradient(#000 50%, transparent); mask-image: linear-gradient(#000 50%, transparent); }
 .diag .bar { position: absolute; z-index: 3; top: 56px; left: 16px; right: 16px; display: flex; justify-content: space-between; }
-.diag .scroll { position: absolute; inset: 0; transition: transform 1.4s var(--ease); }
+.diag .scroll { position: absolute; inset: 0; }
 .diag .name { position: absolute; top: 300px; left: 0; right: 0; text-align: center; display: grid; gap: 8px; padding: 0 24px; }
 .diag .name b { font: 600 46px/1 var(--display); letter-spacing: -0.03em; }
 .diag .name span { font-size: 14.5px; color: var(--ink-2); }
@@ -428,22 +424,22 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .src2 span { color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .demo-note { font: 500 10.5px var(--mono); letter-spacing: .06em; color: var(--ink-2); text-align: center; }
 .composer { position: absolute; left: 14px; right: 14px; bottom: 30px; height: 48px; border-radius: 24px; background: var(--surface); box-shadow: 0 0 0 .5px var(--line); display: flex; align-items: center; padding: 0 16px; color: var(--ink-2); font-size: 15px; }
-.toast { position: absolute; left: 50%; top: 64px; transform: translate(-50%, -80px); background: var(--ink); color: var(--ground); font-weight: 600; font-size: 14px; padding: 10px 16px; border-radius: 999px; transition: transform .72s var(--spring); z-index: 6; white-space: nowrap; }
+.toast { position: absolute; left: 50%; top: 64px; transform: translate(-50%, -140px); background: var(--ink); color: var(--ground); font-weight: 600; font-size: 14px; padding: 10px 16px; border-radius: 999px; transition: transform .72s var(--spring); z-index: 6; white-space: nowrap; }
 .toast.on { transform: translate(-50%, 0); }
 
 /* The 3D garden: a turntable on a plinth, drawn in CSS 3D here, RealityKit in the app. */
-@property --a { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
 .g3d { background: var(--ground); }
 .g3d .view { position: absolute; inset: 0; perspective: 1600px; perspective-origin: 50% 40%; }
-.g3d .plinth { position: absolute; left: 50%; top: 52%; width: 300px; height: 300px; margin: -150px 0 0 -150px; transform-style: preserve-3d; transform: rotateX(60deg) rotateZ(var(--a)); animation: turn 36s linear infinite; }
-@keyframes turn { to { --a: 360deg; } }
+.g3d .plinth { position: absolute; left: 50%; top: 52%; width: 300px; height: 300px; margin: -150px 0 0 -150px; transform-style: preserve-3d; transform: rotateX(60deg); animation: turn 36s linear infinite; }
+@keyframes turn { from { transform: rotateX(60deg) rotateZ(0deg); } to { transform: rotateX(60deg) rotateZ(360deg); } }
+@keyframes counter { from { transform: rotateZ(0deg) rotateX(-60deg); } to { transform: rotateZ(-360deg) rotateX(-60deg); } }
 .g3d .base { position: absolute; inset: -14px; border-radius: 40px; background: var(--wash); box-shadow: 0 30px 50px -20px rgba(20,33,28,.35); }
 .g3d .bed { position: absolute; border-radius: 14px; background: color-mix(in oklab, var(--surface) 90%, var(--line)); box-shadow: inset 0 0 0 6px var(--surface); }
 .g3d .bed::after { content: ""; position: absolute; inset: 7px; border-radius: 9px; background: #5B4636; }
 .g3d .pot { position: absolute; width: 50px; height: 50px; border-radius: 50%; background: var(--clay); box-shadow: inset 0 0 0 5px color-mix(in oklab, var(--clay) 70%, #000); }
 .pl { position: absolute; width: 0; height: 0; transform-style: preserve-3d; }
 .pl .ringz { position: absolute; left: -24px; top: -24px; width: 48px; height: 48px; border-radius: 50%; border: 3px solid var(--c); }
-.pl .bb { position: absolute; left: 0; top: 0; transform-style: preserve-3d; transform: rotateZ(calc(-1 * var(--a))) rotateX(-60deg); }
+.pl .bb { position: absolute; left: 0; top: 0; transform-style: preserve-3d; transform: rotateX(-60deg); animation: counter 36s linear infinite; }
 .pl .shape { position: absolute; left: calc(var(--w) / -2); bottom: 0; width: var(--w); height: var(--h); }
 .pl .shape i { position: absolute; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in oklab, var(--f) 70%, #fff), var(--f) 55%, color-mix(in oklab, var(--f) 70%, #000)); }
 .pl .shape i:nth-child(1) { left: 10%; right: 10%; bottom: 0; height: 52%; }
@@ -556,6 +552,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 @media (max-width: 1000px) { .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tech { grid-column: span 1; } .tech.rest { grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .bento { grid-template-columns: minmax(0, 1fr); } .tech.rest { grid-column: span 1; grid-template-columns: minmax(0, 1fr); } }
 
+#how, #built, .foot { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+
 /* ——— Footer ——— */
 .foot { background: var(--wash); }
 .foot .wrap { padding-block: 72px 48px; display: grid; gap: 40px; }
@@ -577,7 +575,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   .rise, .hero-layer, .hero-copy, .readbar, .phases div, .phases div::after { animation: none !important; }
   .phases div { background: var(--leaf-soft); } .phases div::after { transform: scaleX(1); }
   .count { animation: none !important; }
-  .g3d .plinth { animation: none; --a: 28deg; }
+  .g3d .plinth { animation: none !important; transform: rotateX(60deg) rotateZ(28deg); }
+  .pl .bb { animation: none !important; transform: rotateZ(-28deg) rotateX(-60deg); }
   .tether .halo { display: none; }
 }
 </style>
@@ -602,9 +601,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
 <header class="hero" id="top">
   <div class="hero-layer">
-    <div class="hero-photo vt-leaf" role="img" aria-label="A tomato leaf with early blight lesions"></div>
+    <div class="hero-drift">
+      <div class="hero-photo" role="img" aria-label="A tomato leaf with early blight lesions"></div>
+      <div class="hot" id="heroHot" aria-hidden="true"><div class="oval"></div><div class="dot"></div><span class="chip"><i></i>Leaf spots · 8–12 mm</span></div>
+    </div>
     <div class="hero-scene" aria-hidden="true">
-      <div class="hot" id="heroHot" style="--x: 81%; --y: 63%;"><div class="oval"></div><div class="dot"></div><span class="chip"><i></i>Leaf spots · 8–12 mm</span></div>
       <div class="stagecard" id="heroCard">
         <div class="grabber"></div>
         <div class="now"><span id="heroStage">Finding the plant</span><span id="heroTime">0 s</span></div>
@@ -628,7 +629,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   </div>
 </header>
 
-<div class="strip" aria-label="Built with">
+<div class="strip" role="group" aria-label="Built with">
   <div class="wrap">
     <a href="#ch-chat">Anthropic<small>Claude</small></a><a href="#ch-signin">Clerk<small>auth</small></a><a href="#ch-live">SurrealDB<small>3.3.4</small></a><a href="#ch-farm">Agent Memory<small>SurrealDB</small></a><a href="#ch-farm">Era<small>by Eon</small></a><a href="#ch-home">Expo<small>SDK 57</small></a>
   </div>
@@ -751,15 +752,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         </article>
       </div>
 
-      <div class="stage" role="figure" aria-label="iPhone showing the GreenLens app">
+      <div class="stage" role="img" aria-label="An iPhone showing the GreenLens screen for the chapter you are reading">
         <div class="phone" id="phone">
           <div class="screen" id="screen">
             <div class="canvas" id="canvas">
-              <div class="island" id="island"><div class="la">
-                <div class="row"><b id="laStage">Checking telltale signs</b><span class="t" id="laTime">0:38</span></div>
-                <div class="nine" id="laNine"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                <div class="row"><span class="t">Tomato 2 · Back garden</span><span class="t" id="laNext">Next: weighing the evidence</span></div>
-              </div></div>
+              <div class="island" aria-hidden="true"></div>
               <div class="sb" id="sb"><span>9:41</span><span class="icons"><i class="bars"></i><i class="batt"></i></span></div>
 
               <!-- Sign in -->
@@ -804,7 +801,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
               <!-- Capture -->
               <section class="scr cam capture" data-id="capture">
                 <div class="outside"></div>
-                <div class="photo vt-leaf"></div>
+                <div class="photo"></div>
                 <div class="frame"></div>
                 <div class="topcard" id="capCard"><div class="grabber"></div><div class="k">CLOSE-UP</div><p>Fill the frame with one affected leaf, about 30 cm away.</p></div>
                 <span class="chip dist" id="dotDist"><i></i>32 cm · good distance</span>
@@ -822,7 +819,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
               <!-- Live analysis -->
               <section class="scr cam live" data-id="live">
-                <div class="photo vt-leaf"></div>
+                <div class="photo"></div>
                 <div class="hot" id="liveHot"><div class="oval"></div><div class="dot"></div><span class="chip"><i></i>Leaf spots · 8–12 mm</span></div>
                 <span class="chip species" id="liveSpecies">Tomato · Change</span>
                 <div class="topcard" id="liveCard"><div class="grabber"></div>
@@ -841,8 +838,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
               <!-- Diagnosis -->
               <section class="scr diag" data-id="diag">
-                <div class="scroll" id="diagScroll">
-                  <div class="melt vt-leaf"></div>
+                <div class="scroll">
+                  <div class="melt"></div>
                   <div class="name" id="dotName"><b>Early blight</b><span>Tomato 2 · from 3 photos, your answer and the weather</span></div>
                   <div class="row">
                     <div class="tile"><span class="k">RISK OF SPREAD</span><b class="st sick">High</b><span>Crowded: 40 cm from Tomato 1 · 4 humid days in the forecast</span></div>
@@ -983,7 +980,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       </div>
     </div>
   </div>
-  <svg class="tether" id="tether" aria-hidden="true"><path id="tp1"/><path id="tp2"/><circle class="halo" id="th1" r="9"/><circle class="halo" id="th2" r="9"/><circle class="pin" id="tc1" r="5.5"/><circle class="pin" id="tc2" r="5.5"/></svg>
+  <svg class="tether" id="tether" aria-hidden="true"><path class="off" id="tp1"/><path class="off" id="tp2"/><circle class="halo off" id="th1" r="9"/><circle class="halo off" id="th2" r="9"/><circle class="pin off" id="tc1" r="5.5"/><circle class="pin off" id="tc2" r="5.5"/></svg>
 </section>
 
 <!-- ——— How it works ——— -->
@@ -1098,7 +1095,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     <div class="cols">
       <div><b>Build North</b><span>Ship Something Real</span><span>Build week Oct 16–25, 2026</span><span>Demo Day Oct 29, Toronto</span></div>
       <div><b>Read more</b><a href="https://github.com/aacruzgon/GreenLens#readme">README</a><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/architecture/README.md">Architecture</a><a href="https://github.com/aacruzgon/GreenLens/blob/main/docs/design/design.md">Design: Conservatory</a></div>
-      <div><b>This page</b><span>The app's Conservatory design and its spring</span><span>Screens rebuilt in HTML from the app</span><span>Scroll timelines and view transitions where your browser has them</span></div>
+      <div><b>This page</b><span>The app's Conservatory design and its spring</span><span>Screens rebuilt in HTML from the app</span><span>Scroll timelines where your browser has them</span></div>
     </div>
     <p class="credits">Plant photos from Wikimedia Commons, as used by the app's mock mode: early blight on tomato leaves by Dwight Sipler (CC BY 2.0); ripe tomato by Clintacc (CC0); Hungarian wax pepper by Jeff Kwapil (CC BY-SA 4.0); lettuce 'Ashbrook' by DeFacto (CC BY-SA 4.0). The garden, its plants, dates and farm records are the demo's mock data.</p>
   </div>
@@ -1126,19 +1123,32 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     phone.style.setProperty("--s", sc.toFixed(4));
     canvas.style.height = Math.max(844, screenEl.clientHeight / sc).toFixed(1) + "px";
   }
-  if ("ResizeObserver" in window) new ResizeObserver(fit).observe(phone); fit();
+  if ("ResizeObserver" in window) new ResizeObserver(fit).observe(phone); else addEventListener("resize", fit);
+  fit();
 
   /* The hotspot sits on the lesion: the photo is a cover-sized background, so map the
      lesion's pixel (448, 295 of 900 × 602) through the same scale and position. */
   var heroEl = $("#top"), heroPhoto = $(".hero-photo"), heroHotEl = $("#heroHot");
   function placeHot() {
-    var hr = heroEl.getBoundingClientRect(), pr = heroPhoto.getBoundingClientRect();
     var w = heroPhoto.offsetWidth, h = heroPhoto.offsetHeight, k = Math.max(w / 900, h / 602);
     var ox = (w - 900 * k) * .62, oy = (h - 602 * k) * .5;
     heroHotEl.style.left = (heroPhoto.offsetLeft + ox + 448 * k) + "px";
     heroHotEl.style.top = (heroPhoto.offsetTop + oy + 295 * k) + "px";
   }
-  placeHot(); addEventListener("resize", placeHot);
+  if ("ResizeObserver" in window) new ResizeObserver(placeHot).observe(heroPhoto); else addEventListener("resize", placeHot);
+  placeHot();
+
+  /* Pause what can't be seen: the hero's loop, the story's phone and the pipeline's flows. */
+  var storyEl = $(".story"), storyOn = true;
+  if ("IntersectionObserver" in window) {
+    var pio2 = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        e.target.classList.toggle("paused", !e.isIntersecting);
+        if (e.target === storyEl) storyOn = e.isIntersecting;
+      });
+    });
+    [heroEl, storyEl, $(".pipe")].forEach(function (el) { pio2.observe(el); });
+  }
 
   /* ——— Hero: one live analysis, looped. ——— */
   var hero = { card: $("#heroCard"), stage: $("#heroStage"), time: $("#heroTime"), next: $("#heroNext"), seg: $$("#heroSeg i"), hot: $("#heroHot"), verdict: $("#heroVerdict") };
@@ -1156,7 +1166,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         hero.stage.textContent = PHASES[i][0]; hero.next.textContent = nextOf(i);
         hero.seg.forEach(function (s, j) { s.className = j < i ? "done" : j === i ? "run" : ""; });
         if (i === 3) hero.hot.classList.add("on");
-        for (var k = 0; k < PHASES[i][1]; k++) { t++; hero.time.textContent = t + " s"; await wait(260); }
+        for (var k = 0; k < PHASES[i][1]; k++) {
+          while (heroEl.classList.contains("paused")) await wait(400);
+          t++; hero.time.textContent = t + " s"; await wait(260);
+        }
       }
       hero.seg.forEach(function (s) { s.className = "done"; });
       hero.stage.textContent = "Plan ready"; hero.next.textContent = "See the diagnosis and plan";
@@ -1183,9 +1196,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   var chapters = $$(".chapter"), dotsEl = $("#dots");
   chapters.forEach(function () { dotsEl.appendChild(document.createElement("i")); });
   var dots = $$("i", dotsEl);
-  var sb = $("#sb"), homebar = $("#homebar"), island = $("#island"), tap = $("#tap");
-  var current = null, token = 0, activeChapter = null, vtSeq = 0;
-  var scopedVT = typeof screenEl.startViewTransition === "function" && !reduce;
+  var sb = $("#sb"), homebar = $("#homebar"), tap = $("#tap");
+  var current = null, token = 0, activeChapter = null;
 
   function tapAt(el) {
     if (reduce) return;
@@ -1197,24 +1209,20 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     Object.keys(screens).forEach(function (k) { screens[k].classList.toggle("on", k === id); });
     var dark = id === "capture" || id === "live" || id === "diag";
     sb.classList.toggle("light", dark); homebar.classList.toggle("light", id === "capture" || id === "live");
-    island.classList.remove("wide");
+  }
+  function mark(chapter) {
+    activeChapter = chapter;
+    chapters.forEach(function (c, i) { var on = c === chapter; c.classList.toggle("on", on); dots[i].classList.toggle("on", on); });
   }
   function show(chapter) {
-    var id = chapter.dataset.screen; activeChapter = chapter;
-    chapters.forEach(function (c, i) { var on = c === chapter; c.classList.toggle("on", on); dots[i].classList.toggle("on", on); });
+    var id = chapter.dataset.screen; mark(chapter);
     if (id === current) return; current = id; var my = ++token;
-    if (scopedVT) {
-      // Element-scoped view transition: only the phone's screen morphs; the page keeps scrolling.
-      phone.classList.add("vt");
-      var mine = ++vtSeq, done = function () { if (mine === vtSeq) phone.classList.remove("vt"); };
-      try {
-        var vt = screenEl.startViewTransition(function () { swap(id); });
-        vt.ready.catch(function () {});
-        vt.finished.then(done, done);
-      } catch (e) { done(); swap(id); }
-    } else swap(id);
+    swap(id);
     var alive = function () { return my === token; };
+    // A play resets its screen before its first wait; snap that reset instead of animating it.
+    var scr = screens[id]; scr.classList.add("snap");
     (plays[id] || function () {})(alive);
+    void scr.offsetWidth; scr.classList.remove("snap");
   }
 
   var plays = {
@@ -1240,32 +1248,33 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     },
     live: async function (alive) {
       var card = $("#liveCard"), hot = $("#liveHot"), sp = $("#liveSpecies"), q = $("#liveQ"), ring = $("#liveRing"), see = $("#liveSee"), yes = $("#ansYes");
-      var stage = $("#liveStage"), time = $("#liveTime"), next = $("#liveNext"), seg = $$("#liveSeg i"), nine = $$("#laNine i");
+      var stage = $("#liveStage"), time = $("#liveTime"), next = $("#liveNext"), seg = $$("#liveSeg i");
       [card, hot, sp, q, see].forEach(function (e) { e.classList.remove("on"); }); ring.classList.remove("off"); yes.classList.remove("pick");
       function set(i, t) {
         stage.textContent = PHASES[i][0]; next.textContent = nextOf(i); time.textContent = t + " s";
         seg.forEach(function (s, j) { s.className = j < i ? "done" : j === i ? "run" : ""; });
-        $("#laStage").textContent = PHASES[i][0]; $("#laNext").textContent = nextOf(i); $("#laTime").textContent = "0:" + String(t + 12).padStart(2, "0");
-        nine.forEach(function (n, j) { n.className = j <= i ? "d" : ""; });
+      }
+      async function run(from, to, t) {
+        for (var i = from; i < to; i++) {
+          set(i, t);
+          if (i === 1) sp.classList.add("on");
+          if (i === 3) hot.classList.add("on");
+          for (var k = 0; k < PHASES[i][1]; k++) { await wait(240); if (!alive()) return -1; t++; time.textContent = t + " s"; }
+        }
+        return t;
       }
       if (reduce) { card.classList.add("on"); hot.classList.add("on"); sp.classList.add("on"); set(5, 18); q.classList.add("on"); return; }
-      await wait(400); if (!alive()) return; card.classList.add("on");
-      var t = 0, i, k;
-      for (i = 0; i < 6; i++) {
-        set(i, t);
-        if (i === 1) sp.classList.add("on");
-        if (i === 3) hot.classList.add("on");
-        for (k = 0; k < PHASES[i][1]; k++) { await wait(300); if (!alive()) return; t++; time.textContent = t + " s"; }
-      }
-      island.classList.add("wide");
-      await wait(900); if (!alive()) return; q.classList.add("on");
-      await wait(2000); if (!alive()) return; tapAt(yes); yes.classList.add("pick");
-      await wait(700); if (!alive()) return; q.classList.remove("on");
-      for (i = 6; i < 8; i++) { set(i, t); for (k = 0; k < PHASES[i][1]; k++) { await wait(300); if (!alive()) return; t++; time.textContent = t + " s"; } }
-      seg.forEach(function (s) { s.className = "done"; }); nine.forEach(function (n) { n.className = "d"; });
-      stage.textContent = "Plan ready"; next.textContent = "See the diagnosis and plan"; $("#laStage").textContent = "Plan ready"; $("#laNext").textContent = "Tap to open";
+      await wait(350); if (!alive()) return; card.classList.add("on");
+      var t = await run(0, 6, 0); if (t < 0) return;
+      // Two problems look alike: one question, with picture answers, while the stage waits.
+      stage.textContent = "Waiting for your answer"; next.textContent = "Next: weighing the evidence";
+      q.classList.add("on");
+      await wait(3200); if (!alive()) return; tapAt(yes); yes.classList.add("pick");
+      await wait(900); if (!alive()) return; q.classList.remove("on");
+      t = await run(6, 8, t); if (t < 0) return;
+      seg.forEach(function (s) { s.className = "done"; });
+      stage.textContent = "Plan ready"; next.textContent = "See the diagnosis and plan";
       ring.classList.add("off"); see.classList.add("on");
-      await wait(2600); if (!alive()) return; island.classList.remove("wide");
     },
     step: async function (alive) {
       var s1 = $("#step1"), s2 = $("#step2"), done = $("#stepDone"), adds = $("#adds"), pips = $$("#pips i"), of = $("#stepOf");
@@ -1325,52 +1334,59 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     }
   };
 
-  /* The active chapter is the one under a reading line (the middle of the screen, or low on a
-     phone, below the sticky stage). It is worked out from positions on every scroll, so scrolling
-     back and forth can never leave the phone on a chapter that is no longer in view. */
-  var wideMq = matchMedia("(min-width: 901px)"), picking = false;
+  /* The active chapter is the last one whose top has passed a reading line (the middle of the
+     screen, or low on a phone, below the sticky stage), worked out from positions on every scroll,
+     so scrolling back and forth never leaves the phone on a chapter that is out of view. The
+     chapter is marked at once; the phone's screen swaps once scrolling settles, so a fast scroll
+     or an anchor jump doesn't flip through every screen on the way. */
+  var wide = matchMedia("(min-width: 901px)"), swapTimer = 0, framed = false;
   function pick() {
-    picking = false;
-    var line = innerHeight * (wideMq.matches ? .5 : .78), best = null;
+    var line = innerHeight * (wide.matches ? .5 : .78), best = null;
     for (var i = 0; i < chapters.length; i++) {
-      var r = chapters[i].getBoundingClientRect();
-      if (r.top <= line) best = chapters[i]; else break;
+      if (chapters[i].getBoundingClientRect().top <= line) best = chapters[i]; else break;
     }
-    if (best && best !== activeChapter) show(best);
+    if (!best && chapters[0].getBoundingClientRect().top < innerHeight) best = chapters[0];
+    if (!best || best === activeChapter) return;
+    mark(best);
+    clearTimeout(swapTimer);
+    swapTimer = setTimeout(function () { show(best); queueFrame(); }, 150);
   }
-  function queuePick() { if (!picking) { picking = true; requestAnimationFrame(pick); } }
-  addEventListener("scroll", queuePick, { passive: true }); addEventListener("resize", queuePick);
-  swap(chapters[0].dataset.screen);
-  pick();
 
-  /* ——— The tether: a line from each plate to the part of the phone it powers. ——— */
-  var tether = $("#tether"), wide = matchMedia("(min-width: 901px)");
+  /* The tether: a line from each plate to the part of the phone it powers. Reads come first,
+     then writes, and a target that isn't on screen yet hides its line. */
   var parts = [[$("#tp1"), $("#tc1"), $("#th1")], [$("#tp2"), $("#tc2"), $("#th2")]];
-  var queued = false;
   function draw() {
-    queued = false;
     var plates = activeChapter && wide.matches ? $$(".plate", activeChapter) : [];
-    var ph = phone.getBoundingClientRect();
-    parts.forEach(function (p, i) {
-      var plate = plates[i], target = plate && $(plate.dataset.dot, screens[current]);
-      var vis = false;
-      if (plate && target) {
+    var ph = phone.getBoundingClientRect(), geo = [];
+    for (var i = 0; i < parts.length; i++) {
+      var plate = plates[i], target = plate && current && $(plate.dataset.dot, screens[current]), g = null;
+      if (target && target.closest(".scr.on") && !target.closest(".msg:not(.on), .step.out, .step.in, .topcard:not(.on)")) {
         var a = plate.getBoundingClientRect(), b = target.getBoundingClientRect();
-        var sx = a.right, sy = a.top + Math.min(a.height / 2, 46);
-        var tx = Math.min(Math.max(b.left + Math.min(b.width * .12, 22), ph.left + 14), ph.right - 14);
-        var ty = Math.min(Math.max(b.top + b.height / 2, ph.top + 30), ph.bottom - 30);
-        vis = sy > 70 && sy < innerHeight - 20 && b.width > 0;
-        var dx = (tx - sx) * .5;
-        p[0].setAttribute("d", "M" + sx + " " + sy + " C" + (sx + dx) + " " + sy + " " + (tx - dx) + " " + ty + " " + tx + " " + ty);
-        p[1].setAttribute("cx", tx); p[1].setAttribute("cy", ty); p[2].setAttribute("cx", tx); p[2].setAttribute("cy", ty);
+        g = { sx: a.right, sy: a.top + Math.min(a.height / 2, 46),
+              tx: Math.min(Math.max(b.left + Math.min(b.width * .12, 22), ph.left + 14), ph.right - 14),
+              ty: Math.min(Math.max(b.top + b.height / 2, ph.top + 30), ph.bottom - 30) };
+        if (!(g.sy > 70 && g.sy < innerHeight - 20 && b.width > 0)) g = null;
       }
-      p.forEach(function (el) { el.style.opacity = vis ? "" : "0"; });
+      geo.push(g);
+    }
+    parts.forEach(function (p, i) {
+      var g = geo[i];
+      if (g) {
+        var dx = (g.tx - g.sx) * .5;
+        p[0].setAttribute("d", "M" + g.sx + " " + g.sy + " C" + (g.sx + dx) + " " + g.sy + " " + (g.tx - dx) + " " + g.ty + " " + g.tx + " " + g.ty);
+        p[1].setAttribute("cx", g.tx); p[1].setAttribute("cy", g.ty); p[2].setAttribute("cx", g.tx); p[2].setAttribute("cy", g.ty);
+      }
+      p.forEach(function (el) { el.classList.toggle("off", !g); });
     });
   }
-  function queue() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
-  addEventListener("scroll", queue, { passive: true }); addEventListener("resize", queue);
-  setInterval(queue, 250); // screens animate under the pins, so follow them
-  queue();
+
+  function frame() { framed = false; pick(); draw(); }
+  function queueFrame() { if (!framed) { framed = true; requestAnimationFrame(frame); } }
+  addEventListener("scroll", queueFrame, { passive: true }); addEventListener("resize", queueFrame);
+  // Screens animate under the pins, so follow them, but only while the story is on screen.
+  setInterval(function () { if (storyOn && wide.matches) queueFrame(); }, 250);
+  swap(chapters[0].dataset.screen);
+  frame();
 
   /* Without scroll timelines, the count-ups and reveals stay as plain, visible content. */
 })();
