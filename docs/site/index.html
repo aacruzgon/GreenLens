@@ -349,22 +349,23 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .flash.go { animation: flash .45s ease-out; }
 @keyframes flash { 0% { opacity: .85; } 100% { opacity: 0; } }
 /* The photo fills the screen and stays put: drawn 1039 pt tall from the bottom, the lesion sits between the
-   cards and the question, so nothing has to slide and no black edge shows. */
-.live .slide { position: absolute; inset: 0; }
-.live .photo { top: 0; bottom: auto; height: 844px; background-position: 46.2% 100%; background-size: auto 1039px; }
+   cards and the question, so nothing has to slide. It is 195 pt taller than the screen, which can be taller
+   than 844 pt (fit()), so it always reaches the bottom; the hotspot follows it through container units. */
+.live .slide { position: absolute; inset: 0; container-type: size; }
+.live .photo { top: 0; bottom: 0; height: auto; background-position: 46.2% -195px; background-size: auto calc(100% + 195px); }
 .live .photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(0,0,0,.42), rgba(0,0,0,.04) 32%, rgba(0,0,0,.04) 64%, rgba(0,0,0,.5)); }
-/* The lesion (448, 295 of 900 × 602) on that photo. */
-.live .hot { --x: 235px; --y: 316px; }
-.live .species { position: absolute; left: 28px; top: 262px; opacity: 0; transform: translateY(6px); transition: .6s var(--spring); }
-.live .species.on { opacity: 1; transform: none; }
+/* The lesion (448, 295 of 900 × 602) on that photo: (235, 316) on an 844 pt screen. */
+.live .hot { --x: calc(0.0535 * (100cqh + 195px) + 179.2px); --y: calc(0.49 * (100cqh + 195px) - 193px); }
+/* As the app's PhotoStage: centred, 30% from the bottom. */
+.live .species { position: absolute; left: 50%; bottom: 30%; opacity: 0; transform: translate(-50%, 6px); transition: .6s var(--spring); }
+.live .species.on { opacity: 1; transform: translate(-50%, 0); }
 .live .species.on.hide { opacity: 0; }
-.live .topcard .now { display: flex; justify-content: space-between; font-weight: 600; font-size: 16.5px; }
 .live .topcard { top: 60px; }
 .live .topcard .next { font-size: 14px; color: rgba(255,255,255,.62); margin-top: 2px; }
 /* Not sure yet: its own card under the stage card; one question, two picture answers and a plain Not sure. */
 .unsure { position: absolute; left: 12px; right: 12px; top: 168px; z-index: 5; background: rgba(28,28,30,.94); border: 1px solid rgba(255,255,255,.1); border-radius: 28px; padding: 14px 16px; display: grid; gap: 2px; transform: translateY(-14px); opacity: 0; transition: transform .72s var(--spring), opacity .4s var(--ease); }
 .unsure.on { transform: none; opacity: 1; }
-.unsure b { font: 600 20px/1.15 var(--display); letter-spacing: -0.03em; }
+.unsure b { font: 600 22px/1.15 var(--display); letter-spacing: -0.03em; }
 .unsure span { font-size: 14px; color: rgba(255,255,255,.6); margin-top: 6px; }
 .qcard { position: absolute; left: 12px; right: 12px; bottom: 182px; background: rgba(28,28,30,.96); border: 1px solid rgba(255,255,255,.1); border-radius: 28px; padding: 14px 16px 8px; transform: translateY(40px); opacity: 0; transition: transform .72s var(--spring), opacity .4s var(--ease); z-index: 5; }
 .qcard.on { transform: none; opacity: 1; }
@@ -385,7 +386,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .ring svg.leaf { width: 28px; height: 28px; }
 .ring svg.arc { position: absolute; left: -3px; top: -3px; width: 78px; height: 78px; animation: spin 2.4s linear infinite; }
 .ring.off { opacity: 0; }
-.pill.go.seeplan { position: absolute; left: 0; right: 0; top: 10px; height: 52px; padding: 0 12px; justify-content: center; opacity: 0; transform: translateY(12px); transition: .72s var(--spring); background: #7CC59A; color: #0D1A12; font-size: 16px; white-space: nowrap; }
+.pill.go.seeplan { position: absolute; left: 0; right: 0; top: 6px; height: 60px; padding: 0 12px; justify-content: center; opacity: 0; transform: translateY(12px); transition: .72s var(--spring); background: #7CC59A; color: #0D1A12; font-size: 16px; white-space: nowrap; }
 .pill.go.seeplan.on { opacity: 1; transform: none; }
 .strip3 { position: absolute; left: 50%; bottom: 42px; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px; background: #1C1C1E; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; z-index: 4; }
 .strip3 i { width: 46px; height: 34px; border-radius: 17px; background: var(--bg); }
@@ -710,7 +711,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         <div class="grabber"></div>
         <div class="now"><span id="heroStage">Finding the plant</span><span id="heroTime">0 s</span></div>
         <div class="next" id="heroNext">Next: identifying the species</div>
-              </div>
+      </div>
       <div class="verdict" id="heroVerdict"><b>Early blight</b><span>Tomato 2 · from 3 photos, your answer and the weather</span></div>
     </div>
   </div>
@@ -932,7 +933,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
               <!-- Live analysis -->
               <section class="scr cam live" data-id="live">
-                <div class="slide" id="liveSlide">
+                <div class="slide">
                   <div class="photo"></div>
                   <div class="hot" id="liveHot"><div class="oval"></div><div class="dot"></div><span class="chip"><i></i>Leaf spots · 8–12 mm</span></div>
                 </div>
@@ -1288,11 +1289,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   }
 
   /* ——— Hero: one live analysis, looped. ——— */
-  var hero = { card: $("#heroCard"), stage: $("#heroStage"), time: $("#heroTime"), next: $("#heroNext"), seg: $$("#heroSeg i"), hot: $("#heroHot"), verdict: $("#heroVerdict") };
+  var hero = { card: $("#heroCard"), stage: $("#heroStage"), time: $("#heroTime"), next: $("#heroNext"), hot: $("#heroHot"), verdict: $("#heroVerdict") };
   async function heroLoop() {
     if (reduce) {
       hero.card.classList.add("on"); hero.hot.classList.add("on"); hero.verdict.classList.add("on");
-      hero.seg.forEach(function (s) { s.className = "done"; });
       hero.stage.textContent = "Plan ready"; hero.time.textContent = "25 s"; hero.next.textContent = "See the diagnosis and plan";
       return;
     }
@@ -1301,14 +1301,12 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       hero.card.classList.add("on"); var t = 0;
       for (var i = 0; i < PHASES.length; i++) {
         hero.stage.textContent = PHASES[i][0]; hero.next.textContent = nextOf(i);
-        hero.seg.forEach(function (s, j) { s.className = j < i ? "done" : j === i ? "run" : ""; });
         if (i === 3) hero.hot.classList.add("on");
         for (var k = 0; k < PHASES[i][1]; k++) {
           while (heroEl.classList.contains("paused")) await wait(400);
           t++; hero.time.textContent = t + " s"; await wait(260);
         }
       }
-      hero.seg.forEach(function (s) { s.className = "done"; });
       hero.stage.textContent = "Plan ready"; hero.next.textContent = "See the diagnosis and plan";
       hero.verdict.classList.add("on");
       await wait(5200);
@@ -1387,12 +1385,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       await wait(1400); if (!alive()) return; tapAt(an);
     },
     live: async function (alive) {
-      var card = $("#liveCard"), hot = $("#liveHot"), sp = $("#liveSpecies"), q = $("#liveQ"), ring = $("#liveRing"), see = $("#liveSee"), yes = $("#ansYes"), un = $("#liveU"), slide = $("#liveSlide");
-      var stage = $("#liveStage"), time = $("#liveTime"), next = $("#liveNext"), seg = $$("#liveSeg i");
+      var card = $("#liveCard"), hot = $("#liveHot"), sp = $("#liveSpecies"), q = $("#liveQ"), ring = $("#liveRing"), see = $("#liveSee"), yes = $("#ansYes"), un = $("#liveU");
+      var stage = $("#liveStage"), time = $("#liveTime"), next = $("#liveNext");
       [card, hot, sp, q, see, un].forEach(function (e) { e.classList.remove("on"); }); sp.classList.remove("hide"); ring.classList.remove("off"); yes.classList.remove("pick");
       function set(i, t) {
         stage.textContent = PHASES[i][0]; next.textContent = nextOf(i); time.textContent = t + " s";
-        seg.forEach(function (s, j) { s.className = j < i ? "done" : j === i ? "run" : ""; });
       }
       async function run(from, to, t) {
         for (var i = from; i < to; i++) {
@@ -1412,7 +1409,6 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       await wait(3200); if (!alive()) return; tapAt(yes); yes.classList.add("pick");
       await wait(900); if (!alive()) return; q.classList.remove("on"); un.classList.remove("on"); sp.classList.remove("hide");
       t = await run(6, 8, t); if (t < 0) return;
-      seg.forEach(function (s) { s.className = "done"; });
       stage.textContent = "Plan ready"; next.textContent = "See the diagnosis and plan";
       ring.classList.add("off"); see.classList.add("on");
     },
@@ -1506,7 +1502,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         var t = Math.max(b.top - 4, sr.top + 3), btm = Math.min(b.bottom + 4, sr.bottom - 3);
         g = { sx: a.right, sy: a.top + Math.min(a.height / 2, 46), l: l, t: t, w: r - l, h: btm - t,
               rx: Math.min((btm - t) / 2, 18), tx: l, ty: (t + btm) / 2 };
-        if (!(g.sy > 70 && g.sy < innerHeight - 20 && g.w > 8 && g.h > 8)) g = null;
+        // Hidden while more than half the target is clipped, such as a card still dropping in.
+        if (!(g.sy > 70 && g.sy < innerHeight - 20 && g.w > 8 && g.h > 8 && g.h >= (b.height + 8) / 2)) g = null;
       }
       geo.push(g);
     }
