@@ -39,9 +39,24 @@
 }
 
 {$CADDY_SITE} {
+	# /status lists worker ids, GPU names and the queue: operators read it on the host-only site below,
+	# and the public site answers 404 (docs/infra/README.md section 5).
+	@status path /status /status/*
+	respond @status 404
 	reverse_proxy api:8080
 	log {
 		output stdout
 		import redact
+	}
+}
+
+# The operators' site: /status alone, published only on the host's loopback (CADDY_OPS, default
+# 127.0.0.1:8082). No ingress sidecar forwards to this port; anything else here is 404.
+:8082 {
+	handle /status {
+		reverse_proxy api:8080
+	}
+	handle {
+		respond 404
 	}
 }

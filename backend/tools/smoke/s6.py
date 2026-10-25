@@ -41,7 +41,7 @@ lists, heads and (orphans only, under gardens/) puts objects with --rustfs-env's
 --api-log-cmd prints api's log. Neither a key, a token nor a signed URL is ever printed.
 
 usage (from backend/; on the control-plane host):
-    python3 tools/smoke/s6.py [--base-url URL] [--env-file /srv/pdm/env/.env.api]
+    python3 tools/smoke/s6.py [--base-url URL] [--status-url URL] [--env-file /srv/pdm/env/.env.api]
         [--email s6-…+clerk_test@example.com] [--phone-suffix N] [--only tokens,prune,...]
         [--phase seed|check|fresh] [--state s6-state.json] [--photo PLANT.jpg --leaf-photo LEAF.jpg]
         [--db-check [--db-env FILE] [--db-url URL]] [--rustfs-check [--rustfs-env FILE] [--rustfs-url URL]]
@@ -558,7 +558,7 @@ class User:
 
 
 class StatusPoller(threading.Thread):
-    """GET /status (no sign-in) every 0.5 s, kept as (epoch, status) samples."""
+    """GET /status (no sign-in; the public URL hides it) every 0.5 s, kept as (epoch, status) samples."""
 
     def __init__(self, base):
         super().__init__(daemon=True)
@@ -1477,8 +1477,18 @@ class S6:
         need(a.photo, "needs --photo")
         u = self.main
         dead = a.dead_worker or DEFAULT_DEAD_WORKER[a.kill_at]
+        # The takeover is timed from /status, which the public URL hides (infra 5): fail now, not
+        # after a scan, when --status-url doesn't answer.
+        try:
+            req = urllib.request.Request(a.status_url.rstrip("/") + "/status",
+                                         headers={"User-Agent": smoke.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                json.loads(r.read())
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            need(False, f"{a.status_url}/status doesn't answer ({e}); run on the control-plane host "
+                        "or tunnel to its 127.0.0.1:8082 (infra 5)")
         g = self.new_garden(u, "rig-failure")
-        poller = StatusPoller(a.base_url)
+        poller = StatusPoller(a.status_url)
         poller.start()
         data = {"garden_id": g, "dead_worker": dead, "kill_at": a.kill_at}
         self.fixture["rig-failure"] = data
@@ -1724,6 +1734,8 @@ def main():
     ap = argparse.ArgumentParser(description="S6 live checks: push tokens and pruning, forecast "
                                  "alerts, deletion cascades, the orphan sweep, the rig failure.")
     ap.add_argument("--base-url", default=DEFAULT_BASE)
+    ap.add_argument("--status-url", default="http://127.0.0.1:8082",
+                    help="where /status answers: Caddy's host-only site on the control plane (infra 5)")
     ap.add_argument("--env-file", default="/srv/pdm/env/.env.api",
                     help="holds CLERK_SECRET_KEY (sk_test_) of the Clerk development instance the "
                          "api trusts (the environment wins); also RUSTFS_BUCKET")
