@@ -1,0 +1,17 @@
+# Nightly backup of the control plane (docs/infra/README.md section 8); started by pdm-backup.timer.
+# Installed by hand to /etc/systemd/system/. It runs as the host's operator account, which owns
+# /srv/pdm and is in the docker group; it needs no root.
+[Unit]
+Description=PDM nightly SurrealDB export and image copy
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=acruzgon
+Group=acruzgon
+SupplementaryGroups=docker
+Environment=BACKUP_IMAGES=1
+# backup.sh is copied to /srv/pdm/bin so that a branch switch in the compose checkout can't change it.
+ExecStart=/srv/pdm/bin/backup.sh
+# A failure shows in `systemctl status pdm-backup` and `journalctl -u pdm-backup`.

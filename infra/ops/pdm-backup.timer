@@ -1,0 +1,11 @@
+# Runs pdm-backup.service every night at 03:30 local time (docs/infra/README.md section 8).
+# Persistent runs a night missed while the host was off at the next boot.
+[Unit]
+Description=PDM nightly backup at 03:30
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
