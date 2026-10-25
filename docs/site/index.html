@@ -195,10 +195,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .dots i.on { background: var(--leaf); transform: scale(1.5); }
 .tether { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 12; overflow: visible; }
 .tether path { fill: none; stroke: var(--leaf); stroke-width: 1.5; stroke-dasharray: 2 5; stroke-linecap: round; transition: opacity .3s; }
-.tether .pin { fill: #fff; stroke: var(--leaf); stroke-width: 2.5; transition: opacity .3s; }
-.tether .halo { fill: none; stroke: var(--leaf); stroke-width: 1.5; animation: halo 2.2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+/* The line ends on the outside of an outline drawn around the part it names, so nothing covers the screen's text. */
+.tether .pin { fill: var(--leaf); stroke: var(--ground); stroke-width: 2; transition: opacity .3s; }
+.tether .halo { fill: none; stroke: var(--leaf); stroke-width: 1.5; animation: halo 2.4s ease-in-out infinite; }
 .tether .off { visibility: hidden; animation: none; }
-@keyframes halo { from { opacity: .8; transform: scale(.6); } to { opacity: 0; transform: scale(2.2); } }
+@keyframes halo { 50% { stroke-opacity: .35; } }
 @media (max-width: 900px) {
   .story { grid-template-columns: minmax(0, 1fr); }
   .stage { order: -1; top: calc(env(safe-area-inset-top, 0px) + 60px); height: 50vh; z-index: 2; background: linear-gradient(var(--ground) 86%, transparent); padding-block: 8px 24px; }
@@ -665,7 +666,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   .count { animation: none !important; }
   .g3d .plinth { animation: none !important; transform: rotateX(60deg) rotateZ(28deg); }
   .pl .bb { animation: none !important; transform: rotateZ(-28deg) rotateX(-60deg); }
-  .tether .halo { display: none; }
+  .tether .halo { animation: none; }
 }
 </style>
 </head>
@@ -1109,7 +1110,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       </div>
     </div>
   </div>
-  <svg class="tether" id="tether" aria-hidden="true"><path class="off" id="tp1"/><path class="off" id="tp2"/><circle class="halo off" id="th1" r="9"/><circle class="halo off" id="th2" r="9"/><circle class="pin off" id="tc1" r="5.5"/><circle class="pin off" id="tc2" r="5.5"/></svg>
+  <svg class="tether" id="tether" aria-hidden="true"><path class="off" id="tp1"/><path class="off" id="tp2"/><rect class="halo off" id="th1"/><rect class="halo off" id="th2"/><circle class="pin off" id="tc1" r="4"/><circle class="pin off" id="tc2" r="4"/></svg>
 </section>
 
 <!-- ——— How it works ——— -->
@@ -1495,15 +1496,17 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   var parts = [[$("#tp1"), $("#tc1"), $("#th1")], [$("#tp2"), $("#tc2"), $("#th2")]];
   function draw() {
     var plates = activeChapter && wide.matches ? $$(".plate", activeChapter) : [];
-    var ph = phone.getBoundingClientRect(), geo = [];
+    var sr = screenEl.getBoundingClientRect(), geo = [];
     for (var i = 0; i < parts.length; i++) {
       var plate = plates[i], target = plate && current && $(plate.dataset.dot, screens[current]), g = null;
       if (target && target.closest(".scr.on") && !target.closest(".msg:not(.on), .step.out, .step.in, .topcard:not(.on)")) {
+        // The outline is the target's box, 4 px out, kept inside the screen; the line meets its left edge.
         var a = plate.getBoundingClientRect(), b = target.getBoundingClientRect();
-        g = { sx: a.right, sy: a.top + Math.min(a.height / 2, 46),
-              tx: Math.min(Math.max(b.left + Math.min(b.width * .12, 22), ph.left + 14), ph.right - 14),
-              ty: Math.min(Math.max(b.top + b.height / 2, ph.top + 30), ph.bottom - 30) };
-        if (!(g.sy > 70 && g.sy < innerHeight - 20 && b.width > 0)) g = null;
+        var l = Math.max(b.left - 4, sr.left + 3), r = Math.min(b.right + 4, sr.right - 3);
+        var t = Math.max(b.top - 4, sr.top + 3), btm = Math.min(b.bottom + 4, sr.bottom - 3);
+        g = { sx: a.right, sy: a.top + Math.min(a.height / 2, 46), l: l, t: t, w: r - l, h: btm - t,
+              rx: Math.min((btm - t) / 2, 18), tx: l, ty: (t + btm) / 2 };
+        if (!(g.sy > 70 && g.sy < innerHeight - 20 && g.w > 8 && g.h > 8)) g = null;
       }
       geo.push(g);
     }
@@ -1512,7 +1515,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       if (g) {
         var dx = (g.tx - g.sx) * .5;
         p[0].setAttribute("d", "M" + g.sx + " " + g.sy + " C" + (g.sx + dx) + " " + g.sy + " " + (g.tx - dx) + " " + g.ty + " " + g.tx + " " + g.ty);
-        p[1].setAttribute("cx", g.tx); p[1].setAttribute("cy", g.ty); p[2].setAttribute("cx", g.tx); p[2].setAttribute("cy", g.ty);
+        p[1].setAttribute("cx", g.tx); p[1].setAttribute("cy", g.ty);
+        p[2].setAttribute("x", g.l); p[2].setAttribute("y", g.t); p[2].setAttribute("width", g.w); p[2].setAttribute("height", g.h); p[2].setAttribute("rx", g.rx);
       }
       p.forEach(function (el) { el.classList.toggle("off", !g); });
     });
