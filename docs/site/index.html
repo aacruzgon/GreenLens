@@ -153,7 +153,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* ——— The story: chapters beside a sticky phone, each technology tethered to its moment ——— */
 .story { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: clamp(40px, 7vw, 120px); position: relative; }
 .chapters { display: grid; }
-.chapter { min-height: 74vh; display: grid; align-content: start; gap: 16px; padding-block: 6vh 0; opacity: .3; transition: opacity .6s var(--ease); scroll-margin-top: 80px; }
+.chapter { min-height: 62vh; display: grid; align-content: start; gap: 16px; padding-block: 4vh 0; opacity: .3; transition: opacity .6s var(--ease); scroll-margin-top: 80px; }
 .chapter.on { opacity: 1; }
 .chapter:first-child { padding-top: 0; }
 .chapter:last-child { min-height: calc(100vh - 120px); }
@@ -1267,12 +1267,6 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       ring.classList.add("off"); see.classList.add("on");
       await wait(2600); if (!alive()) return; island.classList.remove("wide");
     },
-    diag: async function (alive) {
-      var sc = $("#diagScroll"); sc.style.transform = "";
-      if (reduce) return;
-      await wait(2800); if (!alive()) return; sc.style.transform = "translateY(-150px)";
-      await wait(2800); if (!alive()) return; sc.style.transform = "";
-    },
     step: async function (alive) {
       var s1 = $("#step1"), s2 = $("#step2"), done = $("#stepDone"), adds = $("#adds"), pips = $$("#pips i"), of = $("#stepOf");
       s1.className = "step"; s2.className = "step in"; done.classList.remove("ok"); adds.classList.remove("on"); of.textContent = "Step 1 of 5";
@@ -1331,13 +1325,23 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     }
   };
 
-  if ("IntersectionObserver" in window) {
-    var io = new IntersectionObserver(function (es) {
-      es.forEach(function (e) { if (e.isIntersecting) show(e.target); });
-    }, { rootMargin: matchMedia("(min-width: 901px)").matches ? "-45% 0px -45% 0px" : "-74% 0px -22% 0px" });
-    chapters.forEach(function (c) { io.observe(c); });
+  /* The active chapter is the one under a reading line (the middle of the screen, or low on a
+     phone, below the sticky stage). It is worked out from positions on every scroll, so scrolling
+     back and forth can never leave the phone on a chapter that is no longer in view. */
+  var wideMq = matchMedia("(min-width: 901px)"), picking = false;
+  function pick() {
+    picking = false;
+    var line = innerHeight * (wideMq.matches ? .5 : .78), best = null;
+    for (var i = 0; i < chapters.length; i++) {
+      var r = chapters[i].getBoundingClientRect();
+      if (r.top <= line) best = chapters[i]; else break;
+    }
+    if (best && best !== activeChapter) show(best);
   }
+  function queuePick() { if (!picking) { picking = true; requestAnimationFrame(pick); } }
+  addEventListener("scroll", queuePick, { passive: true }); addEventListener("resize", queuePick);
   swap(chapters[0].dataset.screen);
+  pick();
 
   /* ——— The tether: a line from each plate to the part of the phone it powers. ——— */
   var tether = $("#tether"), wide = matchMedia("(min-width: 901px)");
