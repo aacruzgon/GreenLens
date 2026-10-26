@@ -43,6 +43,8 @@ Use them sparingly. A new agent can't see your context, so it re-reads everythin
 
 - The skills follow the project's documents and link a source for every rule. Every Rust example in them compiles and passes Clippy: run `python3 .claude/skills/rust/scripts/check_examples.py` after changing one, and add `--live` (Docker and cargo-nextest at the pinned version) to also run the SurrealDB tests against the pinned container. A definition shared between skills has one canonical copy; the checker fails when a marked copy drifts from it.
 
+- **Stopping and relaunching the deployed backend:** `/stop-and-relaunch` before stopping, restarting or bringing back the control plane or the rig workers (for example before Demo Day). It lists what survives, the Era farm to seed again, what never to run while it's down, and the checks that prove it's back. The operator runs its commands, not the agent.
+
 - **Era by Eon:** `/eon` before running Era's simulators, writing or debugging an `era_` test, or using the `era` CLI and the hosted company. It holds the admin API, the simulators' surprises, the fixture, how the Era tests run and the CLI's commands; [docs/EON](docs/EON/README.md) is its record. `era skill` prints Era's own generic skill.
 
 ## Plugins (Claude Code only)
