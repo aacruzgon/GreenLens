@@ -135,7 +135,7 @@ jobs:
         if: runner.environment == 'github-hosted'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libheif-dev
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
@@ -163,7 +163,7 @@ jobs:
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
@@ -172,7 +172,7 @@ jobs:
       # HOME is the job's temp directory: the action downloads into ~/.install-action/tmp and deletes
       # it after, and the rig's runners share one home, so two jobs installing at once broke each
       # other's download (docs/infra/README.md section 2). The tool lands there and on PATH.
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         env:
           HOME: ${{ runner.temp }}
         with:
@@ -198,12 +198,12 @@ jobs:
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       # setup-python ships builds for GitHub's images only; the rig uses Debian's python3 (3.13).
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           python-version: "3.12"
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
@@ -376,7 +376,7 @@ jobs:
         with:
           persist-credentials: false
       # Its own HOME, as in test.
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         env:
           HOME: ${{ runner.temp }}
         with:
@@ -422,7 +422,7 @@ jobs:
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
@@ -431,7 +431,7 @@ jobs:
           cache-directories: ~/.cache/pdm-rust-skills-check/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # Its own HOME, as in test.
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         env:
           HOME: ${{ runner.temp }}
         with:
@@ -546,7 +546,7 @@ jobs:
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
@@ -554,7 +554,7 @@ jobs:
           key: ${{ hashFiles('.claude/skills/rust/versions.md') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # Its own HOME, as in test.
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         env:
           HOME: ${{ runner.temp }}
         with:
@@ -679,7 +679,7 @@ jobs:
       - name: Use the rig's persistent builder
         if: runner.environment == 'self-hosted'
         run: echo "BUILDX_BUILDER=pdm-ci" >> "$GITHUB_ENV"
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
