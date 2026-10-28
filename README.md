@@ -137,6 +137,7 @@ Every document has a status line, a changelog and a table of contents. [AGENTS.m
 | [Setup](docs/setup/README.md) | What to install, by role |
 | [Infra](docs/infra/README.md) | CI, images, compose files, deploys |
 | [Pitch deck](docs/pitch/index.html) | The Demo Day slides: the problem, the demo and the partner platforms. Open the file in a browser; → to advance, F for full screen, P for a presenter window with the notes |
+| [Four-minute deck](docs/pitch/four-minute.html) | The same deck cut to 11 slides for a 4-minute slot; its presenter window (P) adds a talk clock against each slide's target time |
 
 ## The hackathon
 
