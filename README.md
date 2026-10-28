@@ -136,6 +136,7 @@ Every document has a status line, a changelog and a table of contents. [AGENTS.m
 | [Connectors](docs/connectors/README.md) | Slack and Google Drive connectors; [Era by Eon](docs/EON/README.md) |
 | [Setup](docs/setup/README.md) | What to install, by role |
 | [Infra](docs/infra/README.md) | CI, images, compose files, deploys |
+| [Pitch deck](docs/pitch/index.html) | The Demo Day slides: the problem, the demo and the partner platforms. Open the file in a browser; → to advance, F for full screen, N for notes |
 
 ## The hackathon
 
