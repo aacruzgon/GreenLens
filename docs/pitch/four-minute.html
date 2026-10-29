@@ -616,20 +616,122 @@ html:active-view-transition-type(back):active-view-transition-type(morph)::view-
 #da-live .da-gpu::before { content: ""; position: absolute; inset: 8px; border-radius: 3px; border: 2.5px solid var(--leaf); }
 #da-live .da-gpu::after { content: ""; position: absolute; left: 4px; right: 4px; top: 50%; height: 2.5px; margin-top: -1.25px; background: linear-gradient(90deg, var(--leaf) 0 4px, transparent 4px calc(100% - 4px), var(--leaf) calc(100% - 4px)); }
 
-/* The Dynamic Island's Live Activity, beside the narration. */
-#da-live .da-isl-row { display: flex; align-items: center; gap: 24px; margin-top: -8px; }
-#da-live.is-active .da-isl-row { animation: da-rise .9s var(--spring) .9s both; }
-#da-live .da-isl-row > small { font: 500 20px/1.3 var(--mono); letter-spacing: .04em; color: var(--ink-2); max-width: 300px; }
-#da-live .da-island { display: grid; grid-template-columns: 44px 1fr 44px; gap: 16px; align-items: center; width: 470px; height: 84px; padding: 0 18px 0 20px;
-  border-radius: 42px; background: #000; color: #fff; box-shadow: 0 0 0 1px var(--line), 0 20px 40px -20px rgba(0,0,0,.5); }
-#da-live .da-isl-l { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: #1F3328; color: #7CC59A; }
-#da-live .da-isl-l svg { width: 24px; height: 24px; }
-#da-live .da-isl-t { display: grid; gap: 4px; min-width: 0; }
-#da-live .da-isl-t b { font: 600 22px/1.1 var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#da-live .da-isl-t small { font: 500 16px/1 var(--body); color: rgba(255,255,255,.6); }
-#da-live .da-isl-r svg { width: 44px; height: 44px; rotate: -90deg; fill: none; stroke-width: 4; }
-#da-live .da-isl-bg { stroke: rgba(255,255,255,.18); }
-#da-live .da-isl-fg { stroke: #7CC59A; stroke-linecap: round; stroke-dasharray: 9; stroke-dashoffset: calc(9 - var(--da-k, 0)); transition: stroke-dashoffset .5s var(--ease); }
+/* Two phones on this slide: the column narrows to the left of the second one (x 140–770). */
+#da-live .da-narr { width: 630px; }
+#da-live .da-narr .lede { max-width: 630px; }
+
+/* The second phone: the same run from the home screen, its Live Activity expanded in the Dynamic Island. The same
+   size as the analysis phone (430 × 898) and level with it, 40px to its left: x 820–1250, y 90–988.
+   It isn't part of the morph run, so it rises in with the slide and leaves with it. */
+#da-live .da-p2box { position: absolute; left: 820px; top: 90px; width: 430px; height: 898px; }
+#da-live.is-active .da-p2box { animation: da-rise 1s var(--spring) .3s both; }
+#da-live .da-phone2 { left: 0; top: 0; view-transition-name: none; }
+#da-live .da-p2-cap { position: absolute; left: 0; right: 0; top: calc(100% + 20px); text-align: center;
+  font: 500 20px/1.3 var(--mono); letter-spacing: .04em; color: var(--ink-2); white-space: nowrap; }
+
+/* ——— Slide 6, phone 2: the home screen while the scan runs in the background ———
+   The expanded Dynamic Island mirrors the Live Activity's expanded regions (app/targets/scan-activity/
+   ScanActivityWidget.swift): leading leaf.fill + plant (headline), trailing elapsed time (headline, monospaced
+   digits, islandMuted), bottom stage (title3 semibold), a nine-capsule SegmentBar (6 pt, 3 pt apart) and the
+   next line (subheadline medium, islandMuted), 8 pt apart. Colours are the island colour sets in
+   Assets.xcassets. Everything here is in pt (the .pt layer is 390 × 844). */
+#da-live .da-phone2 { view-transition-name: none;
+  --p2-accent: #7CC59A; --p2-muted: #A2AEA6; --p2-track: #2F3A34; --p2-watch: #F2BE5C; }
+#da-live .da-phone2 .pt { background: #1450C8; color: #fff; }
+
+/* The wallpaper: iOS-style blue and cyan folds, drawn in SVG (no image). */
+#da-live .da-p2-wall { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* ——— The expanded island ——— */
+#da-live .da-p2-isl { position: absolute; z-index: 40; left: 11px; right: 11px; top: 11px; border-radius: 44px;
+  background: #000; color: #fff; font-family: var(--body);
+  /* keylineTint(islandAccent): a faint accent edge, plus a lift off the wallpaper. */
+  box-shadow: 0 0 0 1px rgba(124,197,154,.25), 0 18px 40px -14px rgba(0,0,0,.55); }
+#da-live .da-p2-in { display: flex; flex-direction: column; padding: 13px 22px 19px 18px; }
+/* The top row sits beside the camera (the cutout spans x 123–245 of the island), as the leading and trailing
+   regions do on the phone. */
+#da-live .da-p2-top { display: flex; justify-content: space-between; align-items: center; height: 19px; margin: 1px 0 20px; }
+#da-live .da-p2-plant { display: flex; align-items: center; gap: 5px; max-width: 102px; white-space: nowrap; overflow: hidden;
+  font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+#da-live .da-p2-plant svg { flex: none; width: 17px; height: 17px; }
+#da-live .da-p2-plant svg path { fill: var(--p2-accent); }
+#da-live .da-p2-plant svg .da-p2-vein { fill: none; stroke: #000; stroke-width: 1.5; stroke-linecap: round; }
+#da-live .da-isl-time { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--p2-muted); }
+#da-live .da-phone2 .da-isl-phase { display: block; font-size: 22px; line-height: 27px; font-weight: 600; letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; transition: color .35s var(--ease); }
+#da-live .da-p2-isl.da-isl-wait .da-isl-phase { color: var(--p2-watch); }
+#da-live .da-isl-segs { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; margin-top: 8px; }
+#da-live .da-isl-segs i { height: 6px; border-radius: 3px; background: var(--p2-track); transition: background .35s var(--ease); }
+#da-live .da-isl-segs i.da-d { background: var(--p2-accent); }
+#da-live .da-isl-segs i.da-r { background: rgba(124,197,154,.45); }
+#da-live .da-isl-segs i.da-w { background: var(--p2-watch); }
+#da-live .da-isl-next { display: block; margin-top: 8px; font-size: 16px; line-height: 20px; font-weight: 500; color: var(--p2-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* On arrival the island grows out of the camera cutout, then its content fades in. */
+#da-live.is-active .da-p2-isl { animation: da-p2-open .8s var(--spring) .5s both; }
+#da-live.is-active .da-p2-in { animation: da-p2-show .45s var(--ease) .85s both; }
+@keyframes da-p2-open { from { clip-path: inset(4px 123px calc(100% - 39px) 123px round 18px); } to { clip-path: inset(0 round 44px); } }
+@keyframes da-p2-show { from { opacity: 0; filter: blur(4px); } }
+@media (prefers-reduced-motion: reduce) { #da-live.is-active .da-p2-isl, #da-live.is-active .da-p2-in { animation: none; } }
+
+/* ——— Home screen (iOS 18): two small widgets, 4 × 4 apps, the Search pill, the dock ———
+   The grid starts below the expanded island. Columns are 88.5 pt apart, icons 60 pt, so the dock lines up with them. */
+#da-live .da-p2-home { position: absolute; left: 18px; right: 18px; top: 166px; display: grid; grid-template-columns: repeat(4, 1fr);
+  row-gap: 11px; justify-items: center; align-items: start; }
+#da-live .da-p2-home > .da-p2-wg { margin-bottom: 3px; }
+/* A light dim over the wallpaper, as iOS does, so the white labels hold up on its palest sweeps. */
+#da-live .da-p2-wall { filter: brightness(.84) saturate(1.1); }
+#da-live .da-p2-app, #da-live .da-p2-wg { display: grid; justify-items: center; gap: 5px; font: 500 12px/14px var(--body); color: #fff;
+  text-shadow: 0 1px 2px rgba(0,20,60,.6), 0 0 8px rgba(0,30,80,.55); white-space: nowrap; letter-spacing: -0.01em; }
+#da-live .da-p2-wg { grid-column: span 2; gap: 6px; }
+#da-live .da-p2-ic { display: block; font-style: normal; width: 60px; height: 60px; border-radius: 13.5px; overflow: hidden; text-shadow: none;
+  box-shadow: 0 1px 3px rgba(0,30,90,.12); }
+#da-live .da-p2-ic svg { display: block; width: 100%; height: 100%; }
+#da-live .da-p2-ic text, #da-live .da-p2-wcard { font-family: var(--body); }
+
+/* System app colours (iOS 18 light icons). */
+#da-live .da-p2-facetime, #da-live .da-p2-phone, #da-live .da-p2-msg { background: linear-gradient(#66F47F, #0DBE2C); }
+#da-live .da-p2-cal, #da-live .da-p2-photos, #da-live .da-p2-notes, #da-live .da-p2-rem, #da-live .da-p2-health, #da-live .da-p2-safari { background: #fff; }
+#da-live .da-p2-camera { background: linear-gradient(#ECECF0, #AEAEB4); }
+#da-live .da-p2-mail { background: linear-gradient(#25BCFE, #1A68F0); }
+#da-live .da-p2-clock, #da-live .da-p2-wallet { background: #000; }
+#da-live .da-p2-greenlens { background: linear-gradient(#52BB7C, #2F6B47); }
+#da-live .da-p2-greenlens svg { width: 34px; height: 34px; margin: 13px; }
+#da-live .da-p2-weather { background: linear-gradient(#1C6FE2, #62BCF8); }
+#da-live .da-p2-podcasts { background: linear-gradient(#F35EF8, #8A2CD6); }
+#da-live .da-p2-appstore { background: linear-gradient(#1DC8FD, #1D6CF2); }
+#da-live .da-p2-maps { background: #F2EEE3; }
+#da-live .da-p2-settings { background: linear-gradient(#D3D3D8, #8E8E93); }
+#da-live .da-p2-music { background: linear-gradient(#FD5E79, #FA233B); }
+
+/* The two small widgets: 148.5 pt squares, 21 pt corners. */
+#da-live .da-p2-wcard { display: flex; flex-direction: column; width: 148.5px; height: 148.5px; border-radius: 21px; padding: 13px 14px 12px;
+  text-shadow: none; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,30,90,.12); }
+#da-live .da-p2-wx { background: linear-gradient(#4A8AD6, #2A60B4); color: #fff; }
+#da-live .da-p2-wx-city { display: flex; align-items: center; gap: 4px; font-size: 15px; line-height: 18px; font-weight: 600; }
+#da-live .da-p2-wx-city svg { width: 10px; height: 10px; }
+#da-live .da-p2-wx-t { font-size: 42px; line-height: 46px; font-weight: 300; letter-spacing: -0.02em; }
+#da-live .da-p2-wx-ic { margin-top: auto; width: 17px; height: 17px; }
+#da-live .da-p2-wx-ic svg { display: block; width: 100%; height: 100%; }
+#da-live .da-p2-wx-c, #da-live .da-p2-wx-hl { font-size: 13px; line-height: 16px; font-weight: 600; }
+#da-live .da-p2-wx-c { margin-top: 3px; }
+#da-live .da-p2-wc { background: #fff; color: #111; }
+#da-live .da-p2-wc-day { font-size: 11.5px; line-height: 14px; font-weight: 700; letter-spacing: .02em; color: #FF3B30; }
+#da-live .da-p2-wc-n { font-size: 40px; line-height: 44px; font-weight: 300; letter-spacing: -0.02em; }
+#da-live .da-p2-wc-ev { margin-top: auto; display: grid; gap: 1px; padding: 5px 0 5px 9px; border-left: 3.5px solid #34C759; border-radius: 2px;
+  background: linear-gradient(90deg, rgba(52,199,89,.16), rgba(52,199,89,.06)); }
+#da-live .da-p2-wc-ev b { font-size: 13px; line-height: 16px; font-weight: 600; }
+#da-live .da-p2-wc-ev em { font-style: normal; font-size: 12px; line-height: 14px; color: #6C6C70; }
+
+/* The frosted Search pill and dock. */
+#da-live .da-p2-search { position: absolute; left: 50%; top: 709px; translate: -50% 0; display: flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 12px 0 10px; border-radius: 14px; background: rgba(255,255,255,.26);
+  backdrop-filter: blur(20px) saturate(1.6); font: 600 13px/1 var(--body); color: #fff; }
+#da-live .da-p2-search svg { width: 12px; height: 12px; }
+#da-live .da-p2-dock { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 86px; padding: 0 8px; border-radius: 36px;
+  display: grid; grid-template-columns: repeat(4, 1fr); justify-items: center; align-items: center;
+  background: rgba(255,255,255,.26); backdrop-filter: blur(26px) saturate(1.7); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.35); }
 
 /* ════════════ 5 · Diagnosis and the start of the plan ════════════ */
 #da-diag .da-dg { background: var(--wash); --da-over: color-mix(in srgb, color-mix(in srgb, var(--ink) 6%, var(--surface)) 55%, var(--wash)); }
@@ -1186,7 +1288,7 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
   <div class="da-narr">
     <div class="enter">
       <p class="eyebrow">The demo · 2 of 5</p>
-      <h2 class="title">When it's unsure, it asks.</h2>
+      <h2 class="title">When it's unsure,<br> it asks.</h2>
     </div>
     <div class="da-says">
       <p class="lede da-say" data-until="2">Each stage streams live from our home GPUs to the phone.</p>
@@ -1197,14 +1299,114 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
       <span class="powered da-txtchip"><span class="da-gpu" aria-hidden="true"></span>Vision models <small>Our home GPUs</small></span>
       <span class="powered"><svg class="lg" aria-hidden="true"><use href="#i-surreal"/></svg>SurrealDB <small>Tracks every job</small></span>
     </div>
-    <div class="da-isl-row">
-    <div class="da-island" aria-hidden="true">
-      <span class="da-isl-l"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 6-13 15-14-1 9-6 15-14 15"/><path d="M5 19c3-4 6-7 10-9"/></svg></span>
-      <span class="da-isl-t"><b class="da-isl-phase">Looking for disease</b><small>Tomato 2 · Live Activity</small></span>
-      <span class="da-isl-r"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" class="da-isl-bg"/><circle cx="18" cy="18" r="15" class="da-isl-fg" pathLength="9"/></svg></span>
+  </div>
+
+  <!-- The second phone: the same run from the home screen, as a Live Activity expanded in the Dynamic Island.
+       Not part of the morph run (view-transition-name: none); it rises in beside the analysis phone. -->
+  <div class="da-p2box">
+    <!-- Phone 2: the home screen, with the scan still running in the expanded Dynamic Island (the Live Activity,
+         app/targets/scan-activity/ScanActivityWidget.swift). The deck JS drives .da-isl-phase/-next/-time/-segs and
+         toggles .da-isl-wait on the island; the markup below is the demo state: Tomato 2, phase 3 of 9. -->
+    <div class="phone da-phone2">
+      <div class="screen">
+        <div class="pt da-p2" role="img" aria-label="The iPhone home screen. The scan keeps running in the expanded Dynamic Island: Tomato 2, looking for disease, step 3 of 9, next measuring spots">
+          <svg class="da-p2-wall" viewBox="0 0 390 844" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="da-p2-wb" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="#2F7FE0"/><stop offset=".55" stop-color="#1450C8"/><stop offset="1" stop-color="#0B2E8E"/></linearGradient>
+              <linearGradient id="da-p2-wl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#EAF8FF"/><stop offset=".45" stop-color="#A9DDF7"/><stop offset="1" stop-color="#4FB2EA"/></linearGradient>
+              <linearGradient id="da-p2-wt" x1="0" y1="0" x2="1" y2=".4"><stop offset="0" stop-color="#7FD8F0"/><stop offset="1" stop-color="#1E8FD6"/></linearGradient>
+              <linearGradient id="da-p2-wd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0D3BB0"/><stop offset="1" stop-color="#06217A"/></linearGradient>
+              <filter id="da-p2-soft" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2.5"/></filter>
+              <filter id="da-p2-blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18"/></filter>
+            </defs>
+            <rect width="390" height="844" fill="url(#da-p2-wb)"/>
+            <!-- A wide pale sweep from the top left, folding down to the right. -->
+            <path d="M-40 -20C120 60 150 200 120 330 90 470 210 560 430 600V-20z" fill="url(#da-p2-wt)" filter="url(#da-p2-soft)"/>
+            <path d="M-40 120C70 150 100 260 70 380 40 520 150 640 430 700V860H-40z" fill="url(#da-p2-wl)" filter="url(#da-p2-soft)"/>
+            <!-- A deep ribbon cutting across the middle. -->
+            <path d="M430 210C300 250 230 330 210 440 190 560 110 650 -40 690V760C150 720 260 640 290 520 320 400 360 330 430 300z" fill="url(#da-p2-wd)" filter="url(#da-p2-soft)"/>
+            <!-- A bright cyan fold on the right and a glow at the top. -->
+            <path d="M430 80C330 130 300 210 320 300 340 390 300 470 250 520 330 500 400 420 430 380z" fill="#5CC8F0" opacity=".85" filter="url(#da-p2-soft)"/>
+            <ellipse cx="90" cy="60" rx="160" ry="110" fill="#BFE9FF" opacity=".55" filter="url(#da-p2-blur)"/>
+            <ellipse cx="320" cy="820" rx="200" ry="90" fill="#0A2A86" opacity=".6" filter="url(#da-p2-blur)"/>
+          </svg>
+          <div class="da-sb da-sb-light"><span>9:41</span><span class="da-sbi"><i class="da-bars"></i><svg class="da-wifi" viewBox="0 0 16 12" fill="currentColor"><path d="M8 12l2.4-2.7a3.4 3.4 0 00-4.8 0z"/><path d="M8 6.3c1.6 0 3 .6 4.1 1.7l1.4-1.6A7.6 7.6 0 008 4.1a7.6 7.6 0 00-5.5 2.3l1.4 1.6C5 6.9 6.4 6.3 8 6.3z"/><path d="M8 2.2c2.7 0 5.2 1.1 7 2.9L16 3.4A11 11 0 008 0 11 11 0 000 3.4l1 1.7a9.8 9.8 0 017-2.9z"/></svg><i class="da-batt"></i></span></div>
+
+          <!-- The expanded island. Leading: leaf + plant; trailing: elapsed time; bottom: stage, nine segments, next. -->
+          <div class="da-p2-isl" aria-hidden="true">
+            <div class="da-p2-in">
+              <div class="da-p2-top">
+                <span class="da-p2-plant"><svg viewBox="0 0 24 24"><path d="M4.2 20.3C3.6 11.4 9.4 4.6 20.6 3.4c-.6 10.9-6.6 17.2-15.4 17.4z"/><path class="da-p2-vein" d="M5.4 19.2c2.9-4.3 6.1-7.4 10-9.9"/></svg>Tomato 2</span>
+                <span class="da-isl-time">0:02</span>
+              </div>
+              <b class="da-isl-phase">Looking for disease</b>
+              <div class="da-isl-segs"><i class="da-d"></i><i class="da-d"></i><i class="da-r"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <span class="da-isl-next">Next: measuring spots</span>
+            </div>
+          </div>
+
+          <!-- Two small widgets, then four rows of apps, the Search pill and the dock. -->
+          <div class="da-p2-home" aria-hidden="true">
+            <div class="da-p2-wg">
+              <div class="da-p2-wcard da-p2-wx">
+                <span class="da-p2-wx-city">Toronto <svg viewBox="0 0 12 12"><path d="M2 6.2l8-4-4 8-.9-3.1z" fill="#fff"/></svg></span>
+                <span class="da-p2-wx-t">12°</span>
+                <span class="da-p2-wx-ic"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="4.2" fill="#FFD43B"/><g stroke="#FFD43B" stroke-width="1.6" stroke-linecap="round"><path d="M9 1.6v1.6M9 14.8v1.6M1.6 9h1.6M2.9 2.9L4 4M14 4l1.1-1.1M2.9 15.1L4 14"/></g><path d="M8.5 21h10a3.6 3.6 0 000-7.2 5.2 5.2 0 00-9.8 1.6A2.9 2.9 0 008.5 21z" fill="#fff"/></svg></span>
+                <span class="da-p2-wx-c">Partly Cloudy</span>
+                <span class="da-p2-wx-hl">H:14° L:6°</span>
+              </div>
+              <span class="da-p2-lbl">Weather</span>
+            </div>
+            <div class="da-p2-wg">
+              <div class="da-p2-wcard da-p2-wc">
+                <span class="da-p2-wc-day">THURSDAY</span>
+                <span class="da-p2-wc-n">29</span>
+                <span class="da-p2-wc-ev"><b>Demo Day</b><em>2 – 3 PM</em></span>
+              </div>
+              <span class="da-p2-lbl">Calendar</span>
+            </div>
+
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-facetime"><svg viewBox="0 0 60 60"><rect x="11" y="20" width="26" height="20" rx="5.5" fill="#fff"/><path d="M39 27.4l8.2-5.3c1-.6 1.8-.2 1.8 1v13.8c0 1.2-.8 1.6-1.8 1L39 32.6z" fill="#fff"/></svg></i>FaceTime</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-cal"><svg viewBox="0 0 60 60"><text x="30" y="17.5" text-anchor="middle" font-size="10" font-weight="600" fill="#FF3B30">Thu</text><text x="30" y="47" text-anchor="middle" font-size="31" font-weight="300" fill="#111" letter-spacing="-1">29</text></svg></i>Calendar</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-photos"><svg viewBox="0 0 60 60"><g opacity=".82">
+              <ellipse cx="30" cy="18.2" rx="7" ry="11.6" fill="#F7A21B"/>
+              <ellipse cx="30" cy="18.2" rx="7" ry="11.6" fill="#F9D02E" transform="rotate(45 30 30)"/>
+              <ellipse cx="30" cy="18.2" rx="7" ry="11.6" fill="#9DD047" transform="rotate(90 30 30)"/>
+              <ellipse cx="30" cy="18.2" rx="7" ry="11.6" fill="#3DBB6A" transform="rotate(135 30 30)"/>
+              <ellipse cx="30" cy="18.2" rx="7" ry="11.6" fill="#2E9FE0" transform="rotate(180 30 30)"/>
+              <ellipse cx="30" cy="18.2" rx="7" ry="11.6" fill="#5967D8" transform="rotate(225 30 30)"/>
+              <ellipse cx="30" cy="18.2" rx="7" ry="11.6" fill="#B15ACB" transform="rotate(270 30 30)"/>
+              <ellipse cx="30" cy="18.2" rx="7" ry="11.6" fill="#F0485C" transform="rotate(315 30 30)"/></g></svg></i>Photos</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-camera"><svg viewBox="0 0 60 60"><rect x="7" y="17" width="46" height="30" rx="7" fill="#2B2B2E"/><path d="M21 17l2.5-4h13l2.5 4z" fill="#2B2B2E"/><circle cx="30" cy="32" r="11.5" fill="#8E8E93"/><circle cx="30" cy="32" r="9" fill="#1A1A1C"/><circle cx="30" cy="32" r="5.5" fill="#2E3A55"/><circle cx="27.6" cy="29.6" r="1.8" fill="#fff" opacity=".7"/><circle cx="46" cy="23" r="1.8" fill="#FFCC00"/></svg></i>Camera</span>
+
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-mail"><svg viewBox="0 0 60 60"><rect x="10" y="17" width="40" height="27" rx="3.5" fill="#fff"/><path d="M11 19l19 15 19-15" fill="none" stroke="#2C8BF5" stroke-width="1.6" stroke-linejoin="round"/><path d="M11 43l14-12M49 43L35 31" stroke="#B9D7FB" stroke-width="1.2"/></svg></i>Mail</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-notes"><svg viewBox="0 0 60 60"><path d="M0 0h60v16H0z" fill="url(#da-p2-ny)"/><defs><linearGradient id="da-p2-ny" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE15A"/><stop offset="1" stop-color="#F8C51C"/></linearGradient></defs><path d="M0 16.5h60" stroke="#D6B13A" stroke-width="1"/><path d="M8 13h44" stroke="#fff" stroke-width="1.2" stroke-dasharray="1.4 2" opacity=".7"/><path d="M0 26h60M0 35h60M0 44h60M0 53h60" stroke="#D9D9DE" stroke-width="1"/></svg></i>Notes</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-rem"><svg viewBox="0 0 60 60"><circle cx="15" cy="17" r="5" fill="#0A84FF"/><circle cx="15" cy="30" r="5" fill="#FF3B30"/><circle cx="15" cy="43" r="5" fill="#FF9500"/><g fill="none" stroke="#fff" stroke-width="1.4"><circle cx="15" cy="17" r="3.3"/><circle cx="15" cy="30" r="3.3"/><circle cx="15" cy="43" r="3.3"/></g><path d="M25 17h25M25 30h25M25 43h25" stroke="#D1D1D6" stroke-width="1.6" stroke-linecap="round"/></svg></i>Reminders</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-clock"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="25.5" fill="#fff"/><g stroke="#111" stroke-width="1.3" stroke-linecap="round"><path d="M30 6.5v3M30 50.5v3M6.5 30h3M50.5 30h3"/></g><g font-size="6.4" font-weight="500" fill="#111" text-anchor="middle"><text x="30" y="15.5">12</text><text x="30" y="49.5">6</text><text x="46.5" y="32.3">3</text><text x="13.5" y="32.3">9</text></g><path d="M30 30L22 23.5" stroke="#111" stroke-width="2.4" stroke-linecap="round"/><path d="M30 30l10.5 9" stroke="#111" stroke-width="1.7" stroke-linecap="round"/><path d="M30 30L38 12" stroke="#FF9500" stroke-width="1" stroke-linecap="round"/><circle cx="30" cy="30" r="1.8" fill="#FF9500"/></svg></i>Clock</span>
+
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-greenlens"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 6-13 15-14-1 9-6 15-14 15"/><path d="M5 19c3-4 6-7 10-9"/></svg></i>GreenLens</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-weather"><svg viewBox="0 0 60 60"><circle cx="23" cy="24" r="9.5" fill="#FFD43B"/><path d="M22.5 45h19.5a8 8 0 000-16 11 11 0 00-20.6 3.8A6.1 6.1 0 0022.5 45z" fill="#fff"/></svg></i>Weather</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-podcasts"><svg viewBox="0 0 60 60" fill="none" stroke="#fff" stroke-linecap="round"><path d="M19.4 38.5a14.5 14.5 0 1121.2 0" stroke-width="3"/><path d="M23.9 33.8a8.3 8.3 0 1112.2 0" stroke-width="3"/><circle cx="30" cy="27" r="4.2" fill="#fff" stroke="none"/><path d="M30 34v13" stroke-width="5.4"/></svg></i>Podcasts</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-appstore"><svg viewBox="0 0 60 60" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"><path d="M33.6 15.5L21 37.5"/><path d="M26.4 15.5l13.6 23.5"/><path d="M16 37.5h17"/><path d="M42.5 37.5H44"/><path d="M15.5 44l2-3.4"/></svg></i>App Store</span>
+
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-maps"><svg viewBox="0 0 60 60"><path d="M0 34C14 32 22 40 26 60H0z" fill="#9BD585"/><path d="M60 0H38c2 9 9 14 22 15z" fill="#9BD585"/><path d="M-2 22C18 24 34 18 62 4" stroke="#9FD3F5" stroke-width="7" fill="none"/><path d="M42 -2C36 18 32 34 44 62" stroke="#fff" stroke-width="7" fill="none"/><path d="M42 -2C36 18 32 34 44 62" stroke="#F8C33D" stroke-width="3.2" fill="none"/><path d="M-2 46C16 44 30 46 62 40" stroke="#fff" stroke-width="4.5" fill="none"/><circle cx="17" cy="36" r="8.5" fill="#0A84FF" stroke="#fff" stroke-width="2"/><path d="M13.5 39.5l8-7.5-3 9.5-1.5-3.3z" fill="#fff"/></svg></i>Maps</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-health"><svg viewBox="0 0 60 60"><path d="M42 33.5c-5.6-3.3-11.5-8.4-11.5-14.4a6.2 6.2 0 0111.5-3.3 6.2 6.2 0 0111.5 3.3c0 6-5.9 11.1-11.5 14.4z" fill="url(#da-p2-hh)"/><defs><linearGradient id="da-p2-hh" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6482"/><stop offset="1" stop-color="#FF2D55"/></linearGradient></defs></svg></i>Health</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-wallet"><svg viewBox="0 0 60 60"><rect x="10" y="12" width="40" height="30" rx="4" fill="#4A4A4F"/><rect x="10" y="15" width="40" height="9" rx="3" fill="#2F9BF0"/><rect x="10" y="21" width="40" height="9" rx="3" fill="#FFC633"/><rect x="10" y="27" width="40" height="9" rx="3" fill="#3CC85C"/><rect x="10" y="33" width="40" height="9" rx="3" fill="#FF6A3D"/><path d="M10 38h11c3 0 4 4.5 9 4.5s6-4.5 9-4.5h11v9a4 4 0 01-4 4H14a4 4 0 01-4-4z" fill="#3A3A3E"/></svg></i>Wallet</span>
+            <span class="da-p2-app"><i class="da-p2-ic da-p2-settings"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="20.5" fill="none" stroke="#3B3B3F" stroke-width="5" stroke-dasharray="2.6 2.77"/><circle cx="30" cy="30" r="17.5" fill="#5A5A5F"/><circle cx="30" cy="30" r="15" fill="#C8C8CD"/><circle cx="30" cy="30" r="8.5" fill="#E5E5EA"/><g stroke="#5A5A5F" stroke-width="1.8"><path d="M30 21.5v17M22.6 25.8l14.8 8.4M22.6 34.2l14.8-8.4"/></g><circle cx="30" cy="30" r="3.4" fill="#5A5A5F"/><circle cx="30" cy="30" r="1.8" fill="#C8C8CD"/></svg></i>Settings</span>
+          </div>
+
+          <span class="da-p2-search" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4l3.2 3.2"/></svg>Search</span>
+
+          <div class="da-p2-dock" aria-hidden="true">
+            <i class="da-p2-ic da-p2-phone"><svg viewBox="0 0 60 60"><path d="M21.2 14.2c1.6-.9 3.4-.3 4.2 1.3l2.8 5.6c.8 1.6.3 3.3-1 4.3l-2.3 1.8c1.6 3.9 4.9 7.6 8.8 9.6l2-2.2c1.1-1.2 2.9-1.5 4.4-.6l5.2 3.3c1.5 1 2 2.8 1.1 4.4l-1.8 3.2c-1.3 2.3-4.1 3.4-7 2.6C26 45 15.6 34.6 13 23.4c-.7-2.9.6-5.7 3-7z" fill="#fff"/></svg></i>
+            <i class="da-p2-ic da-p2-safari"><svg viewBox="0 0 60 60"><defs><linearGradient id="da-p2-sf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1ECBFF"/><stop offset="1" stop-color="#1A63F0"/></linearGradient></defs><circle cx="30" cy="30" r="24" fill="url(#da-p2-sf)"/><circle cx="30" cy="30" r="21" fill="none" stroke="#fff" stroke-width="2.4" stroke-dasharray=".7 2.6" opacity=".9"/><path d="M30 30l11-11-7.4 13.6z" fill="#FF3B30"/><path d="M30 30L19 41l7.4-13.6z" fill="#fff"/><path d="M41 19L26.4 26.4 19 41l14.6-7.4z" fill="none"/></svg></i>
+            <i class="da-p2-ic da-p2-msg"><svg viewBox="0 0 60 60"><path d="M30 13.5c-11.3 0-20.5 7.3-20.5 16.4 0 5.3 3.1 10 8 13-.4 2.5-1.7 4.8-3.6 6.5 3.6.3 7.3-.9 10.2-3 1.9.4 3.9.6 5.9.6 11.3 0 20.5-7.3 20.5-16.5S41.3 13.5 30 13.5z" fill="#fff"/></svg></i>
+            <i class="da-p2-ic da-p2-music"><svg viewBox="0 0 60 60"><path d="M25 41.5V20.2c0-1 .7-1.8 1.6-2l14.6-3.1c1-.2 1.8.5 1.8 1.5v20.5" fill="none" stroke="#fff" stroke-width="2.8" stroke-linejoin="round"/><ellipse cx="20.6" cy="41.8" rx="5.4" ry="4.4" fill="#fff"/><ellipse cx="38.6" cy="37.4" rx="5.4" ry="4.4" fill="#fff"/></svg></i>
+          </div>
+        </div>
+      </div>
     </div>
-      <small>The same run, live in the Dynamic Island</small>
-    </div>
+    <small class="da-p2-cap">Live in the Dynamic Island</small>
   </div>
 
   <div class="phone at-right">
@@ -1732,8 +1934,14 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
     });
     slide.querySelector(".da-species").classList.toggle("da-on", st.k >= 1);
     slide.style.setProperty("--da-k", Math.min(st.k, 9));
-    var isl = slide.querySelector(".da-isl-phase");
-    if (isl) isl.textContent = st.label;
+    // Phone 2's expanded Live Activity mirrors the same state; done, it shows the total and drops the next line.
+    slide.querySelectorAll(".da-isl-phase").forEach(function (e) { e.textContent = st.label; });
+    slide.querySelectorAll(".da-isl-next").forEach(function (e) { e.textContent = st.k < 9 ? st.next : ""; });
+    slide.querySelectorAll(".da-isl-time").forEach(function (e) { e.textContent = st.k < 9 ? "0:0" + st.k : "took " + st.time; });
+    slide.querySelectorAll(".da-isl-segs i").forEach(function (seg, i) {
+      seg.className = i < st.k ? "da-d" : i === st.k ? (st.wait ? "da-w" : "da-r") : "";
+    });
+    slide.querySelectorAll(".da-p2-isl").forEach(function (e) { e.classList.toggle("da-isl-wait", !!st.wait); });
   }
 
   var at = null, runId = 0;
