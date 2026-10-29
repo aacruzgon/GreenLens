@@ -963,6 +963,8 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
               radial-gradient(circle 900px at calc(100% - var(--cl-x, 72%)) calc(110% - var(--cl-y, 46%)), color-mix(in oklab, var(--wash) 85%, transparent), transparent 70%); }
 .slide.cl-thanks .cl-copy { position: absolute; left: 140px; top: 0; bottom: 0; width: 1040px; display: flex; flex-direction: column; justify-content: center; }
 /* The tagline from the dropped close slide, as the kicker above the thanks. */
+.slide.cl-thanks .cl-name { margin: 0 0 28px; font: 800 96px/1 var(--display); letter-spacing: -0.045em; }
+.slide.cl-thanks .cl-name span { color: var(--leaf); }
 .slide.cl-thanks .cl-tag { margin: 0 0 40px; font: 700 56px/1 var(--display); letter-spacing: -0.035em; }
 .slide.cl-thanks .cl-tag em { font-style: normal; color: var(--leaf); }
 .slide.cl-thanks .cl-ty { margin: 0; font: 700 176px/0.92 var(--display); letter-spacing: -0.055em; }
@@ -1121,7 +1123,7 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
     <p class="eyebrow">The solution</p>
     <h1 class="display so-name"><svg class="so-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M9 21c0-7 5-11 13-12-1 8-5 13-12 13" fill="var(--leaf)"/><path d="M10 22l8-8" stroke="var(--ground)" stroke-width="1.6" stroke-linecap="round"/></svg>GreenLens</h1>
     <p class="subtitle so-line">It diagnoses plant disease, then shows you <em>why</em>.</p>
-    <p class="so-tag">Other apps see one photo. GreenLens knows your plant.</p>
+    <p class="so-tag">Other apps see one photo.<br>GreenLens knows your plant.</p>
   </div>
   <aside class="notes">GreenLens is different. It shows its reasons, asks when it's unsure, cites its sources, and remembers your plant. Let's scan one, [Speaker 2].</aside>
 </section>
@@ -1134,7 +1136,7 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
     <div class="enter">
       <p class="eyebrow">The demo · 1 of 5</p>
       <h2 class="title">The app guides every photo.</h2>
-      <p class="lede">Tomato 2 is due for its weekly check. Its neighbour, Tomato 1, has early blight.</p>
+      <p class="lede">Tomato&nbsp;2 is due for its weekly check.<br>Its neighbour, Tomato&nbsp;1, has early blight.</p>
     </div>
     <div class="da-chips enter" style="--enter-delay: .55s">
       <span class="powered"><svg class="lg" aria-hidden="true"><use href="#i-expo"/></svg>Expo <small>Our Swift LiDAR module</small></span>
@@ -1176,7 +1178,6 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
       </div>
     </div>
   </div>
-  <p class="fine">Shown with the app's demo data</p>
   <aside class="notes">This is our Expo app, on demo data. It's Tomato 2's weekly check. Its neighbour, Tomato 1, has early blight. LiDAR checks the distance, and the dial fills with each shot. A close-up, the underside, and I tap Analyse.</aside>
 </section>
 
@@ -1262,7 +1263,6 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
   </div>
 
 
-  <p class="fine">Shown with the app's demo data. The 12 mm size isn't LiDAR-checked yet.</p>
   <aside class="notes">Our vision models run on our own home GPUs. SurrealDB tracks the job, and each stage streams live, even to the Dynamic Island. It boxes each spot and measures it. These sizes are demo data. We haven't run the iPhone LiDAR check yet. Two diseases match, so it doesn't guess. It asks one question. Do the spots have rings, like a target? I tap Yes, and it settles on early blight. Why early blight, [Speaker 3]?</aside>
 </section>
 
@@ -1271,7 +1271,7 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
   <div class="da-narr">
     <div class="enter">
       <p class="eyebrow">The demo · 3 of 5</p>
-      <h2 class="title">Blight could spread, <span class="t-then" data-step="1">so it writes a plan.</span></h2>
+      <h2 class="title">Blight could spread, <span class="t-then" data-step="1">so it plans how to stop it.</span></h2>
     </div>
     <div class="da-chips">
       <span class="powered" data-step="1" style="--d: .5s"><svg class="lg" aria-hidden="true"><use href="#i-claude"/></svg>Claude <small>Writes the plan</small></span>
@@ -1307,7 +1307,6 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
       </div>
     </div>
   </div>
-  <p class="fine">Shown with the app's demo data</p>
   <aside class="notes">Your answer and the photos matched three signs, so it's early blight. Humid days are coming, and the plants are too close together, so the risk of spread is high. Because the risk is high, Claude writes a treatment plan. For example, remove the infected leaves today, and check Tomato 2 for new spots every three days.</aside>
 </section>
 <!-- ———— 04-demo-b ———— -->
@@ -1318,7 +1317,7 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
   <div class="db-narr">
   <div class="db-copy enter">
     <p class="eyebrow db-eye">The demo · 4 of 5</p>
-    <h2 class="title">Frost is coming, <span class="t-then" data-step="1">so it tells you what to cover.</span></h2>
+    <h2 class="title">Frost is coming, <span class="t-then" data-step="1">so it saves your plants.</span></h2>
   </div>
   <div class="db-chips enter" style="--enter-delay: .55s">
     <span class="powered"><svg class="lg" aria-hidden="true"><use href="#i-claude"/></svg>Claude <small>chat agent</small></span>
@@ -1357,7 +1356,6 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
       </div>
     </div></div>
   </div>
-  <p class="fine">Shown with the app's demo data</p>
   <aside class="notes">Now we ask about Thursday's frost. Claude checks the forecast, and your records show four plants that frost can hurt. So it offers to cover them. Pick which ones, and they go on your task list. And if you say "no copper" once, SurrealDB Agent Memory remembers it, so copper stays out of your future plans. What about a whole farm, [Speaker 4]?</aside>
 </section>
 
@@ -1410,7 +1408,6 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
       </div>
     </div></div>
   </div>
-  <p class="fine">Shown with the app's demo data</p>
   <aside class="notes">On our demo farm, the crew uses Slack and a Google Drive spray log. When did they last spray the east bed? August 2nd, with both sources cited. We tested it on Era by Eon's simulators, with about 120 Slack messages and a planted prompt injection. We asked 18 questions, three times each. It got all 54 right, and never followed the injection.</aside>
 </section>
 <!-- ———— 05-partners ———— -->
@@ -1453,11 +1450,10 @@ html:active-view-transition-type(push, rise, zoom, iris, fade) .slide.db .db-eye
 <section class="slide cl-thanks" id="cl-thanks" data-transition="rise" data-time="3:36">
   <div class="cl-drift" aria-hidden="true"></div>
   <div class="cl-copy">
+    <p class="cl-name">Green<span>Lens</span></p>
     <p class="cl-tag">Know what your <em>garden</em> needs.</p>
     <h2 class="cl-ty">Thank you.</h2>
     <p class="cl-q">Questions?</p>
-    <p class="cl-real">We built the iPhone app, Rust backend and Claude agent during Build North, Oct 16–25.</p>
-    <p class="cl-team">Team GreenLens <b>·</b> Build North Demo Day <b>·</b> Toronto</p>
   </div>
   <a class="cl-qr" href="https://www.youtube.com/watch?v=XqrVHCIDUv8" target="_blank" rel="noopener"><svg class="cl-qr-code" role="img" aria-label="QR code: the GreenLens demo video on YouTube" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h33v33H0z"/><path stroke="#000000" d="M0 0.5h7m4 0h2m1 0h1m3 0h4m1 0h1m2 0h7M0 1.5h1m5 0h1m2 0h4m2 0h1m2 0h1m1 0h2m4 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m1 0h1m2 0h1m2 0h2m3 0h1m1 0h2m1 0h1m1 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m5 0h1m2 0h1m1 0h2m1 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h1m1 0h8m2 0h1m1 0h1m3 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m1 0h1m1 0h5m2 0h1m1 0h1m2 0h3m1 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h1m1 0h2m2 0h1m1 0h1m2 0h5M0 8.5h1m1 0h5m2 0h6m2 0h1m1 0h1m2 0h2m2 0h5M2 9.5h2m1 0h1m2 0h4m1 0h2m1 0h5m1 0h2m2 0h2m1 0h4M0 10.5h3m1 0h1m1 0h12m4 0h1m1 0h1m1 0h1m1 0h1m1 0h2M2 11.5h1m2 0h1m1 0h1m2 0h2m1 0h1m3 0h4m2 0h1m1 0h1m2 0h3M0 12.5h2m1 0h1m2 0h2m1 0h2m3 0h3m2 0h7m1 0h1m1 0h1m2 0h1M0 13.5h3m1 0h2m3 0h3m1 0h1m1 0h1m1 0h2m2 0h1m2 0h1m5 0h3M0 14.5h1m1 0h1m3 0h1m1 0h1m2 0h1m2 0h3m3 0h3m1 0h3m1 0h4M1 15.5h1m3 0h1m1 0h2m2 0h1m1 0h3m5 0h2m1 0h4m1 0h2M0 16.5h1m3 0h3m5 0h4m1 0h2m3 0h4m1 0h3m2 0h1M2 17.5h4m3 0h2m2 0h2m1 0h1m1 0h2m1 0h7m1 0h3M1 18.5h3m2 0h2m1 0h3m1 0h1m1 0h1m2 0h1m1 0h2m3 0h1m1 0h2m1 0h2M1 19.5h2m4 0h1m2 0h2m1 0h4m3 0h4m3 0h5M0 20.5h1m2 0h4m3 0h2m2 0h2m2 0h1m2 0h1m3 0h1m1 0h1m1 0h1m1 0h2M0 21.5h2m3 0h1m1 0h1m1 0h1m3 0h1m1 0h3m2 0h6m4 0h1m1 0h1M0 22.5h1m1 0h1m3 0h3m1 0h3m1 0h1m2 0h1m1 0h1m1 0h2m1 0h2m1 0h1m3 0h1M0 23.5h1m6 0h2m3 0h2m2 0h1m2 0h3m1 0h1m1 0h8M0 24.5h1m1 0h3m1 0h1m1 0h4m4 0h2m1 0h1m2 0h1m1 0h7m1 0h1M8 25.5h1m1 0h2m4 0h2m1 0h2m1 0h3m3 0h1m1 0h3M0 26.5h7m4 0h2m1 0h4m4 0h3m1 0h1m1 0h1m1 0h1M0 27.5h1m5 0h1m1 0h2m2 0h2m1 0h1m1 0h3m3 0h2m3 0h3m1 0h1M0 28.5h1m1 0h3m1 0h1m1 0h4m3 0h2m3 0h3m1 0h6m1 0h1M0 29.5h1m1 0h3m1 0h1m1 0h1m1 0h1m3 0h2m2 0h1m2 0h1m1 0h1m1 0h1m2 0h3m1 0h1M0 30.5h1m1 0h3m1 0h1m1 0h5m1 0h4m2 0h8M0 31.5h1m5 0h1m3 0h4m1 0h1m5 0h3m1 0h1m2 0h3M0 32.5h7m1 0h3m2 0h3m1 0h1m4 0h4m1 0h1m2 0h2"/></svg>
 <span class="cl-qr-cap">Scan to watch the demo video</span></a>
